@@ -1,0 +1,175 @@
+# One command starts everything:   cp .env.example .env && docker compose up --build
+#
+# Network layout = who may talk to whom (this is also the proof for Problem 4
+# that the Canonical Store is reachable by the Aggregator only):
+#   app-net        HTTP between services (mocks, aggregator, client-facing API, auth)
+#   canonical-net  internal: PostgreSQL <-> Aggregator ONLY
+#   broker-net     internal: Kafka <-> producer (Aggregator) and consumers
+# PostgreSQL and Kafka publish no port to the host.
+name: bnpb
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+services:
+  # ------------------------------------------------------------------ mocks
+  bmkg-mock:
+    build: {context: ., dockerfile: services/bmkg-mock/Dockerfile}
+    environment:
+      BMKG_PORT: "8081"
+      BMKG_API_KEY: ${BMKG_API_KEY:?copy .env.example to .env}
+      BMKG_ADMIN_TOKEN: ${BMKG_ADMIN_TOKEN:?copy .env.example to .env}
+      BMKG_DELAY_MIN_MS: ${BMKG_DELAY_MIN_MS:-50}
+      BMKG_DELAY_MAX_MS: ${BMKG_DELAY_MAX_MS:-150}
+      BMKG_EVENT_INTERVAL_SEC: ${BMKG_EVENT_INTERVAL_SEC:-10}
+      BMKG_WARNING_DELAY_MIN_SEC: ${BMKG_WARNING_DELAY_MIN_SEC:-2}
+      BMKG_WARNING_DELAY_MAX_SEC: ${BMKG_WARNING_DELAY_MAX_SEC:-8}
+      BMKG_SEED_COUNT: ${BMKG_SEED_COUNT:-24}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${BMKG_PORT:-8081}:8081"]
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    logging: *logging
+    restart: unless-stopped
+
+  pvmbg-mock:
+    build: {context: ., dockerfile: services/pvmbg-mock/Dockerfile}
+    environment:
+      PVMBG_PORT: "8082"
+      PVMBG_TOKEN_SECRET: ${PVMBG_TOKEN_SECRET:?copy .env.example to .env}
+      PVMBG_ADMIN_TOKEN: ${PVMBG_ADMIN_TOKEN:?copy .env.example to .env}
+      PVMBG_DELAY_MIN_MS: ${PVMBG_DELAY_MIN_MS:-500}
+      PVMBG_DELAY_MAX_MS: ${PVMBG_DELAY_MAX_MS:-3000}
+      PVMBG_REPORT_INTERVAL_SEC: ${PVMBG_REPORT_INTERVAL_SEC:-10}
+      PVMBG_SEED_COUNT: ${PVMBG_SEED_COUNT:-24}
+      PVMBG_HANG_MAX_SEC: ${PVMBG_HANG_MAX_SEC:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${PVMBG_PORT:-8082}:8082"]
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    logging: *logging
+    restart: unless-stopped
+
+  # -------------------------------------------------------------- aggregator
+  aggregator:
+    build: {context: ., dockerfile: services/aggregator/Dockerfile}
+    environment:
+      AGGREGATOR_PORT: "8083"
+      AGGREGATOR_SERVICE_KEY: ${AGGREGATOR_SERVICE_KEY:?copy .env.example to .env}
+      # the two upstream credentials are independent; neither works on the other agency
+      BMKG_URL: http://bmkg-mock:8081
+      BMKG_API_KEY: ${BMKG_API_KEY:?copy .env.example to .env}
+      PVMBG_URL: http://pvmbg-mock:8082
+      PVMBG_GATEWAY_TOKEN: ${PVMBG_GATEWAY_TOKEN:?copy .env.example to .env}
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-3}
+      POLL_OVERLAP_SEC: ${POLL_OVERLAP_SEC:-5}
+      SOURCE_TIMEOUT_SEC: ${SOURCE_TIMEOUT_SEC:-5}
+      BREAKER_FAILURE_THRESHOLD: ${BREAKER_FAILURE_THRESHOLD:-3}
+      BREAKER_OPEN_SEC: ${BREAKER_OPEN_SEC:-10}
+      PENDING_WARNING_TTL_SEC: ${PENDING_WARNING_TTL_SEC:-120}
+      REPOSITORY_BACKEND: ${REPOSITORY_BACKEND:-memory}
+      PUBLISHER_BACKEND: ${PUBLISHER_BACKEND:-log}
+      RELAY_INTERVAL_MS: ${RELAY_INTERVAL_MS:-500}
+      RELAY_BATCH: ${RELAY_BATCH:-100}
+      RELAY_MAX_BACKOFF_SEC: ${RELAY_MAX_BACKOFF_SEC:-10}
+      CANONICAL_DB_URL: postgres://${CANONICAL_DB_USER:-canonical}:${CANONICAL_DB_PASSWORD:?copy .env.example to .env}@postgres-canonical:5432/${CANONICAL_DB_NAME:-canonical}?sslmode=disable
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # loopback only: the internal API is for operators/demo scripts; clients use the Client-Facing API (8080)
+    ports: ["127.0.0.1:${AGGREGATOR_PORT:-8083}:8083"]
+    networks: [app-net, canonical-net, broker-net]
+    # deliberately NO depends_on on the mocks or the store: the Aggregator must start,
+    # keep serving and recover on its own while any of them is absent (Problem 2/4)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------------------------------------------------------- canonical store
+  postgres-canonical:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${CANONICAL_DB_USER:-canonical}
+      POSTGRES_PASSWORD: ${CANONICAL_DB_PASSWORD:?copy .env.example to .env}
+      POSTGRES_DB: ${CANONICAL_DB_NAME:-canonical}
+    volumes: [canonical-pgdata:/var/lib/postgresql/data]
+    networks: [canonical-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------- broker
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"   # the topic is created explicitly by kafka-init
+      KAFKA_LOG_RETENTION_HOURS: "168"
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    volumes: [kafka-data:/var/lib/kafka/data]
+    networks: [broker-net]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    logging: *logging
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.9.0
+    depends_on:
+      kafka: {condition: service_healthy}
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
+      KAFKA_PARTITIONS: ${KAFKA_PARTITIONS:-3}
+      KAFKA_RETENTION_MS: ${KAFKA_RETENTION_MS:-604800000}
+    volumes: [./deploy/kafka/create-topic.sh:/create-topic.sh:ro]
+    entrypoint: ["/bin/sh", "/create-topic.sh"]
+    networks: [broker-net]
+    restart: "no"
+
+  # Client-Facing API, Auth Service and the event consumers are added by their owners
+  # to this file (networks: client-api/auth -> app-net; consumers -> broker-net).
+
+networks:
+  app-net: {}
+  canonical-net: {internal: true}
+  broker-net: {internal: true}
+
+volumes:
+  canonical-pgdata: {}
+  kafka-data: {}

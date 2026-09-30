@@ -1,0 +1,101 @@
+openapi: 3.0.3
+info:
+  title: PVMBG mock (M1 contract)
+  version: "1.0"
+  description: |
+    Slow, fluctuating "legacy" volcano service: random response delay 500 ms - 3 s (configurable, also at runtime).
+    Credential: `Authorization: Bearer <pvmbg-token>` where the token is `pvmbg.v1.<claims>.<hmac>` signed with a
+    secret only PVMBG knows. No credential is 401 (an expired PVMBG token too); anything else, including a BMKG key,
+    is 403.
+    Entity schema: contracts/schemas/volcanic-report.json (confidence_level is optional).
+servers:
+  - url: http://localhost:8082
+paths:
+  /volcanic-reports:
+    get:
+      summary: VolcanicReports reported strictly after `since` (ascending by reported_at)
+      security: [{pvmbgBearer: []}]
+      parameters:
+        - {name: since, in: query, required: false, schema: {type: string, format: date-time}}
+      responses:
+        "200": {description: "JSON array of VolcanicReport", content: {application/json: {schema: {type: array, items: {$ref: "../schemas/volcanic-report.json"}}}}}
+        "400": {description: since is not ISO 8601}
+        "401": {description: missing or expired token}
+        "403": {description: invalid token / credential of another agency}
+        "503": {description: outage in mode "error" (mode "hang" never answers)}
+  /health:
+    get:
+      summary: Health check (no credential; stays answerable during an outage and reports it)
+      responses:
+        "200": {description: "{status, service, time, reports, outage, schema_version}"}
+  /admin/schema-version:
+    post:
+      summary: Switch confidence_level on/off and/or set extra fields on NEW reports, while running. No restart.
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confidence_level: {type: boolean}
+                version: {type: integer, enum: [1, 2], description: "alias: 1 = original schema, 2 = with confidence_level"}
+                extra_fields: {type: object, description: "(addition) arbitrary fields added to every new report; {} clears"}
+      responses:
+        "200": {description: current state}
+  /admin/outage:
+    post:
+      summary: Turn the outage on/off instantly
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: {type: boolean}
+                mode: {type: string, enum: [error, hang], default: error, description: "error = immediate 503; hang = no answer until the client gives up"}
+      responses:
+        "200": {description: current state}
+  /admin/delay:
+    post:
+      summary: (addition) change the response delay at runtime, e.g. {"ms":3000} for the P2 scenario
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ms: {type: integer}
+                min_ms: {type: integer}
+                max_ms: {type: integer}
+      responses:
+        "200": {description: current state}
+  /admin/generate:
+    post:
+      summary: (addition) create reports on demand; `override` merges fields into their wire format (null removes one) to simulate unsupported schema changes
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: {type: integer, default: 1, maximum: 500}
+                volcano_id: {type: string}
+                alert_level: {type: string, enum: [Normal, Waspada, Siaga, Awas]}
+                override: {type: object}
+      responses:
+        "200": {description: "{generated:[VolcanicReport]}"}
+  /admin/state:
+    get:
+      summary: (addition) current runtime state
+      security: [{adminToken: []}]
+      responses:
+        "200": {description: state}
+components:
+  securitySchemes:
+    pvmbgBearer: {type: http, scheme: bearer}
+    adminToken: {type: apiKey, in: header, name: X-Admin-Token}
