@@ -22,6 +22,9 @@ jobs:
   secrets:
     name: no committed credentials
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks-action lists the PR's commits
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,7 +51,16 @@ jobs:
           docker compose up -d --build
           bash scripts/wait-healthy.sh 180
       - name: Kafka topic was created
-        run: docker compose logs kafka-init | grep "topic hazard.events ready"
+        run: |
+          # the HTTP services become healthy before Kafka finishes booting: wait for the one-shot job
+          for i in $(seq 1 60); do
+            state=$(docker compose ps -a --format '{{.State}}|{{.ExitCode}}' kafka-init)
+            [ "$state" = "exited|0" ] && break
+            [ "${state%%|*}" = "exited" ] && break
+            sleep 3
+          done
+          docker compose logs kafka-init
+          docker compose logs kafka-init | grep "topic hazard.events ready"
       - name: P1 - schema evolution without restart
         run: make demo-p1
       - name: store and broker are unreachable from other containers
