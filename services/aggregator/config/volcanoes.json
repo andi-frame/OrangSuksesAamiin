@@ -1,0 +1,9 @@
+{
+  "merapi":        {"name": "Gunung Merapi",          "latitude": -7.5407, "longitude": 110.4457},
+  "semeru":        {"name": "Gunung Semeru",          "latitude": -8.1080, "longitude": 112.9220},
+  "anak-krakatau": {"name": "Gunung Anak Krakatau",   "latitude": -6.1020, "longitude": 105.4230},
+  "sinabung":      {"name": "Gunung Sinabung",        "latitude": 3.1710,  "longitude": 98.3920},
+  "ruang":         {"name": "Gunung Ruang",           "latitude": 2.3000,  "longitude": 125.3700},
+  "lewotobi":      {"name": "Gunung Lewotobi Laki-laki", "latitude": -8.5420, "longitude": 122.7750},
+  "prikitiw":      {"name": "Gunung Prikitiw",        "latitude": -6.4500, "longitude": 105.9000}
+}
