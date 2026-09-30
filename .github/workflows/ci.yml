@@ -18,6 +18,8 @@ jobs:
       - run: make fmt
       - run: make vet
       - run: make test-race
+      - name: Postgres adapter passes the repository contract
+        run: make test-postgres
 
   secrets:
     name: no committed credentials
