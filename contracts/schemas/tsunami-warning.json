@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BMKG TsunamiWarning (M1 contract; issued_at is a permitted addition used as the `since` cursor)",
+  "type": "object",
+  "required": ["warning_id", "related_event_id", "threat_level", "affected_zones", "estimated_arrival", "issued_at"],
+  "properties": {
+    "warning_id": {"type": "string", "minLength": 1},
+    "related_event_id": {"type": "string", "minLength": 1},
+    "threat_level": {"enum": ["Waspada", "Siaga", "Awas"]},
+    "affected_zones": {"type": "array", "items": {"type": "string"}},
+    "estimated_arrival": {"type": "string", "format": "date-time"},
+    "issued_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

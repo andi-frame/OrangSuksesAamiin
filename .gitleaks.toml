@@ -1,0 +1,14 @@
+# The repository is scanned for committed credentials. Only .env.example is
+# allow-listed: it must contain EXAMPLE values (including a sample PVMBG token
+# minted from an example secret), otherwise the variables could not be documented.
+title = "bnpb gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "example values documented in .env.example; test fixtures use obvious dummy values"
+paths = [
+  '''^\.env\.example$''',
+  '''_test\.go$''',
+]

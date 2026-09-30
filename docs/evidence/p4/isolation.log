@@ -1,0 +1,22 @@
+
+== [1] Who is attached to which network (docker network inspect) ==
+   bnpb_app-net: aggregator bmkg-mock pvmbg-mock 
+   bnpb_canonical-net: aggregator postgres-canonical 
+   bnpb_broker-net: aggregator kafka kafka-init 
+
+== [2] PostgreSQL (Canonical Store) is reachable ONLY from the Aggregator's network ==
+   networks the database container is attached to: bnpb_canonical-net 
+   PASS canonical-net contains exactly: aggregator + postgres-canonical
+   PASS postgres publishes no port to the host
+   PASS container on app-net (where mocks / client-facing API live): postgres-canonical:5432 is unreachable
+   PASS container on broker-net (consumers): postgres-canonical:5432 is unreachable
+   PASS control: a container on canonical-net (i.e. the Aggregator's network) does reach it
+
+== [3] Kafka is reachable only from broker-net (producer + consumers), not from app-net ==
+   PASS container on app-net: kafka:9092 is unreachable
+   PASS control: a container on broker-net does reach kafka:9092
+
+== [4] Other components get hazards only through the Aggregator API ==
+   PASS the Aggregator API demands its service key (401 without, 403 with a wrong one)
+
+ISOLATION PASS

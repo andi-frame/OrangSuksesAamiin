@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PVMBG VolcanicReport (M1 contract). confidence_level is absent in the initial schema and appears after POST /admin/schema-version.",
+  "type": "object",
+  "required": ["report_id", "volcano_id", "alert_level", "eruption_count_24h", "ash_column_height_m", "reported_at"],
+  "properties": {
+    "report_id": {"type": "string", "minLength": 1},
+    "volcano_id": {"type": "string", "minLength": 1},
+    "alert_level": {"enum": ["Normal", "Waspada", "Siaga", "Awas"]},
+    "eruption_count_24h": {"type": "integer", "minimum": 0},
+    "ash_column_height_m": {"type": "number", "minimum": 0},
+    "reported_at": {"type": "string", "format": "date-time"},
+    "confidence_level": {"type": "number", "minimum": 0, "maximum": 1}
+  },
+  "additionalProperties": true
+}

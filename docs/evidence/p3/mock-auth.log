@@ -1,0 +1,39 @@
+
+== [1] BMKG mock (X-BMKG-Key) ==
+   PASS own key                         -> HTTP 200
+   PASS no credential                   -> HTTP 401
+   PASS wrong key                       -> HTTP 403
+   PASS PVMBG bearer token              -> HTTP 403
+   PASS PVMBG bearer token (warnings)   -> HTTP 403
+   PASS aggregator service key          -> HTTP 401
+   PASS PVMBG admin token as BMKG key   -> HTTP 403
+
+== [2] PVMBG mock (Authorization: Bearer <pvmbg-token>) ==
+   PASS own token                       -> HTTP 200
+   PASS no credential                   -> HTTP 401
+   PASS BMKG key in X-BMKG-Key          -> HTTP 403
+   PASS BMKG key presented as bearer    -> HTTP 403
+   PASS tampered PVMBG token            -> HTTP 403
+   PASS aggregator service key          -> HTTP 403
+   token structure: pvmbg.v1 . <signature>   (BMKG's credential is an opaque API key)
+   claims: {"aud":"pvmbg-api","exp":2106086156,"iat":1790726156,"iss":"pvmbg-geologi","sub":"bnpb-aggregator"}
+
+== [3] Operator endpoints need their own token; the upstream credentials do not open them ==
+   PASS PVMBG /admin without token      -> HTTP 401
+   PASS PVMBG /admin with gateway token -> HTTP 401
+   PASS PVMBG /admin with BMKG admin    -> HTTP 403
+   PASS BMKG  /admin with PVMBG admin   -> HTTP 403
+
+== [4] Aggregator internal API (X-Service-Key): the upstream credentials do not open it either ==
+   PASS no credential                   -> HTTP 401
+   PASS BMKG key                        -> HTTP 403
+   PASS PVMBG token                     -> HTTP 403
+   PASS service key                     -> HTTP 200
+
+== [5] Each container only holds the secrets of its own trust domain (docker compose exec ... env) ==
+   bmkg-mock  : BMKG_ADMIN_TOKEN BMKG_API_KEY BMKG_DELAY_MAX_MS BMKG_DELAY_MIN_MS BMKG_EVENT_INTERVAL_SEC BMKG_PORT BMKG_SEED_COUNT BMKG_WARNING_DELAY_MAX_SEC BMKG_WARNING_DELAY_MIN_SEC 
+   pvmbg-mock : PVMBG_ADMIN_TOKEN PVMBG_DELAY_MAX_MS PVMBG_DELAY_MIN_MS PVMBG_HANG_MAX_SEC PVMBG_PORT PVMBG_REPORT_INTERVAL_SEC PVMBG_SEED_COUNT PVMBG_TOKEN_SECRET 
+   aggregator : AGGREGATOR_PORT AGGREGATOR_SERVICE_KEY BMKG_API_KEY BMKG_URL CANONICAL_DB_URL KAFKA_BROKERS KAFKA_TOPIC PVMBG_GATEWAY_TOKEN PVMBG_URL 
+   PASS bmkg-mock has no PVMBG/internal secret; pvmbg-mock has no BMKG/internal secret; the aggregator holds tokens but cannot mint or administer
+
+MOCK AUTH PASS
