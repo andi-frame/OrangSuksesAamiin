@@ -3,8 +3,6 @@
 // latency logging, health endpoints and env parsing.
 //
 // It is deliberately NOT a place for domain code (see README "Shared code").
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package obs
 
 import (

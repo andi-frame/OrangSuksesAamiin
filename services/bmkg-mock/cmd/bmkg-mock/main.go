@@ -1,6 +1,4 @@
 // Command bmkg-mock runs the simulated BMKG seismic/tsunami service.
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package main
 
 import (

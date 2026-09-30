@@ -5,8 +5,6 @@
 //
 // Backends are pluggable (see internal/adapters): memory/log for tests and
 // local dev, postgres/kafka for the real system.
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package ports
 
 import (

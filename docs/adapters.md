@@ -1,5 +1,11 @@
 # Panduan adapter (untuk Orang 3): PostgreSQL dan Kafka
 
+> **Status: sudah terpasang.** `internal/adapters/postgres` (lulus `repotest` lewat `make test-postgres`) dan
+> `internal/adapters/kafka` (franz-go; diuji dengan broker palsu `kfake`) aktif secara default (`.env.example`).
+> Penyimpangan dari saran di bawah: `hazard_id` memakai collation `"C"` (urutan sama dengan Go/kursor) dan `outbox.payload`
+> bertipe `json` (bukan `jsonb`) agar pesan tersimpan persis seperti dibuat. franz-go dipin ke v1.21.x karena v1.22 butuh Go 1.26.
+> Bagian di bawah tetap menjadi acuan untuk consumer (§5), yang belum dibuat.
+
 Aggregator tidak tahu database atau broker apa yang dipakai: ia bicara ke dua interface di
 `services/aggregator/internal/ports`. Tugas Orang 3 adalah **mengisi dua interface itu** dan mendaftarkannya. Tidak ada
 kode Aggregator lain yang perlu diubah.

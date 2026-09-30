@@ -2,8 +2,6 @@
 // records to the canonical HazardEvent, stores them in the Canonical Store it
 // owns, publishes changes through the outbox relay and serves them on an
 // internal API.
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package main
 
 import (
