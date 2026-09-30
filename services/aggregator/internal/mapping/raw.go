@@ -17,8 +17,6 @@
 // fields. Consciously unsupported (-> quarantine): rename/removal of a field
 // with a canonical counterpart, type change of such a field, new enum values,
 // changed semantics/units.
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package mapping
 
 import (

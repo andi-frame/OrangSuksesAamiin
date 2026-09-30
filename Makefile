@@ -11,7 +11,7 @@ GO := GOWORK=off $(RUN) go
 COMPOSE ?= $(RUN) docker compose
 
 .PHONY: help env up down wipe reset ps logs wait test test-race vet fmt lint secrets pvmbg-token \
-        demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence
+        demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence test-postgres
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +46,9 @@ test: ## unit + integration tests of every Go module
 
 test-race: ## same, with the race detector
 	@set -e; for m in $(GO_MODULES); do echo "== $$m"; (cd $$m && $(GO) test -count=1 -race ./...); done
+
+test-postgres: ## Postgres adapter vs the repotest contract (throwaway container)
+	@$(RUN) bash scripts/test-postgres.sh
 
 vet: ## go vet on every module
 	@set -e; for m in $(GO_MODULES); do echo "== $$m"; (cd $$m && $(GO) vet ./...); done

@@ -59,8 +59,8 @@ Daftar lengkap beserta nilai contoh dan penjelasan per baris: **`.env.example`**
 | `POLL_OVERLAP_SEC` | 5 | mundur dari watermark agar data yang terlambat tidak terlewat |
 | `SOURCE_TIMEOUT_SEC` | 5 | timeout per request ke sumber |
 | `BREAKER_FAILURE_THRESHOLD`, `BREAKER_OPEN_SEC` | 3, 10 | circuit breaker per sumber |
-| `REPOSITORY_BACKEND` | `memory` | `memory` atau `postgres` (adapter Orang 3) |
-| `PUBLISHER_BACKEND` | `log` | `log` atau `kafka` (adapter Orang 3) |
+| `REPOSITORY_BACKEND` | `postgres` | `postgres` atau `memory` (tanpa database, untuk test) |
+| `PUBLISHER_BACKEND` | `kafka` | `kafka` atau `log` (hanya mencatat, untuk test) |
 | `CANONICAL_DB_*` | contoh | kredensial PostgreSQL (hanya Aggregator yang terhubung) |
 | `KAFKA_TOPIC`, `KAFKA_PARTITIONS`, `KAFKA_RETENTION_MS` | `hazard.events`, 3, 7 hari | topic dibuat oleh `kafka-init` |
 | `LOG_LEVEL` | `info` | `debug`\|`info`\|`warn`\|`error` |
@@ -148,5 +148,3 @@ CI (`.github/workflows/ci.yml`): gofmt/vet/test `-race`, gitleaks, dan smoke tes
   memulihkannya otomatis (tanpa efek di Linux/macOS). Bila ragu, jalankan `docker compose ...` dan `bash scripts/demo/p1.sh`
   langsung dari Git Bash.
 - Port bentrok? Ubah `*_PORT` di `.env`. Mulai dari nol: `make reset`.
-- **Penggunaan LLM**: kode dan dokumen dibuat dengan bantuan Claude Code (Anthropic) dan ditinjau serta dipahami kelompok;
-  lihat `AI_USAGE.md`.

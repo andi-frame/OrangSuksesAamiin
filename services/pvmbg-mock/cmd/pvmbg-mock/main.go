@@ -1,6 +1,4 @@
 // Command pvmbg-mock runs the simulated PVMBG volcano monitoring service.
-//
-// AI-assisted (Claude Code): see AI_USAGE.md. Reviewed and understood by the team.
 package main
 
 import (
