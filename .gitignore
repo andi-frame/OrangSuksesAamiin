@@ -1,0 +1,25 @@
+# secrets / local config (only .env.example is committed)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# go
+bin/
+dist/
+*.test
+*.out
+coverage.*
+go.work.sum
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# generated evidence is committed on purpose; raw k6/tmp output is not
+docs/evidence/**/*.tmp
+loadtest/results/*.json
+

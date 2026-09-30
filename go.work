@@ -1,0 +1,9 @@
+go 1.25.3
+
+use (
+	./pkg/obs
+	./services/aggregator
+	./services/bmkg-mock
+	./services/pvmbg-mock
+	./tools/pvmbg-token
+)
