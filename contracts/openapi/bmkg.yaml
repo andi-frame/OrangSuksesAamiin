@@ -1,0 +1,60 @@
+openapi: 3.0.3
+info:
+  title: BMKG mock (M1 contract)
+  version: "1.0"
+  description: |
+    Passive, low-latency seismic / tsunami service. Response delay is fixed at 50-150 ms.
+    Credential: header `X-BMKG-Key`. A missing credential is 401; a wrong one, or a credential of
+    another agency (PVMBG's `Authorization: Bearer`), is 403.
+    Entity schemas: contracts/schemas/seismic-event.json and tsunami-warning.json.
+servers:
+  - url: http://localhost:8081
+paths:
+  /seismic-events:
+    get:
+      summary: SeismicEvents that occurred strictly after `since` (ascending by occurred_at)
+      security: [{bmkgKey: []}]
+      parameters:
+        - {name: since, in: query, required: false, schema: {type: string, format: date-time}, description: "omitted = everything"}
+      responses:
+        "200": {description: "JSON array of SeismicEvent", content: {application/json: {schema: {type: array, items: {$ref: "../schemas/seismic-event.json"}}}}}
+        "400": {description: since is not ISO 8601}
+        "401": {description: missing X-BMKG-Key}
+        "403": {description: wrong key / credential of another agency}
+  /tsunami-warnings:
+    get:
+      summary: TsunamiWarnings issued strictly after `since` (by issued_at, a permitted addition). Only for events with potential_tsunami=true. Correlation to the event (related_event_id) is done by the Aggregator.
+      security: [{bmkgKey: []}]
+      parameters:
+        - {name: since, in: query, required: false, schema: {type: string, format: date-time}}
+      responses:
+        "200": {description: "JSON array of TsunamiWarning", content: {application/json: {schema: {type: array, items: {$ref: "../schemas/tsunami-warning.json"}}}}}
+        "400": {description: since is not ISO 8601}
+        "401": {description: missing X-BMKG-Key}
+        "403": {description: wrong key / credential of another agency}
+  /health:
+    get:
+      summary: Health check (no credential)
+      responses:
+        "200": {description: "{status, service, time, events, warnings}"}
+  /admin/generate:
+    post:
+      summary: (addition) create events on demand, to speed a demo up
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: {type: integer, default: 1, maximum: 500}
+                magnitude: {type: number}
+                tsunami: {type: boolean, description: "true => potential_tsunami event whose warning is issued 2-8 s later"}
+      responses:
+        "200": {description: "{generated:[SeismicEvent]}"}
+        "401": {description: missing X-Admin-Token}
+        "403": {description: wrong admin token}
+components:
+  securitySchemes:
+    bmkgKey: {type: apiKey, in: header, name: X-BMKG-Key}
+    adminToken: {type: apiKey, in: header, name: X-Admin-Token}

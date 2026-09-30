@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: Aggregator internal API (M1)
+  version: "1.0"
+  description: |
+    The Canonical Store is private to the Aggregator. Every other component (the Client-Facing API in particular)
+    reads hazards ONLY through this API. Credential: header `X-Service-Key` (401 missing, 403 wrong).
+    It returns the full HazardEvent (including Mentah fields); the Client-Facing API is what restricts fields per client.
+servers:
+  - url: http://127.0.0.1:8083
+paths:
+  /internal/hazards:
+    get:
+      summary: List hazards, newest first (occurred_at DESC, hazard_id DESC), keyset pagination
+      security: [{serviceKey: []}]
+      parameters:
+        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC]}}
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG]}}
+        - {name: severity, in: query, schema: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}}
+        - {name: since, in: query, schema: {type: string, format: date-time}, description: "occurred_at >= since"}
+        - {name: limit, in: query, schema: {type: integer, default: 100, maximum: 500}}
+        - {name: cursor, in: query, schema: {type: string}, description: "opaque next_cursor of the previous page"}
+      responses:
+        "200":
+          description: |
+            {items:[HazardEvent], next_cursor:"" | "...", freshness:{BMKG:{state,last_success_at,stale_since}, PVMBG:{...}}}.
+            `freshness.<source>.stale_since` is non-null while the source is not "up": the data of that source is at
+            least that old (used by the Client-Facing API to mark data stale during an outage).
+        "400": {description: bad filter}
+        "401": {description: missing key}
+        "403": {description: wrong key}
+        "503": {description: canonical store unavailable}
+  /internal/hazards/{id}:
+    get:
+      security: [{serviceKey: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: HazardEvent, content: {application/json: {schema: {$ref: "../schemas/hazard-event.json"}}}}
+        "404": {description: not found}
+  /internal/sources/status:
+    get:
+      summary: Health of each upstream (state, breaker, last_success_at, stale_since, failures, latency)
+      security: [{serviceKey: []}]
+      responses:
+        "200": {description: "{sources:[Status], quarantine_total:{SOURCE:n}}"}
+  /internal/quarantine:
+    get:
+      summary: Source records rejected by the mapper (unsupported schema changes), newest first
+      security: [{serviceKey: []}]
+      responses:
+        "200": {description: "{total:{SOURCE:n}, recent:[{at,source,record_id,field,reason,correlation_id,raw}]}"}
+  /health:
+    get: {summary: liveness (no credential), responses: {"200": {description: ok}}}
+  /ready:
+    get: {summary: readiness = canonical store reachable (no credential), responses: {"200": {description: ready}, "503": {description: store down}}}
+components:
+  securitySchemes:
+    serviceKey: {type: apiKey, in: header, name: X-Service-Key}

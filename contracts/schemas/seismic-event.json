@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BMKG SeismicEvent (M1 contract)",
+  "type": "object",
+  "required": ["event_id", "magnitude", "depth_km", "epicenter_lat", "epicenter_lon", "region_name", "occurred_at", "potential_tsunami"],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 1},
+    "magnitude": {"type": "number"},
+    "depth_km": {"type": "number", "minimum": 0},
+    "epicenter_lat": {"type": "number", "minimum": -90, "maximum": 90},
+    "epicenter_lon": {"type": "number", "minimum": -180, "maximum": 180},
+    "region_name": {"type": "string", "minLength": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "potential_tsunami": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}
