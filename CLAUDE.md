@@ -23,6 +23,3 @@ implementasi 9 poin per problem). Baca `README.md`, `docs/contracts.md`, `docs/t
 ## Cara memeriksa pekerjaan
 `make lint && make test-race` lalu `make reset && make demo-p1 demo-p2-aggregator demo-mock-auth demo-isolation`.
 Sebelum tag `milestone-1`: `make secrets`, README bisa diikuti dari clone bersih, `docs/traceability.md` tidak punya baris kosong.
-
-## Pengakuan LLM
-Kode yang dihasilkan LLM harus diakui (`AI_USAGE.md`) dan dipahami kelompok. Jangan menambah kode yang tidak bisa dijelaskan.
