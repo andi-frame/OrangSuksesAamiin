@@ -20,7 +20,9 @@ fi
 BMKG_URL="http://localhost:${BMKG_PORT:-8081}"
 PVMBG_URL="http://localhost:${PVMBG_PORT:-8082}"
 AGG_URL="http://127.0.0.1:${AGGREGATOR_PORT:-8083}"
-export BMKG_URL PVMBG_URL AGG_URL
+CAPI_URL="http://localhost:${CLIENT_API_PORT:-8080}"
+AUTH_URL="http://localhost:${AUTH_SERVICE_PORT:-8084}"
+export BMKG_URL PVMBG_URL AGG_URL CAPI_URL AUTH_URL
 
 # ---- output ---------------------------------------------------------------
 if [ -t 1 ]; then
@@ -48,6 +50,52 @@ jqx() {
 # ---- HTTP -----------------------------------------------------------------
 # agg PATH            -> GET on the Aggregator internal API (with the service key)
 agg() { curl -sS --max-time 15 -H "X-Service-Key: ${AGGREGATOR_SERVICE_KEY}" "${AGG_URL}$1"; }
+# capi TOKEN PATH     -> GET on the Client-Facing API
+capi() { curl -sS --max-time 15 -H "Authorization: Bearer ${1:?token}" "${CAPI_URL}$2"; }
+# auth_token CLIENT_ID CLIENT_SECRET -> POST /v1/token (JSON access_token on stdout via jq in demos)
+auth_token() {
+  curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' \
+    -d "{\"client_id\":\"$1\",\"client_secret\":\"$2\"}" "${AUTH_URL}/v1/token"
+}
+# capi_code TOKEN PATH -> HTTP status from Client-Facing API
+capi_code() {
+  curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H "Authorization: Bearer ${1:?token}" "${CAPI_URL}$2"
+}
+# capi_p95_ms N TOKEN PATH -> prints "P95_MS HARD_ERROR_COUNT" (200 and 429 are OK)
+capi_p95_ms() {
+  local n="$1" tok="$2" path="$3" i
+  for ((i = 0; i < n; i++)); do
+    curl -s -o /dev/null -w '%{http_code} %{time_total}\n' --max-time 10 \
+      -H "Authorization: Bearer ${tok}" "${CAPI_URL}${path}"
+  done | awk '
+    $1 != 200 && $1 != 429 { bad++ }
+    { cnt++; t[cnt] = $2 * 1000 }
+    END {
+      for (i = 1; i <= cnt; i++)
+        for (j = i + 1; j <= cnt; j++)
+          if (t[i] > t[j]) { tmp = t[i]; t[i] = t[j]; t[j] = tmp }
+      i = int(cnt * 0.95 + 0.999)
+      if (i < 1) i = 1
+      if (cnt < 1) { printf "0 0\n"; exit }
+      printf "%.1f %d\n", t[i], bad + 0
+    }'
+}
+# auth_refresh REFRESH_TOKEN -> POST /v1/refresh JSON body
+auth_refresh() {
+  curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' \
+    -d "{\"refresh_token\":\"$1\"}" "${AUTH_URL}/v1/refresh"
+}
+# auth_code METHOD PATH [JSON body] -> HTTP status on auth-service
+auth_code() {
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$method" \
+      -H 'Content-Type: application/json' -d "$body" "${AUTH_URL}${path}"
+  else
+    curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$method" "${AUTH_URL}${path}"
+  fi
+}
 # bmkg PATH           -> GET on the BMKG mock with its own credential
 bmkg() { curl -sS --max-time 15 -H "X-BMKG-Key: ${BMKG_API_KEY}" "${BMKG_URL}$1"; }
 # pvmbg PATH          -> GET on the PVMBG mock with its own credential
@@ -79,12 +127,22 @@ retry() {
   return 1
 }
 
-require_stack() {
+# Orang 2 demos (P2/P3): Client API + Auth + mocks + Aggregator — no Kafka consumers required.
+require_client_stack() {
   local u
-  for u in "${BMKG_URL}/health" "${PVMBG_URL}/health" "${AGG_URL}/health"; do
+  for u in "${BMKG_URL}/health" "${PVMBG_URL}/health" "${AGG_URL}/health" "${AUTH_URL}/health" "${CAPI_URL}/health"; do
     [ "$(code "$u")" = "200" ] || fail "$u is not answering - start the system first: make up"
   done
   command -v curl >/dev/null || fail "curl is required"
+}
+
+require_stack() {
+  require_client_stack
+  local u
+  for u in "http://localhost:${CONSUMER_DASHBOARD_PORT:-8091}/health" \
+    "http://localhost:${CONSUMER_NOTIFIER_PORT:-8092}/health"; do
+    [ "$(code "$u")" = "200" ] || fail "$u is not answering - start the system first: make up"
+  done
 }
 
 # started_at SERVICE -> container start time (proof that nothing was restarted)
