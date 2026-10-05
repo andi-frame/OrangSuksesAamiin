@@ -7,7 +7,6 @@ COPY services/bmkg-mock ./services/bmkg-mock
 WORKDIR /src/services/bmkg-mock
 RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w" -o /out/bmkg-mock ./cmd/bmkg-mock
-
 FROM alpine:3.20
 RUN adduser -D -u 10001 app
 COPY --from=build /out/bmkg-mock /usr/local/bin/bmkg-mock

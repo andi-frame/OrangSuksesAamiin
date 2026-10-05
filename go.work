@@ -5,5 +5,8 @@ use (
 	./services/aggregator
 	./services/bmkg-mock
 	./services/pvmbg-mock
+	./services/auth-service
+	./services/client-api
+	./services/consumer-hazard
 	./tools/pvmbg-token
 )

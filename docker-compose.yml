@@ -78,8 +78,8 @@ services:
       BREAKER_FAILURE_THRESHOLD: ${BREAKER_FAILURE_THRESHOLD:-3}
       BREAKER_OPEN_SEC: ${BREAKER_OPEN_SEC:-10}
       PENDING_WARNING_TTL_SEC: ${PENDING_WARNING_TTL_SEC:-120}
-      REPOSITORY_BACKEND: ${REPOSITORY_BACKEND:-memory}
-      PUBLISHER_BACKEND: ${PUBLISHER_BACKEND:-log}
+      REPOSITORY_BACKEND: ${REPOSITORY_BACKEND:-postgres}
+      PUBLISHER_BACKEND: ${PUBLISHER_BACKEND:-kafka}
       RELAY_INTERVAL_MS: ${RELAY_INTERVAL_MS:-500}
       RELAY_BATCH: ${RELAY_BATCH:-100}
       RELAY_MAX_BACKOFF_SEC: ${RELAY_MAX_BACKOFF_SEC:-10}
@@ -162,14 +162,110 @@ services:
     networks: [broker-net]
     restart: "no"
 
-  # Client-Facing API, Auth Service and the event consumers are added by their owners
-  # to this file (networks: client-api/auth -> app-net; consumers -> broker-net).
+  # ----------------------------------------------------------- auth (Orang 2)
+  auth-service:
+    build: {context: ., dockerfile: services/auth-service/Dockerfile}
+    environment:
+      AUTH_SERVICE_PORT: "8084"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?copy .env.example to .env}
+      AUTH_ACCESS_TTL_SEC: ${AUTH_ACCESS_TTL_SEC:-60}
+      AUTH_REFRESH_TTL_SEC: ${AUTH_REFRESH_TTL_SEC:-86400}
+      AUTH_MEDIA_CLIENT_ID: ${AUTH_MEDIA_CLIENT_ID:?copy .env.example to .env}
+      AUTH_MEDIA_CLIENT_SECRET: ${AUTH_MEDIA_CLIENT_SECRET:?copy .env.example to .env}
+      AUTH_LAPANGAN_CLIENT_ID: ${AUTH_LAPANGAN_CLIENT_ID:?copy .env.example to .env}
+      AUTH_LAPANGAN_CLIENT_SECRET: ${AUTH_LAPANGAN_CLIENT_SECRET:?copy .env.example to .env}
+      AUTH_PUSAT_CLIENT_ID: ${AUTH_PUSAT_CLIENT_ID:?copy .env.example to .env}
+      AUTH_PUSAT_CLIENT_SECRET: ${AUTH_PUSAT_CLIENT_SECRET:?copy .env.example to .env}
+      AUTH_DB_PATH: /data/auth.db
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${AUTH_SERVICE_PORT:-8084}:8084"]
+    volumes: [auth-data:/data]
+    networks: [app-net, auth-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    logging: *logging
+    restart: unless-stopped
+
+  client-api:
+    build: {context: ., dockerfile: services/client-api/Dockerfile}
+    environment:
+      CLIENT_API_PORT: "8080"
+      AGGREGATOR_URL: http://aggregator:8083
+      AGGREGATOR_SERVICE_KEY: ${AGGREGATOR_SERVICE_KEY:?copy .env.example to .env}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?copy .env.example to .env}
+      AGGREGATOR_TIMEOUT_SEC: ${AGGREGATOR_TIMEOUT_SEC:-10}
+      CLIENT_RATE_LIMIT_RPS: ${CLIENT_RATE_LIMIT_RPS:-200}
+      CLIENT_RATE_LIMIT_BURST: ${CLIENT_RATE_LIMIT_BURST:-400}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${CLIENT_API_PORT:-8080}:8080"]
+    networks: [app-net]
+    depends_on:
+      aggregator: {condition: service_healthy}
+      auth-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    logging: *logging
+    restart: unless-stopped
+
+  consumer-dashboard:
+    build: {context: ., dockerfile: services/consumer-hazard/Dockerfile}
+    environment:
+      CONSUMER_NAME: dashboard
+      CONSUMER_PORT: "8091"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
+      KAFKA_GROUP: dashboard-updater
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${CONSUMER_DASHBOARD_PORT:-8091}:8091"]
+    networks: [broker-net]
+    depends_on:
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8091/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging: *logging
+    restart: unless-stopped
+
+  consumer-notifier:
+    build: {context: ., dockerfile: services/consumer-hazard/Dockerfile}
+    environment:
+      CONSUMER_NAME: notifier
+      CONSUMER_PORT: "8092"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
+      KAFKA_GROUP: notifier
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["${CONSUMER_NOTIFIER_PORT:-8092}:8092"]
+    networks: [broker-net]
+    depends_on:
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8092/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging: *logging
+    restart: unless-stopped
 
 networks:
   app-net: {}
+  auth-net: {internal: true}
   canonical-net: {internal: true}
   broker-net: {internal: true}
 
 volumes:
+  auth-data: {}
   canonical-pgdata: {}
   kafka-data: {}
