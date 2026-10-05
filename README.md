@@ -27,7 +27,7 @@ cp .env.example .env            # nilai contoh; ganti bila perlu. .env tidak per
 docker compose up --build       # satu perintah untuk seluruh sistem   (atau: make up)
 ```
 `make up` melakukan hal yang sama, membuat `.env` bila belum ada, dan menunggu semua service sehat.
-Cek: `curl localhost:8081/health` · `curl localhost:8082/health` · `curl 127.0.0.1:8083/health`.
+Cek: `curl localhost:8081/health` · `curl localhost:8082/health` · `curl 127.0.0.1:8083/health` · `curl localhost:8080/health` · `curl localhost:8084/health`.
 Mulai dari kondisi bersih (hapus data dan volume): `make reset`. Berhenti: `make down`.
 
 ### Port (dapat diubah lewat `.env`)
@@ -38,6 +38,8 @@ Mulai dari kondisi bersih (hapus data dan volume): `make reset`. Berhenti: `make
 | PVMBG mock | **8082** | `PVMBG_PORT` |
 | Client-Facing API (BNPB) | **8080** | dimiliki Orang 2 |
 | Aggregator (API internal) | 127.0.0.1:**8083** | hanya loopback; klien memakai 8080 |
+| Auth Service | **8084** | `AUTH_SERVICE_PORT` |
+| Consumer dashboard / notifier | **8091** / **8092** | stats: `GET /stats` |
 | PostgreSQL, Kafka | – | **tidak dipublikasikan** ke host (hanya jaringan internal) |
 
 ## 3. Variabel konfigurasi
@@ -76,12 +78,12 @@ Jalankan setelah `make up` (untuk hasil yang bersih: `make reset` dulu).
 |---|---|---|
 | **P1** schema evolution | `make demo-p1` | skema awal → pemetaan benar (diverifikasi oracle independen) → `POST /admin/schema-version` saat berjalan → tetap valid, tanpa restart; field tak dikenal → `attributes`; perubahan tak didukung → karantina |
 | **P2** sisi ingest | `make demo-p2-aggregator` | PVMBG 3 s tidak mengganggu BMKG; outage `error` dan `hang`; data tetap tersaji dengan `stale_since`; pulih tanpa restart |
-| **P2** sisi layanan (load test) | `make demo-p2` | *Orang 2* |
+| **P2** sisi layanan (load test) | `make demo-p2` | p95 BMKG via :8080, outage stale, k6 50×60s |
 | **P3** kredensial mock | `make demo-mock-auth` | kredensial BMKG ditolak PVMBG dan sebaliknya; tiap container hanya memegang rahasianya sendiri |
-| **P3** client downstream | `make demo-p3` | *Orang 2* |
+| **P3** client downstream | `make demo-p3` | JWT, masking Media, refresh 60s |
 | **P4** isolasi storage | `make demo-isolation` | Canonical Store dan Kafka tidak terjangkau dari container lain |
 | **P4** rebuild satu service, JSONB | `make demo-p4` | *Orang 3* |
-| **P5** pub/sub | `make demo-p5` | *Orang 3* |
+| **P5** pub/sub | `make demo-p5` | 2 consumer groups, fan-out, catch-up after stop |
 | Kredensial tidak ter-commit | `make secrets` | `.env` tidak dilacak/tidak pernah di-commit; gitleaks bersih; `.env.example` ada |
 | Semua sekaligus | `make evidence` | menjalankan semua demo |
 
@@ -124,8 +126,8 @@ scripts/             lib.sh, wait-healthy.sh, check-secrets.sh, demo/*.sh
 pkg/obs/             utilitas teknis bersama: log JSON, correlation ID, klien HTTP ber-latensi, health, env
 services/
   bmkg-mock/  pvmbg-mock/  aggregator/        (Orang 1)
-  client-api/ auth-service/                   (Orang 2)
-  consumer-*/ + adapter postgres & kafka      (Orang 3)
+  auth-service/  client-api/                   (Orang 2)
+  consumer-hazard/ (2 groups in compose)       (P5)
 tools/pvmbg-token/   pembuat token PVMBG
 deploy/kafka/        pembuat topic (kafka-init)
 ```

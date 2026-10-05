@@ -13,7 +13,7 @@ Milestone 1 · anggota (nama, NIM) **[isi]**.
 | Anggota | Perancangan | Implementasi | Laporan |
 |---|---|---|---|
 | Orang 1 | kontrak antar-komponen, arsitektur Aggregator, kebijakan skema | foundation (`pkg/obs`, compose, Makefile, CI), mock BMKG/PVMBG, Aggregator, P1, ketahanan ingest | bagian umum, P1, deskripsi mock |
-| Orang 2 | **[isi]** | Client-Facing API, Auth Service, load test (P2, P3) | **[isi]** |
+| Orang 2 | Auth JWT (3 role), Client-Facing API :8080, kebijakan field Ringkasan/Mentah, rate limit, penanda `stale`; kontrak `contracts/openapi/client-api.yaml` | `services/auth-service`, `services/client-api`, `scripts/demo/p2.sh`, `p3.sh`, `scripts/loadtest/` | `docs/report/02-p2.md`, `docs/report/03-p3.md`; baris P2/P3 di `docs/traceability.md` |
 | Orang 3 | **[isi]** | adapter Postgres/Kafka, consumer, integrasi (P4, P5) | **[isi]** |
 
 ## 3. Deskripsi umum sistem

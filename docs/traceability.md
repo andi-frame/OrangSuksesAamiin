@@ -33,17 +33,17 @@ Legenda: ✅ terbukti dan lulus · 🟡 sebagian · ⬜ belum (pemilik: nama di 
 | Kriteria | Demo | Bukti | Kode | Owner | Status |
 |---|---|---|---|---|---|
 | Tak ada head-of-line blocking di sisi ingest (loop per sumber) | `make demo-p2-aggregator` A; `TestSlowSourceDoesNotBlockFastSourceAndCyclesNeverOverlap` | `docs/evidence/p2/aggregator-latest.log` | `aggregator/internal/poller/loop.go` | 1 | ✅ |
-| p95 BMKG-only < 300 ms saat PVMBG delay 3 s (lewat Client-Facing API) | `make demo-p2` | – | – | 2 | ⬜ |
-| Load test ≥50 koneksi ≥60 s, throughput/p50/p95/p99/error rate | `make demo-p2` (k6) | – | `loadtest/` | 2 | ⬜ |
-| Outage: seismik normal; vulkanik dari store + `stale_since` / status eksplisit; pulih tanpa restart | sisi Aggregator: `make demo-p2-aggregator` B–D; sisi Client-API: `make demo-p2` | `docs/evidence/p2/aggregator-latest.log` | `resilience/`, `api/internal.go` (`freshness`) | 1 (data) / 2 (respons klien) | 🟡 |
+| p95 BMKG-only < 300 ms saat PVMBG delay 3 s (lewat Client-Facing API) | `make demo-p2` | `docs/evidence/p2/latest.log` | `scripts/demo/p2.sh`, `services/client-api` | 2 | ✅ |
+| Load test ≥50 koneksi ≥60 s, throughput/p50/p95/p99/error rate | `make demo-p2` (k6) | `docs/evidence/p2/k6.log`, `k6-summary.json` | `scripts/loadtest/` | 2 | ✅ |
+| Outage: seismik normal; vulkanik dari store + `stale_since` / status eksplisit; pulih tanpa restart | sisi Aggregator: `make demo-p2-aggregator` B–D; sisi Client-API: `make demo-p2` | `aggregator-latest.log`, `latest.log` | `resilience/`, `client-api/internal/api` | 1 / 2 | ✅ |
 
 ## Problem 3 — auth (Owner: 2; sisi mock: 1)
 
 | Kriteria | Demo | Bukti | Owner | Status |
 |---|---|---|---|---|
 | Kredensial BMKG ditolak PVMBG dan sebaliknya (401/403) | `make demo-mock-auth` | `docs/evidence/p3/mock-auth.log` | 1 | ✅ |
-| Media hanya field Ringkasan; permintaan field mentah ditolak server | `make demo-p3` | – | 2 | ⬜ |
-| Token Lapangan kedaluwarsa (60 s) → refresh tanpa login; token lama ditolak | `make demo-p3` | – | 2 | ⬜ |
+| Media hanya field Ringkasan; permintaan field mentah ditolak server | `make demo-p3` | `docs/evidence/p3/latest.log` | 2 | ✅ |
+| Token Lapangan kedaluwarsa (60 s) → refresh tanpa login; token lama ditolak | `make demo-p3` | idem | 2 | ✅ |
 | Tidak ada kredensial ter-hardcode/ter-commit; `.env.example` | `make secrets` | output skrip | 1 | ✅ |
 
 ## Problem 4 — microservice + storage (Owner: 3; topologi: 1)
@@ -59,5 +59,5 @@ Legenda: ✅ terbukti dan lulus · 🟡 sebagian · ⬜ belum (pemilik: nama di 
 | Kriteria | Demo | Bukti | Owner | Status |
 |---|---|---|---|---|
 | Event dipublikasikan ke broker, bukan ke consumer langsung | outbox + relay; `TestBrokerOutageDoesNotStopIngestionOrLoseEvents` | `aggregator/internal/relay` | 1 | ✅ (sisi producer) |
-| ≥2 consumer independen; consumer mati → producer tak tertahan; catch-up; consumer baru tanpa ubah producer | `make demo-p5` | – | 3 | ⬜ |
-| Semantik pengiriman dan idempotensi | `docs/contracts.md` §6, `docs/adapters.md` §5 | laporan | 3 | 🟡 |
+| ≥2 consumer independen; consumer mati → producer tak tertahan; catch-up; consumer baru tanpa ubah producer | `make demo-p5` | `docs/evidence/p5/latest.log` | 3 | ✅ |
+| Semantik pengiriman dan idempotensi | `docs/contracts.md` §6, `docs/report/05-p5.md` | laporan | 3 | ✅ |
