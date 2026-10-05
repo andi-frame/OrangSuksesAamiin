@@ -30,7 +30,32 @@ Port dapat diubah lewat `.env` (`*_PORT`) dan tercatat di README.
 | Operator mock | `X-Admin-Token` | BMKG dan PVMBG masing-masing punya token sendiri | untuk `/admin/*` |
 
 Kode status: kredensial tidak ada → **401**; salah / milik instansi lain → **403**; token PVMBG kedaluwarsa → 401.
-Client downstream (Media, Lapangan, Pusat) dan Auth Service: Orang 2 (di luar dokumen ini).
+### Auth Service (Orang 2)
+
+| Item | Nilai |
+|---|---|
+| Port | **8084** (`AUTH_SERVICE_PORT`) |
+| Jaringan | `app-net` (client-api), `auth-net` (internal; SQLite volume) |
+| Issue token | `POST /v1/token` JSON `{client_id, client_secret}` → `{access_token, refresh_token, token_type, expires_in, role}` |
+| Refresh | `POST /v1/refresh` JSON `{refresh_token}` → pasangan token baru; refresh lama one-time (rotate) |
+| Access token | JWT HS256, claim `role` ∈ `media` \| `lapangan` \| `pusat`, TTL default **60 s** (`AUTH_ACCESS_TTL_SEC`) |
+| Verifikasi | Client-Facing API memakai `AUTH_JWT_SECRET` yang sama (tanpa hardcode) |
+| Kredensial klien | `AUTH_*_CLIENT_ID` + `AUTH_*_CLIENT_SECRET` per role; dari env |
+
+### Client-Facing API (Orang 2)
+
+OpenAPI: `contracts/openapi/client-api.yaml`.
+
+| Item | Nilai |
+|---|---|
+| Port | **8080** (`CLIENT_API_PORT`) |
+| Jaringan | `app-net` saja; **tidak** akses `canonical-net` / broker |
+| Upstream | `GET {AGGREGATOR_URL}/internal/*` dengan `X-Service-Key` |
+| Auth client | `Authorization: Bearer <JWT>` dari Auth Service; tanpa header → **401**; token invalid/expired → **403** |
+| Endpoints | `GET /v1/hazards`, `GET /v1/hazards/{id}`, `GET /v1/sources/status` (lapangan + pusat saja) |
+| Field policy | **Media**: hanya Ringkasan (+ `stale`); minta Mentah via `fields`/`include=mentah` → **403**. **Lapangan/Pusat**: HazardEvent penuh + `stale` |
+| Stale | `stale: true` per item bila `freshness[source].stale_since` (list) atau status sumber (get by id) |
+| Rate limit | `CLIENT_RATE_LIMIT_*`; HTTP **429** `too_many_requests` (P2 load test) |
 
 ## 3. Keputusan yang dikunci
 

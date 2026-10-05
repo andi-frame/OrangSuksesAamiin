@@ -1,0 +1,70 @@
+openapi: 3.0.3
+info:
+  title: BNPB Client-Facing API (M1)
+  version: "1.0"
+  description: |
+    Public read API for Media, Lapangan, and Pusat. Data is read only from the Aggregator internal API.
+    Bearer JWT is issued by auth-service. Ringkasan/Mentah field policy is enforced here (Problem 3).
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/hazards:
+    get:
+      summary: List hazards (newest first), shaped per client role
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC]}}
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG]}}
+        - {name: severity, in: query, schema: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}}
+        - {name: since, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 500}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - name: fields
+          in: query
+          schema: {type: string}
+          description: Media only; requesting Mentah field names returns 403
+        - name: include
+          in: query
+          schema: {type: string, enum: [mentah]}
+          description: Media value mentah -> 403
+      responses:
+        "200":
+          description: |
+            {items, next_cursor, freshness}. Each item includes stale boolean.
+            Media items omit source_ref_id, latitude, longitude, attributes.
+        "401": {description: missing Authorization}
+        "403": {description: invalid token or forbidden field request}
+        "429": {description: rate limit}
+        "502": {description: aggregator error}
+        "503": {description: upstream unavailable}
+  /v1/hazards/{id}:
+    get:
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: fields, in: query, schema: {type: string}}
+        - {name: include, in: query, schema: {type: string}}
+      responses:
+        "200": {description: hazard object shaped per role + stale}
+        "401": {description: missing Authorization}
+        "403": {description: invalid token or forbidden field request}
+        "404": {description: not found}
+  /v1/sources/status:
+    get:
+      summary: Upstream source health (Lapangan and Pusat only)
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: same shape as GET /internal/sources/status on Aggregator}
+        "401": {description: missing Authorization}
+        "403": {description: Media not allowed or invalid token}
+  /health:
+    get:
+      security: []
+      responses:
+        "200": {description: liveness}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
