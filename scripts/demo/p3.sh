@@ -71,6 +71,14 @@ step "C. Media cannot request Mentah explicitly"
   && ok "media ?fields=latitude -> 403" || fail "media must not request latitude"
 [ "$(capi_code "$MEDIA" "${HZ}&include=mentah")" = "403" ] \
   && ok "media ?include=mentah -> 403" || fail "media must not request include=mentah"
+# every spelling of the same request is refused (a whitelist, not a list of known Mentah names)
+for q in "fields=Latitude" "fields=hazard_id,attributes" "fields%5B%5D=longitude" "fields=source_ref_id" \
+         "include=MENTAH" "include=mentah,summary" "include=raw" "include=all"; do
+  [ "$(capi_code "$MEDIA" "${HZ}&${q}")" = "403" ] \
+    && ok "media ?${q} -> 403" || fail "media ?${q} must be refused with 403"
+done
+[ "$(capi_code "$MEDIA" "${HZ}&fields=hazard_id,severity&include=summary")" = "200" ] \
+  && ok "media asking only for Ringkasan fields -> 200" || fail "media Ringkasan request must succeed"
 
 step "D. Media denied /v1/sources/status; Lapangan allowed"
 [ "$(capi_code "$MEDIA" /v1/sources/status)" = "403" ] \

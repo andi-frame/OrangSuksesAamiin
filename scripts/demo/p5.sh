@@ -13,6 +13,14 @@ require_stack
 DASH_URL="http://localhost:${CONSUMER_DASHBOARD_PORT:-8091}"
 NOTIF_URL="http://localhost:${CONSUMER_NOTIFIER_PORT:-8092}"
 
+has_hazard_agg() {
+  [ "$(code -H "X-Service-Key: ${AGGREGATOR_SERVICE_KEY}" "${AGG_URL}/internal/hazards/$1")" = "200" ]
+}
+
+notif_up() {
+  [ "$(code "${NOTIF_URL}/health")" = "200" ]
+}
+
 cons_processed() {
   curl -sS --max-time 5 "$1/stats" | jqx -r .processed
 }
@@ -58,11 +66,3 @@ wait_consume "$NOTIF_URL" "$NOTIF_BEFORE" 120
 ok "notifier caught up after restart processed=$(cons_processed "$NOTIF_URL")"
 
 ok "P5 pub/sub demo complete"
-
-has_hazard_agg() {
-  [ "$(code -H "X-Service-Key: ${AGGREGATOR_SERVICE_KEY}" "${AGG_URL}/internal/hazards/$1")" = "200" ]
-}
-
-notif_up() {
-  [ "$(code "${NOTIF_URL}/health")" = "200" ]
-}
