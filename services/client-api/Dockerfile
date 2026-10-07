@@ -6,7 +6,6 @@ COPY pkg/obs ./pkg/obs
 COPY services/client-api ./services/client-api
 WORKDIR /src/services/client-api
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go mod tidy && \
     go build -trimpath -ldflags="-s -w" -o /out/client-api ./cmd/client-api
 
 FROM alpine:3.20

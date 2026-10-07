@@ -198,8 +198,8 @@ services:
       AGGREGATOR_SERVICE_KEY: ${AGGREGATOR_SERVICE_KEY:?copy .env.example to .env}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?copy .env.example to .env}
       AGGREGATOR_TIMEOUT_SEC: ${AGGREGATOR_TIMEOUT_SEC:-10}
-      CLIENT_RATE_LIMIT_RPS: ${CLIENT_RATE_LIMIT_RPS:-200}
-      CLIENT_RATE_LIMIT_BURST: ${CLIENT_RATE_LIMIT_BURST:-400}
+      CLIENT_RATE_LIMIT_RPS: ${CLIENT_RATE_LIMIT_RPS:-500}
+      CLIENT_RATE_LIMIT_BURST: ${CLIENT_RATE_LIMIT_BURST:-1000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CLIENT_API_PORT:-8080}:8080"]
     networks: [app-net]
@@ -225,7 +225,8 @@ services:
       KAFKA_GROUP: dashboard-updater
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CONSUMER_DASHBOARD_PORT:-8091}:8091"]
-    networks: [broker-net]
+    # broker-net is internal (no host port can be published through it); app-net only carries the /health + /stats port
+    networks: [broker-net, app-net]
     depends_on:
       kafka: {condition: service_healthy}
     healthcheck:
@@ -247,7 +248,8 @@ services:
       KAFKA_GROUP: notifier
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CONSUMER_NOTIFIER_PORT:-8092}:8092"]
-    networks: [broker-net]
+    # broker-net is internal (no host port can be published through it); app-net only carries the /health + /stats port
+    networks: [broker-net, app-net]
     depends_on:
       kafka: {condition: service_healthy}
     healthcheck:

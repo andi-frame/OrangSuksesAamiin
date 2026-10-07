@@ -6,7 +6,6 @@ COPY pkg/obs ./pkg/obs
 COPY services/auth-service ./services/auth-service
 WORKDIR /src/services/auth-service
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go mod tidy && \
     go build -trimpath -ldflags="-s -w" -o /out/auth-service ./cmd/auth-service
 
 FROM alpine:3.20

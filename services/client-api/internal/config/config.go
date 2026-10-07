@@ -23,7 +23,7 @@ func Load() Config {
 		AggURL:     obs.EnvString("AGGREGATOR_URL", "http://aggregator:8083"),
 		AggKey:     obs.MustEnv("AGGREGATOR_SERVICE_KEY"),
 		AggTimeout: obs.EnvSeconds("AGGREGATOR_TIMEOUT_SEC", 10*time.Second),
-		RateRPS:    obs.EnvInt("CLIENT_RATE_LIMIT_RPS", 200),
-		RateBurst:  obs.EnvInt("CLIENT_RATE_LIMIT_BURST", 400),
+		RateRPS:    obs.EnvInt("CLIENT_RATE_LIMIT_RPS", 500),
+		RateBurst:  obs.EnvInt("CLIENT_RATE_LIMIT_BURST", 1000),
 	}
 }
