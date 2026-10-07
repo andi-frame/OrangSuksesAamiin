@@ -1,0 +1,25 @@
+{
+  "config": {
+    "vus": 150,
+    "duration": "20s",
+    "think_time_s": 0,
+    "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
+    "tool": "k6"
+  },
+  "requests": 189082,
+  "throughput_rps": 9447.510267113586,
+  "latency_ms": {
+    "p50": 11.6616,
+    "p95": 37.19100999999997,
+    "p99": 61.18921700000001,
+    "max": 239.0195
+  },
+  "status": {
+    "ok_200": 10989,
+    "rejected_429": 178093,
+    "other": 0
+  },
+  "rate_429": 0.9418823579187866,
+  "unhandled_error_rate": 0,
+  "token_renewals": 0
+}

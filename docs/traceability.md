@@ -33,18 +33,21 @@ Legenda: ✅ terbukti dan lulus · 🟡 sebagian · ⬜ belum (pemilik: nama di 
 | Kriteria | Demo | Bukti | Kode | Owner | Status |
 |---|---|---|---|---|---|
 | Tak ada head-of-line blocking di sisi ingest (loop per sumber) | `make demo-p2-aggregator` A; `TestSlowSourceDoesNotBlockFastSourceAndCyclesNeverOverlap` | `docs/evidence/p2/aggregator-latest.log` | `aggregator/internal/poller/loop.go` | 1 | ✅ |
-| p95 BMKG-only < 300 ms saat PVMBG delay 3 s (lewat Client-Facing API) | `make demo-p2` | `docs/evidence/p2/latest.log` | `scripts/demo/p2.sh`, `services/client-api` | 2 | ✅ |
-| Load test ≥50 koneksi ≥60 s, throughput/p50/p95/p99/error rate | `make demo-p2` (k6) | `docs/evidence/p2/k6.log`, `k6-summary.json` | `scripts/loadtest/` | 2 | ✅ |
-| Outage: seismik normal; vulkanik dari store + `stale_since` / status eksplisit; pulih tanpa restart | sisi Aggregator: `make demo-p2-aggregator` B–D; sisi Client-API: `make demo-p2` | `aggregator-latest.log`, `latest.log` | `resilience/`, `client-api/internal/api` | 1 / 2 | ✅ |
+| p95 BMKG-only < 300 ms saat PVMBG delay 3 s, bersamaan dengan pembaca data vulkanik (lewat Client-Facing API) | `make demo-p2` langkah A | `docs/evidence/p2/latest.log` | `scripts/demo/p2.sh`, `services/client-api` | 2 | ✅ |
+| Load test ≥50 koneksi ≥60 s, throughput/p50/p95/p99/error rate (tiap VU login + refresh sendiri; 429 dilaporkan terpisah) | `make demo-p2` langkah E | `docs/evidence/p2/k6-summary.json` | `scripts/loadtest/p2.js` | 2 | ✅ |
+| Kelebihan beban ditolak terkendali (429), tanpa 5xx, layanan tetap hidup | `make demo-p2` langkah F | `docs/evidence/p2/k6-overload-summary.json` | `client-api/internal/limit`, `limit_test.go` | 2 | ✅ |
+| Outage: seismik normal; vulkanik dari store + `stale_since` / status eksplisit; pulih tanpa restart | sisi Aggregator: `make demo-p2-aggregator` B–D; sisi Client-API: `make demo-p2` B–D; `TestStaleMarkerWhenSourceIsDown` | `aggregator-latest.log`, `latest.log`, `cid-trace.log` | `resilience/`, `client-api/internal/api` | 1 / 2 | ✅ |
+| Laporan: model konkurensi, alternatif, batasan, konfigurasi dan tooling load test | – | `docs/report/02-p2.md` | – | 2 | ✅ |
 
 ## Problem 3 — auth (Owner: 2; sisi mock: 1)
 
 | Kriteria | Demo | Bukti | Owner | Status |
 |---|---|---|---|---|
 | Kredensial BMKG ditolak PVMBG dan sebaliknya (401/403) | `make demo-mock-auth` | `docs/evidence/p3/mock-auth.log` | 1 | ✅ |
-| Media hanya field Ringkasan; permintaan field mentah ditolak server | `make demo-p3` | `docs/evidence/p3/latest.log` | 2 | ✅ |
+| Media hanya field Ringkasan; **semua bentuk** permintaan field mentah ditolak server (403) | `make demo-p3` B–C; `TestMediaRejectsEveryWayOfAskingForMentah`, `TestMediaNeverReceivesMentahOnListOrGet` | `docs/evidence/p3/latest.log` | 2 | ✅ |
 | Token Lapangan kedaluwarsa (60 s) → refresh tanpa login; token lama ditolak | `make demo-p3` | idem | 2 | ✅ |
 | Tidak ada kredensial ter-hardcode/ter-commit; `.env.example` | `make secrets` | output skrip | 1 | ✅ |
+| Laporan: mekanisme, alternatif, batasan, mengapa tidak membuka celah baru | – | `docs/report/03-p3.md` | 2 | ✅ |
 
 ## Problem 4 — microservice + storage (Owner: 3; topologi: 1)
 

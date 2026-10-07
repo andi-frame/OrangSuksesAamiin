@@ -1,0 +1,22 @@
+
+== [1] A. Both consumers are healthy and subscribed ==
+   PASS consumer-dashboard /health
+   PASS consumer-notifier /health
+
+== [2] B. New hazard event is published and received by BOTH consumers ==
+   generated BMKG event EQ-11bf66-0051 — waiting for Kafka fan-out
+   PASS dashboard processed=107 notifier processed=107
+
+== [3] C. Notifier stopped — Aggregator still ingests; dashboard still receives events ==
+ Container bnpb-consumer-notifier-1  Stopping
+ Container bnpb-consumer-notifier-1  Stopped
+   PASS aggregator ingested bmkg-EQ-11bf66-0053 while notifier is down
+   PASS dashboard still consuming (producer not blocked by dead consumer)
+
+== [4] D. Notifier restarts and catches up ==
+ Container bnpb-kafka-1  Waiting
+ Container bnpb-kafka-1  Healthy
+ Container bnpb-consumer-notifier-1  Starting
+ Container bnpb-consumer-notifier-1  Started
+   PASS notifier caught up after restart processed=6
+   PASS P5 pub/sub demo complete

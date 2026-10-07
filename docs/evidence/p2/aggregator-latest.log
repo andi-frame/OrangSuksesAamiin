@@ -2,28 +2,28 @@
 == [1] A. PVMBG answers in 3 s - the BMKG side of the Aggregator must not feel it ==
 $ POST http://localhost:8082/admin/delay {ms:3000}
 {"delay_min_ms":3000,"delay_max_ms":3000}
-   PVMBG last poll latency: 716.056 ms (the Aggregator waits for it in its OWN loop)
-   Aggregator API, seismic data, 30 requests while PVMBG takes 3 s per call: p95 = 18.2 ms, non-200 = 0
-   PASS p95 18.2 ms < 300 ms
-   PASS a new BMKG event was ingested 1 s after it appeared, although PVMBG is slow
-   BMKG last poll latency: 163.949 ms; polls: BMKG=36 PVMBG=23 (PVMBG cycles are 3+ s long, BMKG's are ~0.1 s)
+   PVMBG last poll latency: 901.12 ms (the Aggregator waits for it in its OWN loop)
+   Aggregator API, seismic data, 30 requests while PVMBG takes 3 s per call: p95 = 19.3 ms, non-200 = 0
+   PASS p95 19.3 ms < 300 ms
+   PASS a new BMKG event was ingested 2 s after it appeared, although PVMBG is slow
+   BMKG last poll latency: 168.062 ms; polls: BMKG=182 PVMBG=96 (PVMBG cycles are 3+ s long, BMKG's are ~0.1 s)
 
 == [2] B. PVMBG outage (mode: error) - circuit opens, stored data is kept, BMKG keeps flowing ==
 $ POST http://localhost:8082/admin/outage {enabled:true, mode:error}
 {"outage":true,"outage_mode":"error"}
-   status: {"state":"down","breaker":"open","consecutive_failures":3,"last_success_at":"2026-09-30T01:14:08.162720375Z","stale_since":"2026-09-30T01:14:08.162720375Z","last_error":"pvmbg: HTTP 503: {\"error\":{\"code\":\"outage\",\"message\":\"PVMBG is down\"}}"}
-   PASS stale_since is set: 2026-09-30T01:14:08.162720375Z
+   status: {"state":"down","breaker":"open","consecutive_failures":3,"last_success_at":"2026-10-07T19:44:08.985391266Z","stale_since":"2026-10-07T19:44:08.985391266Z","last_error":"pvmbg: HTTP 503: {\"error\":{\"code\":\"outage\",\"message\":\"PVMBG is down\"}}"}
+   PASS stale_since is set: 2026-10-07T19:44:08.985391266Z
    PASS BMKG stays 'up'
-   PASS all 39 volcanic hazards are still served from the Canonical Store
+   PASS all 87 volcanic hazards are still served from the Canonical Store (now 88)
    PASS list response carries freshness.PVMBG {state:down, stale_since:...} for the caller to mark the data stale
    PASS seismic ingestion continued normally during the outage
-   PASS volcanic reads during the outage: p95 33.6 ms, 0 errors (no 500, no hanging request)
-   PASS while the circuit is open polls are skipped, not sent to the dead service (skipped_by_breaker=6)
+   PASS volcanic reads during the outage: p95 77.5 ms, 0 errors (no 500, no hanging request)
+   PASS while the circuit is open polls are skipped, not sent to the dead service (skipped_by_breaker=44)
 
 == [3] C. PVMBG outage (mode: hang) - no answer at all; timeouts are bounded, the API stays fast ==
 {"outage":true,"outage_mode":"hang"}
-   PASS during a HANGING PVMBG the Aggregator API answers in p95 5.5 ms
-   PASS PVMBG still reported down; last_error: pvmbg: Get "http://pvmbg-mock:8082/volcanic-reports?since=2026-09-30T01%3A13%3A53.298683Z": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+   PASS during a HANGING PVMBG the Aggregator API answers in p95 9.0 ms
+   PASS PVMBG still reported down; last_error: pvmbg: Get "http://pvmbg-mock:8082/volcanic-reports?since=2026-10-07T19%3A44%3A02.12915Z": net/http: request canceled (Client.Timeout exceeded while awaiting headers)
 
 == [4] D. Outage ends - normal operation resumes WITHOUT restarting anything ==
 $ POST http://localhost:8082/admin/outage {enabled:false}

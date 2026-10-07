@@ -67,7 +67,8 @@ Daftar lengkap beserta nilai contoh dan penjelasan per baris: **`.env.example`**
 | `KAFKA_TOPIC`, `KAFKA_PARTITIONS`, `KAFKA_RETENTION_MS` | `hazard.events`, 3, 7 hari | topic dibuat oleh `kafka-init` |
 | `LOG_LEVEL` | `info` | `debug`\|`info`\|`warn`\|`error` |
 
-Variabel milik Client-Facing API, Auth Service dan consumer ditambahkan pemiliknya ke `.env.example`.
+Client-Facing API / Auth Service / consumer: lihat bagian bertanda di `.env.example` (`AUTH_*`, `CLIENT_API_*`, `CLIENT_RATE_LIMIT_RPS/BURST`).
+Load test P2 dapat diubah lewat `K6_VUS`, `K6_DURATION`, `K6_THINK_S`, `K6_SUMMARY`, `K6_CLIENT_ID/_SECRET` (lihat `scripts/loadtest/run-p2.sh`).
 
 ## 4. Cara memicu setiap skenario
 
@@ -78,9 +79,9 @@ Jalankan setelah `make up` (untuk hasil yang bersih: `make reset` dulu).
 |---|---|---|
 | **P1** schema evolution | `make demo-p1` | skema awal → pemetaan benar (diverifikasi oracle independen) → `POST /admin/schema-version` saat berjalan → tetap valid, tanpa restart; field tak dikenal → `attributes`; perubahan tak didukung → karantina |
 | **P2** sisi ingest | `make demo-p2-aggregator` | PVMBG 3 s tidak mengganggu BMKG; outage `error` dan `hang`; data tetap tersaji dengan `stale_since`; pulih tanpa restart |
-| **P2** sisi layanan (load test) | `make demo-p2` | p95 BMKG via :8080, outage stale, k6 50×60s |
+| **P2** sisi layanan (load test) | `make demo-p2` | p95 BMKG via :8080 saat PVMBG 3 s, outage `error`/`hang` → data usang bertanda `stale`, k6 50 VU × 60 s (tiap VU login + refresh sendiri), lalu overload 150 VU → kelebihan ditolak 429 tanpa 5xx |
 | **P3** kredensial mock | `make demo-mock-auth` | kredensial BMKG ditolak PVMBG dan sebaliknya; tiap container hanya memegang rahasianya sendiri |
-| **P3** client downstream | `make demo-p3` | JWT, masking Media, refresh 60s |
+| **P3** client downstream | `make demo-p3` | 401/403, Media hanya Ringkasan (semua bentuk permintaan Mentah → 403), token kedaluwarsa 60 s → refresh tanpa login, refresh lama ditolak (±70 detik) |
 | **P4** isolasi storage | `make demo-isolation` | Canonical Store dan Kafka tidak terjangkau dari container lain |
 | **P4** rebuild satu service, JSONB | `make demo-p4` | *Orang 3* |
 | **P5** pub/sub | `make demo-p5` | 2 consumer groups, fan-out, catch-up after stop |

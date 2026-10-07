@@ -1,0 +1,4 @@
+# GET /v1/hazards dengan X-Correlation-ID: demo-p2-trace-0001 (lapangan), satu cid melintasi client-api -> aggregator
+{"ts":"2026-10-07T17:28:29.459436399Z","level":"INFO","msg":"request","service":"aggregator","method":"GET","path":"/internal/hazards","status":200,"duration_ms":0.885,"bytes":2352,"remote":"172.30.0.6:49350","cid":"demo-p2-trace-0001"}
+{"ts":"2026-10-07T17:28:29.45969494Z","level":"INFO","msg":"outbound_call","service":"client-api","target":"aggregator","method":"GET","url":"http://aggregator:8083/internal/hazards","latency_ms":1.463,"status":200,"cid":"demo-p2-trace-0001"}
+{"ts":"2026-10-07T17:28:29.460178117Z","level":"INFO","msg":"request","service":"client-api","method":"GET","path":"/v1/hazards","status":200,"duration_ms":2.107,"bytes":2422,"remote":"172.30.0.1:55996","cid":"demo-p2-trace-0001"}
