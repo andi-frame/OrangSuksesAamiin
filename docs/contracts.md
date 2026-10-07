@@ -15,7 +15,7 @@ ke dokumen ini (dan file di `contracts/`) dan harus diumumkan ke grup.** Kontrak
 | auth-service (Orang 2) | (bebas) | – | `app-net` (+ storage sendiri, jaringan sendiri) |
 | postgres-canonical | 5432 | – (tidak dipublikasikan) | `canonical-net` (internal) |
 | kafka | 9092 | – (tidak dipublikasikan) | `broker-net` (internal) |
-| consumer-* (Orang 3) | – | – | `broker-net` (+ `app-net` bila perlu memanggil API) |
+| consumer-* (Orang 3) | 8091 / 8092 (`/health`, `/stats`) | 8091 / 8092 | `broker-net` + `app-net` (`broker-net` bersifat `internal`, port host hanya dapat dipublikasikan lewat `app-net`) |
 
 Aturan: **hanya Aggregator** berada di `canonical-net`. Komponen lain membaca data lewat API Aggregator.
 Port dapat diubah lewat `.env` (`*_PORT`) dan tercatat di README.
@@ -53,9 +53,9 @@ OpenAPI: `contracts/openapi/client-api.yaml`.
 | Upstream | `GET {AGGREGATOR_URL}/internal/*` dengan `X-Service-Key` |
 | Auth client | `Authorization: Bearer <JWT>` dari Auth Service; tanpa header → **401**; token invalid/expired → **403** |
 | Endpoints | `GET /v1/hazards`, `GET /v1/hazards/{id}`, `GET /v1/sources/status` (lapangan + pusat saja) |
-| Field policy | **Media**: hanya Ringkasan (+ `stale`); minta Mentah via `fields`/`include=mentah` → **403**. **Lapangan/Pusat**: HazardEvent penuh + `stale` |
+| Field policy | **Media**: hanya Ringkasan (+ `stale`); `fields` hanya boleh berisi field Ringkasan dan `include` hanya kosong/`summary`; selain itu (Mentah, nama tak dikenal, huruf besar, `fields[]`, parameter berulang) → **403**. **Lapangan/Pusat**: HazardEvent penuh + `stale` |
 | Stale | `stale: true` per item bila `freshness[source].stale_since` (list) atau status sumber (get by id) |
-| Rate limit | `CLIENT_RATE_LIMIT_*`; HTTP **429** `too_many_requests` (P2 load test) |
+| Rate limit | `CLIENT_RATE_LIMIT_RPS/BURST` (default 500/1000, satu token bucket global; `/health` dan `/ready` dikecualikan); HTTP **429** `too_many_requests` + `Retry-After` |
 
 ## 3. Keputusan yang dikunci
 

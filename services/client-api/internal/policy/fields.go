@@ -3,6 +3,7 @@ package policy
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 )
 
@@ -11,23 +12,40 @@ var summaryKeys = map[string]bool{
 	"area_name": true, "occurred_at": true, "ingested_at": true, "version": true, "updated_at": true,
 }
 
-var mentahKeys = map[string]bool{
-	"source_ref_id": true, "latitude": true, "longitude": true, "attributes": true,
-}
-
 var ErrForbiddenField = errors.New("field not allowed for role")
 
-func CheckQuery(role, fieldsParam, includeParam string) error {
+// includeSummary are the only `include` values a Media client may send; anything else (mentah, raw, all, ...)
+// is treated as an attempt to widen the response and is rejected rather than silently ignored.
+var includeSummary = map[string]bool{"": true, "summary": true, "ringkasan": true}
+
+// CheckQuery enforces the field classification for explicit requests. Media is whitelisted: every `fields`
+// entry must be a Ringkasan field and `include` may only ask for the summary. Unknown names are rejected too
+// (not just known Mentah names), so a renamed or re-cased Mentah field cannot slip through as a 200.
+// Parameter spelling variants (`fields[]`, repeated keys, comma lists, case, padding) are all covered.
+func CheckQuery(role string, q url.Values) error {
 	if role != "media" {
 		return nil
 	}
-	if strings.EqualFold(strings.TrimSpace(includeParam), "mentah") {
-		return ErrForbiddenField
-	}
-	for _, f := range strings.Split(fieldsParam, ",") {
-		f = strings.TrimSpace(f)
-		if f != "" && mentahKeys[f] {
-			return ErrForbiddenField
+	for key, values := range q {
+		name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(key), "[]"))
+		switch name {
+		case "fields":
+			for _, v := range values {
+				for _, f := range strings.Split(v, ",") {
+					f = strings.ToLower(strings.TrimSpace(f))
+					if f != "" && !summaryKeys[f] {
+						return ErrForbiddenField
+					}
+				}
+			}
+		case "include":
+			for _, v := range values {
+				for _, f := range strings.Split(v, ",") {
+					if !includeSummary[strings.ToLower(strings.TrimSpace(f))] {
+						return ErrForbiddenField
+					}
+				}
+			}
 		}
 	}
 	return nil
