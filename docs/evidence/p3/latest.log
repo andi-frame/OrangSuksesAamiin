@@ -33,7 +33,7 @@ $ GET with empty Bearer
 == [6] F. Access token TTL: expired access rejected; refresh without new client login ==
    expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
    PASS fresh access token works
-   sleeping 54s until JWT exp (+2s skew)...
+   sleeping 57s until JWT exp (+2s skew)...
    PASS expired access token -> 403
 $ POST http://localhost:8084/v1/refresh
    PASS refreshed access works without client_id/secret again
