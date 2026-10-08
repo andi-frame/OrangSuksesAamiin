@@ -1,0 +1,49 @@
+% Gambar 1.1 -- arsitektur sistem. Dipanggil dari umum.tex.
+\begin{figure}[!htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\sffamily\footnotesize,
+  svc/.style={draw=accent, fill=white, rounded corners=3pt, thick, align=center, minimum height=1.05cm, inner sep=4pt},
+  mock/.style={svc, draw=gridgray, fill=gray!8},
+  store/.style={draw=okgreen, fill=okbg, thick, cylinder, shape border rotate=90, aspect=0.25, align=center, minimum height=1.4cm, minimum width=2.6cm},
+  zone/.style={draw=gridgray, dashed, rounded corners=6pt, inner sep=8pt},
+  flow/.style={-{Stealth[length=2.2mm]}, thick, color=ink},
+  dotflow/.style={-{Stealth[length=2.2mm]}, thick, dotted, color=ink},
+  lab/.style={font=\sffamily\scriptsize, color=ink, fill=white, inner sep=1.5pt, align=center}
+]
+% ---- instansi sumber
+\node[mock] (bmkg) at (0,6.4) {\textbf{bmkg-mock}\\:8081 \;\texttt{X-BMKG-Key}};
+\node[mock] (pvmbg) at (0,3.6) {\textbf{pvmbg-mock}\\:8082 \;\texttt{Bearer pvmbg.v1...}};
+% ---- aggregator
+\node[svc, fill=accentlight, minimum width=3.9cm, minimum height=3.1cm] (agg) at (6.4,5.0)
+  {\textbf{aggregator}\\[2pt]polling per sumber\\pemetaan ke HazardEvent\\outbox + relay\\API internal :8083};
+% ---- sisi klien
+\node[svc] (client) at (13.4,8.6) {\textbf{Klien}\\Media $\cdot$ Lapangan $\cdot$ Pusat};
+\node[svc] (auth) at (9.2,8.6) {\textbf{auth-service}\\:8084};
+\node[svc] (capi) at (13.4,5.6) {\textbf{client-api}\\:8080};
+% ---- penyimpanan dan broker
+\node[store] (pg) at (6.4,0.4) {\textbf{PostgreSQL}\\Canonical Store};
+\node[svc] (kafka) at (10.6,1.7) {\textbf{Kafka}\\topic \texttt{hazard.events}};
+\node[svc] (c1) at (14.0,2.9) {\textbf{consumer-dashboard}\\:8091};
+\node[svc] (c2) at (14.0,0.5) {\textbf{consumer-notifier}\\:8092};
+% ---- zona jaringan
+\begin{scope}[on background layer]
+ \node[zone, fit=(pg), label={[font=\sffamily\scriptsize,color=gridgray]below:canonical-net (internal)}] {};
+ \node[zone, fit=(kafka)(c1)(c2), label={[font=\sffamily\scriptsize,color=gridgray]below:broker-net (internal)}] {};
+\end{scope}
+% ---- panah
+\draw[flow] (agg.west |- bmkg.east) -- (bmkg.east) node[lab, pos=0.45] {poll HTTP};
+\draw[flow] (agg.west |- pvmbg.east) -- (pvmbg.east) node[lab, pos=0.45] {poll HTTP};
+\draw[flow] (agg.south) -- (pg.north) node[lab, pos=0.5] {baca / tulis};
+\draw[flow] (agg.south east) -- (kafka.west) node[lab, pos=0.45] {outbox $\rightarrow$ publish};
+\draw[flow] (kafka.east) -- (c2.west);
+\draw[flow] (kafka.east) -- (c1.west);
+\draw[flow] (client) -- (capi) node[lab, pos=0.5] {Bearer JWT};
+\draw[flow] (client) -- (auth) node[lab, pos=0.5] {token / refresh};
+\draw[dotflow] (auth.south east) -- (capi.north west) node[lab, pos=0.5] {kunci JWT\\sama};
+\draw[flow] (capi.west) -- (capi.west -| agg.east) node[lab, pos=0.5] {\texttt{X-Service-Key}};
+\end{tikzpicture}}
+\caption{Arsitektur sistem. Garis tegas: panggilan jaringan; garis titik: rahasia penanda tangan token yang dipegang bersama. Kotak putus-putus: jaringan Docker yang tidak bisa dijangkau dari luar (\texttt{internal}).}
+\label{fig:arsitektur}
+\end{figure}

@@ -1,0 +1,29 @@
+\begin{figure}[!htbp]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\footnotesize,
+  box/.style={draw=accent, rounded corners=3pt, thick, fill=white, align=center, minimum height=0.95cm, inner sep=4pt},
+  st/.style={draw=okgreen, fill=okbg, rounded corners=3pt, thick, align=center, minimum height=0.95cm, inner sep=4pt},
+  zone/.style={draw=gridgray, dashed, rounded corners=6pt, inner sep=9pt},
+  ar/.style={-{Stealth[length=2.2mm]}, thick},
+  dar/.style={-{Stealth[length=2.2mm]}, thick, dashed, color=gridgray},
+  lab/.style={font=\sffamily\scriptsize, fill=white, inner sep=1.5pt, align=center}]
+\node[box] (poll) at (0,0) {putaran\\polling};
+\node[st] (tx) at (3.7,0) {satu transaksi:\\hazard $+$ baris outbox};
+\node[box] (relay) at (7.6,0) {relay\\(kirim, lalu tandai)};
+\node[box] (topic) at (7.6,-3.0) {topic \texttt{hazard.events}\\3 partisi, kunci $=$ \texttt{hazard\_id}};
+\node[box] (c1) at (12.8,-1.2) {group \texttt{dashboard-updater}\\consumer-dashboard};
+\node[box] (c2) at (12.8,-3.0) {group \texttt{notifier}\\consumer-notifier};
+\node[box, dashed, draw=gridgray, text=gridgray] (c3) at (12.8,-4.8) {group \texttt{pemda-portal}\\ditambah saat demo};
+\begin{scope}[on background layer]
+ \node[zone, fit=(poll)(tx)(relay), label={[font=\sffamily\scriptsize,color=gridgray]above:AGGREGATOR (producer)}] {};
+\end{scope}
+\draw[ar] (poll)--(tx);
+\draw[ar] (tx)--(relay) node[lab,pos=0.5]{outbox};
+\draw[ar] (relay)--(topic) node[lab,pos=0.5]{acks $=$ all};
+\draw[ar] (topic.east) -- (c1.west);
+\draw[ar] (topic.east) -- (c2.west);
+\draw[dar] (topic.east) -- (c3.west);
+\end{tikzpicture}}
+\caption{Alur event. Producer hanya mengenal topic; consumer tidak dikenal producer. Garis putus-putus: consumer yang ditambahkan saat demo tanpa mengubah producer.}
+\end{figure}
