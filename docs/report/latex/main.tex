@@ -1,0 +1,54 @@
+% Laporan IF4031 Milestone 1 -- BNPB Disaster Coordination Gateway
+% Kompilasi: tectonic -X compile main.tex   (atau xelatex main.tex dua kali)
+% Berkas keluaran diganti nama menjadi IF4031_M1_<NamaKelompok>.pdf saat dikumpulkan.
+\documentclass[11pt,a4paper,oneside]{report}
+\input{preamble}
+\usepackage{graphicx}
+\usepackage{float}
+
+\begin{document}
+
+% =============================================================== sampul
+\begin{titlepage}
+\thispagestyle{empty}
+\sffamily
+\vspace*{1.2cm}
+{\color{accent}\rule{\textwidth}{1.6pt}}\\[1.2em]
+{\Large IF4031 Arsitektur Aplikasi Terdistribusi}\\[0.4em]
+{\large Tugas Besar -- Milestone 1: Sistem Terdistribusi Dasar}\\[2.2em]
+{\fontsize{30}{34}\selectfont\bfseries\color{accent} BNPB Disaster\\Coordination Gateway}\\[1.0em]
+{\large Gateway koordinasi kebencanaan yang menyatukan data BMKG dan PVMBG}\\[1.2em]
+{\color{accent}\rule{\textwidth}{0.6pt}}
+
+\vspace{2.2cm}
+\begin{tabular}{@{}L{3.6cm}L{10cm}@{}}
+\textbf{Nama kelompok} & OrangSuksesAamiin\\[0.8em]
+\textbf{Anggota} & Andi Farhan Hidayat \quad NIM 13523128\\
+ & Muhammad Kinan Arkansyaddad \quad NIM 13523152\\
+ & Muhammad Rizain Firdaus \quad NIM 13523164\\[0.8em]
+\textbf{Mata kuliah} & IF4031 Arsitektur Aplikasi Terdistribusi\\
+\textbf{Institusi} & Institut Teknologi Bandung\\
+\textbf{Semester} & 7, 2026/2027\\
+\textbf{Tenggat} & Jumat, 9 Oktober 2026, 23.59 WIB
+\end{tabular}
+
+\vfill
+{\small\color{gridgray}Berkas ini dikumpulkan sebagai \texttt{IF4031\_M1\_<NamaKelompok>.pdf}.
+Bagian bertanda \todo{merah} masih harus diisi oleh kelompok.}
+\end{titlepage}
+
+% =============================================================== isi
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+\input{bagian/umum}
+\input{bagian/p1}
+\input{bagian/p2}
+\input{bagian/p3}
+\input{bagian/p4}
+\input{bagian/p5}
+\input{bagian/lampiran}
+
+\end{document}
