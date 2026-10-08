@@ -44,7 +44,8 @@ producer_logged_event() {
 }
 
 pemda_up() {
-  docker exec "$PEMDA_CONTAINER" wget -q -O /dev/null http://127.0.0.1:8092/health
+  # -O - plus a host-side redirect: Git Bash rewrites a literal /dev/null argument to "nul"
+  docker exec "$PEMDA_CONTAINER" wget -q -O - http://127.0.0.1:8092/health >/dev/null
 }
 
 pemda_logged_event() {
