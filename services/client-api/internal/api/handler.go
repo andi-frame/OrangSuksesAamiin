@@ -33,7 +33,7 @@ func (s *Server) Handler(jwtSecret []byte) http.Handler {
 
 func (s *Server) listHazards(w http.ResponseWriter, r *http.Request) {
 	role := auth.Role(r.Context())
-	if err := policy.CheckQuery(role, r.URL.Query().Get("fields"), r.URL.Query().Get("include")); err != nil {
+	if err := policy.CheckQuery(role, r.URL.Query()); err != nil {
 		obs.WriteError(w, http.StatusForbidden, "forbidden", "field not allowed for this client role")
 		return
 	}
@@ -63,7 +63,7 @@ func (s *Server) listHazards(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getHazard(w http.ResponseWriter, r *http.Request) {
 	role := auth.Role(r.Context())
-	if err := policy.CheckQuery(role, r.URL.Query().Get("fields"), r.URL.Query().Get("include")); err != nil {
+	if err := policy.CheckQuery(role, r.URL.Query()); err != nil {
 		obs.WriteError(w, http.StatusForbidden, "forbidden", "field not allowed for this client role")
 		return
 	}

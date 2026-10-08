@@ -6,7 +6,6 @@ COPY pkg/obs ./pkg/obs
 COPY services/consumer-hazard ./services/consumer-hazard
 WORKDIR /src/services/consumer-hazard
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go mod tidy && \
     go build -trimpath -ldflags="-s -w" -o /out/consumer-hazard ./cmd/consumer-hazard
 
 FROM alpine:3.20

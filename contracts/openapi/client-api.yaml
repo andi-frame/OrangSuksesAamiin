@@ -22,11 +22,14 @@ paths:
         - name: fields
           in: query
           schema: {type: string}
-          description: Media only; requesting Mentah field names returns 403
+          description: |
+            Comma list. Media may only name Ringkasan fields; any other name (Mentah or unknown, any case,
+            also as fields[] or repeated) returns 403. Lapangan/Pusat: ignored (full object).
         - name: include
           in: query
-          schema: {type: string, enum: [mentah]}
-          description: Media value mentah -> 403
+          schema: {type: string}
+          description: |
+            Media may send only an empty value or `summary`; any other value (mentah, raw, all, ...) returns 403.
       responses:
         "200":
           description: |

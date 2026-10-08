@@ -21,7 +21,7 @@ Thumbs.db
 
 # generated evidence is committed on purpose; raw k6/tmp output is not
 docs/evidence/**/*.tmp
-docs/evidence/**/k6.log
+docs/evidence/**/k6*.log
 loadtest/results/*.json
 progress.md
 

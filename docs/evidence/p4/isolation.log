@@ -1,8 +1,8 @@
 
 == [1] Who is attached to which network (docker network inspect) ==
-   bnpb_app-net: aggregator bmkg-mock pvmbg-mock 
+   bnpb_app-net: aggregator auth-service bmkg-mock client-api consumer-dashboard consumer-notifier pvmbg-mock 
    bnpb_canonical-net: aggregator postgres-canonical 
-   bnpb_broker-net: aggregator kafka 
+   bnpb_broker-net: aggregator consumer-dashboard consumer-notifier kafka 
 
 == [2] PostgreSQL (Canonical Store) is reachable ONLY from the Aggregator's network ==
    networks the database container is attached to: bnpb_canonical-net 

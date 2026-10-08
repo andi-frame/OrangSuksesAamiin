@@ -1,0 +1,231 @@
+\chapter{Problem 1 -- Arsitektur dan Interoperabilitas Data}
+
+\begin{ringkas}
+PVMBG bisa menambah field baru kapan saja tanpa memberi tahu siapa pun. Gateway kami \textbf{tidak menganggap
+skema sumber tetap}. Field yang dikenal diperiksa ketat, field lain \textbf{diteruskan apa adanya ke \code{attributes}},
+dan hanya perubahan yang mengubah \emph{arti} kontrak (field wajib hilang, tipe berubah, nilai enum baru) yang
+\textbf{dikarantina}, bukan ditebak. Semua ini dibuktikan saat sistem berjalan, tanpa restart.
+\end{ringkas}
+
+\section{Rancangan solusi dan mekanisme}
+
+\textbf{Mekanisme: \emph{tolerant reader} dengan kebijakan \emph{additive-only}.} Aggregator tidak pernah membaca data
+sumber ke struktur (\emph{struct}) yang tetap. Setiap record dibaca ke peta generik (\code{map[string]any}), lalu:
+
+\begin{enumerate}
+ \item \textbf{Field yang punya padanan kanonik} dibaca secara eksplisit dan divalidasi (harus ada dan bertipe benar), misalnya \code{magnitude}, \code{epicenter_lat}, \code{occurred_at}, \code{alert_level}, \code{volcano_id}.
+ \item \textbf{Setiap field lain} diteruskan apa adanya ke \code{attributes}. Ini mencakup field kontrak yang memang hanya menjadi atribut (\code{depth_km}, \code{eruption_count_24h}) dan field yang muncul belakangan (\code{confidence_level}, atau apa pun).
+ \item \textbf{Record yang melanggar kontrak dengan cara yang tidak didukung} tidak ditebak. Record itu dikarantina: dicatat di log (\code{mapping_rejected}), dihitung, dan dapat dilihat di \cmd{GET /internal/quarantine}. Sisa batch tetap diproses dan penanda kemajuan polling (\emph{watermark}) tetap maju.
+\end{enumerate}
+
+\begin{figure}[!htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\footnotesize,
+  box/.style={draw=accent, rounded corners=3pt, thick, fill=white, align=center, minimum height=0.9cm, inner sep=4pt},
+  dec/.style={draw=warnorange, diamond, aspect=2.2, thick, fill=warnbg, align=center, inner sep=1pt},
+  st/.style={draw=okgreen, rounded corners=3pt, thick, fill=okbg, align=center, minimum height=0.9cm, inner sep=4pt},
+  ar/.style={-{Stealth[length=2.2mm]}, thick}]
+\node[box] (src) at (0,0) {JSON dari BMKG\\atau PVMBG\\(apa adanya)};
+\node[box] (dec1) at (3.2,0) {dibaca ke\\peta generik};
+\node[dec] (chk) at (6.6,0) {field kanonik\\valid?};
+\node[st] (ev) at (10.2,0.9) {HazardEvent\\(field kanonik)};
+\node[box, draw=todored, fill=white] (q) at (10.2,-1.0) {karantina\\log $+$ penghitung};
+\node[box] (rest) at (6.6,-2.1) {sisa field};
+\node[st] (attr) at (10.2,-2.9) {\code{attributes}};
+\node[st, minimum width=3.3cm] (store) at (13.9,0) {Canonical Store};
+\draw[ar] (src)--(dec1); \draw[ar] (dec1)--(chk);
+\draw[ar] (chk) -- node[above,font=\sffamily\scriptsize]{ya} (ev);
+\draw[ar] (chk) -- node[above,sloped,font=\sffamily\scriptsize]{tidak} (q);
+\draw[ar] (dec1.south) |- (rest.west);
+\draw[ar] (rest)--(attr);
+\draw[ar] (ev)--(store); \draw[ar] (attr.east) -| (store.south);
+\end{tikzpicture}}
+\caption{Alur pemetaan. Sisa field selalu ikut tersimpan; record yang melanggar kontrak berhenti di karantina.}
+\end{figure}
+
+\textbf{Kebijakan field tak dikenal (dideklarasikan): diteruskan ke \code{attributes}.} Kebijakan ini diterapkan di satu
+tempat saja (fungsi \code{splitExtras}), sehingga konsisten untuk semua tipe JSON dan kedua sumber. Demo memeriksanya
+dengan pembanding independen: isi \code{attributes} harus \emph{persis sama} dengan himpunan field sumber yang tidak
+punya padanan kanonik, tidak ada yang hilang dan tidak ada yang dikarang.
+
+\textbf{Pembaruan record yang sama digabung secara aditif.} Bila record yang sama datang lagi, nilai yang dikirim sumber
+sekarang menang, tetapi field yang berhenti dikirim tetap tersimpan. Tanpa aturan ini, mengembalikan skema sumber ke
+semula akan menimpa record terbaru dengan versi yang lebih miskin dan membuang field yang sudah sempat ditangkap. Bug
+ini sempat muncul saat pengujian dan kini dijaga oleh \code{TestSchemaRollbackDoesNotEraseCapturedFields}.
+
+\subsection{Aturan pemetaan}
+
+Kontrak soal menetapkan bagaimana tiap field sumber menjadi field HazardEvent. Tabel berikut merangkumnya.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{2.6cm}L{4.4cm}Y@{}}
+\toprule
+\textbf{Kanonik} & \textbf{SeismicEvent (BMKG)} & \textbf{VolcanicReport (PVMBG)}\\
+\midrule
+\code{hazard_id} & \code{bmkg-<event_id>} & \code{pvmbg-<report_id>}\\
+\code{source_ref_id} & \code{event_id} & \code{report_id}\\
+\code{hazard_type} & SEISMIC & VOLCANIC\\
+\code{area_name} & \code{region_name} & nama dari tabel referensi statis BNPB\\
+\code{latitude}, \code{longitude} & \code{epicenter_lat}, \code{epicenter_lon} & dari tabel referensi statis\\
+\code{occurred_at} & \code{occurred_at} & \code{reported_at}\\
+\code{severity} & lihat aturan di bawah & \code{alert_level}: Normal, Waspada, Siaga, Awas menjadi NORMAL, WASPADA, SIAGA, AWAS\\
+\code{attributes} & \code{magnitude}, \code{depth_km}, \code{potential_tsunami}, field TsunamiWarning, dan field tak dikenal & \code{eruption_count_24h}, \code{ash_column_height_m}, \code{confidence_level} bila ada, dan field tak dikenal\\
+\bottomrule
+\end{tabularx}
+\caption{Pemetaan ke HazardEvent sesuai kontrak soal.}
+\end{table}
+
+\textbf{Severity seismik.} AWAS bila ada warning dengan \cmd{threat_level = Awas}. Selain itu mengikuti
+\code{threat_level} warning terkait. Tanpa warning: NORMAL untuk magnitudo di bawah 5,0; WASPADA untuk 5,0 sampai
+kurang dari 6,5; SIAGA untuk 6,5 ke atas. Bila ada beberapa warning, yang tertinggi menang.
+
+\textbf{Warning tsunami datang belakangan.} Warning diambil dari endpoint terpisah dan sering terbit setelah gempanya
+tersimpan. Aggregator mengaitkannya lewat \code{related_event_id}, menghitung ulang severity, dan menyimpannya sebagai
+\emph{versi baru} (\code{version} naik dan event \code{updated} diterbitkan). Warning yang gempanya belum terlihat
+menunggu (dibatasi TTL) dan menahan watermark warning supaya diambil ulang, bukan hilang. Karena \code{hazard_id}
+deterministik dan penyimpanan membandingkan isi, polling ulang pada jendela \emph{overlap} tidak menaikkan versi.
+
+\subsection{Jenis perubahan skema yang didukung dan tidak}
+
+Karena sumber boleh berubah kapan saja, kami menyatakan dengan tegas perubahan mana yang ditangani otomatis dan mana yang sengaja tidak.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}Y L{5.6cm} L{2.0cm}@{}}
+\toprule
+\textbf{Perubahan pada sumber} & \textbf{Perilaku Aggregator} & \textbf{Didukung?}\\
+\midrule
+Field baru bertipe apa pun (angka, teks, objek bersarang, list, \code{null}) & masuk \code{attributes}; HazardEvent tetap valid & Ya\\
+Field baru pada TsunamiWarning & masuk \code{attributes} dengan awalan \code{warning_} agar tidak bertabrakan nama & Ya\\
+Field yang hanya berstatus atribut menghilang & atribut itu sekadar tidak ada & Ya\\
+Field baru lalu hilang lagi (skema dikembalikan) & record lama mempertahankan nilainya; record baru tidak memilikinya & Ya\\
+\code{volcano_id} tidak ada di tabel referensi & \code{area_name} berisi id mentah, koordinat \code{null}, ada peringatan di log & Ya (turun mutu terkendali)\\
+\midrule
+Field wajib hilang atau berganti nama & karantina & \textbf{Tidak, sengaja}\\
+Tipe field wajib berubah (misal \code{magnitude} jadi teks) & karantina, tidak dipaksa & \textbf{Tidak, sengaja}\\
+Nilai enum baru (misal \cmd{alert_level = Darurat}) & karantina & \textbf{Tidak, sengaja}\\
+Perubahan arti atau satuan (meter jadi kaki) & tidak terdeteksi & Tidak, di luar jangkauan\\
+Bentuk endpoint berubah (bukan array JSON, path berubah) & dianggap kegagalan sumber (circuit breaker) & Tidak\\
+\bottomrule
+\end{tabularx}
+\caption{Jenis perubahan skema sumber dan perilakunya.}
+\end{table}
+
+\section{Alasan keputusan dan trade-off}\label{sec:p1-alasan}
+
+Ada beberapa cara untuk menghadapi skema sumber yang berubah. Tabel berikut membandingkannya dengan pilihan kami.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.6cm}Y@{}}
+\toprule
+\textbf{Alternatif} & \textbf{Pertimbangan}\\
+\midrule
+Struct tetap (prototipe Astolfo) & Sederhana dan bertipe, tetapi field baru hilang diam-diam, atau pesan gagal dibaca seluruhnya. Persis masalah di soal.\\
+Schema registry & Validasi terpusat. Tetapi menuntut sumber ikut mendaftarkan skema, sedangkan PVMBG mengubah skema \emph{tanpa memberi tahu siapa pun}. Registry tidak akan pernah mutakhir tepat waktu.\\
+Protobuf atau Avro (schema evolution) & Evolusi terformalisasi, tetapi sumber mengirim JSON biasa. Lapisan konversi tetap harus tahu skema baru.\\
+Pemetaan dinamis lewat berkas konfigurasi & Tanpa redeploy kode, tetapi seseorang tetap harus mengubah konfigurasi saat field baru muncul. Itu masih intervensi manual.\\
+\textbf{Tolerant reader + additive-only (dipilih)} & Bekerja \emph{sepihak} dari sisi BNPB: tanpa koordinasi, tanpa redeploy, perilakunya deterministik dan mudah dibuktikan.\\
+\bottomrule
+\end{tabularx}
+\caption{Alternatif mekanisme untuk evolusi skema.}
+\end{table}
+
+\textbf{Mengapa ini.} Sumber bersifat otonom dan tidak berkoordinasi, jadi mekanisme harus bekerja tanpa kerja sama
+mereka. Perubahan aditif adalah jenis perubahan yang paling umum dan paling aman ditangani otomatis. Perubahan yang
+mengubah arti kontrak (ganti nama, ganti tipe, enum baru) sengaja dihentikan di pintu: menebaknya berisiko salah
+menafsirkan data kebencanaan. Di sisi penyimpanan, \code{attributes} adalah dokumen JSONB, sehingga kebijakan ini tidak
+berubah menjadi migrasi tabel (Problem~4).
+
+\section{Batasan yang disadari}
+
+\begin{itemize}
+ \item \textbf{Tipe nilai di \code{attributes} tidak divalidasi.} Ini disengaja (tanpa skema). Perubahan tipe pada field atribut lolos apa adanya.
+ \item \textbf{Field tak dikenal ikut diteruskan}, termasuk yang mungkin sensitif. Ini aman karena seluruh \code{attributes} berklasifikasi Mentah dan Media tidak pernah menerimanya (ditegakkan Client-Facing API, Problem~3).
+ \item \textbf{Field yang dihapus sumber tetap menempel pada record lama} akibat penggabungan aditif. Hanya record itu; record baru tidak memilikinya. Ini harga agar informasi tidak pernah dibuang.
+ \item \textbf{Ganti nama tidak dikenali sebagai ganti nama:} field lama hilang (karantina bila wajib) dan field baru muncul sebagai atribut.
+ \item \textbf{Perubahan arti dan satuan tidak terdeteksi.} Tidak ada pemantauan drift selain log dan penghitung karantina.
+ \item \textbf{Karantina hanya di memori} (200 entri terakhir, penghitung sejak start). Ia alat diagnosis, bukan penyimpanan resmi, dan belum ada fitur memutar ulang record yang dikarantina setelah kode diperbaiki.
+ \item Record yang ditolak diingat 15 menit agar polling ulang pada jendela \emph{overlap} tidak mencatatnya berulang.
+ \item Pencocokan enum tidak peka huruf besar-kecil (\code{SIAGA} sama dengan \code{Siaga}); nilai lain ditolak.
+\end{itemize}
+
+\section{Bukti penyelesaian}
+
+Bukti berasal dari \cmd{make demo-p1} (transkrip: \code{docs/evidence/p1/latest.log}). Demo memeriksa dirinya sendiri
+dan berakhir dengan \cmd{P1 PASS}.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{4.6cm}Y@{}}
+\toprule
+\textbf{Kriteria soal} & \textbf{Bukti}\\
+\midrule
+Skema awal menghasilkan HazardEvent sesuai aturan, kedua sumber & Langkah 2: pembanding independen membaca data mentah dari mock, menghitung sendiri HazardEvent yang diharapkan, lalu mencocokkannya dengan isi Canonical Store. Hasil: 26 event BMKG dan 27 laporan PVMBG, semua lulus; keempat cabang severity terwakili (AWAS 2, NORMAL 12, SIAGA 3, WASPADA 9).\\
+Skema berubah saat berjalan, tanpa restart & Langkah 4 memanggil \cmd{POST /admin/schema-version}. Langkah 5: waktu \code{StartedAt} bmkg-mock, pvmbg-mock, dan aggregator tidak berubah.\\
+Tetap valid setelah perubahan, tanpa crash atau intervensi kode & Langkah 5: \code{confidence_level} dan field baru \code{lava_dome_volume_m3} muncul di \code{attributes}; pembanding lulus untuk 32 laporan; kedua sumber tetap \code{up}.\\
+Record sebelum dan sesudah berdampingan & Langkah 6: 28 hazard vulkanik lama tidak berubah (versi dan atribut sama); di store ada 5 hazard \emph{dengan} dan 28 \emph{tanpa} \code{confidence_level}, keduanya terbaca.\\
+Kebijakan konsisten & Langkah 5 (diteruskan) dan langkah 7 (perubahan tak didukung masuk karantina, batch tidak terblokir); \code{TestUnknownFieldPolicyIsConsistent}.\\
+Log ber-correlation ID dan latensi & Langkah 8: satu \code{cid} melintasi \code{outbound_call} (dengan \code{latency_ms}), \code{hazard_stored}, \code{poll_ok}, dan \code{outbox_published}.\\
+\bottomrule
+\end{tabularx}
+\caption{Kriteria Problem~1 dan buktinya.}
+\end{table}
+
+\subsection*{Cuplikan log: skema berubah saat berjalan (langkah 4 dan 5)}
+\begin{lstlisting}
+$ POST http://localhost:8082/admin/schema-version {confidence_level:true, extra_fields:{lava_dome_volume_m3:125000}}
+{"schema_version":2,"confidence_level":true,"extra_fields":{"lava_dome_volume_m3":125000}}
+...
+{"hazard_id":"pvmbg-VR-58ae09-0029","severity":"AWAS","area_name":"Gunung Lewotobi Laki-laki",
+ "attributes":{"ash_column_height_m":5345.9,"confidence_level":0.78,"eruption_count_24h":18,
+               "lava_dome_volume_m3":125000}}
+   PASS bmkg-mock, pvmbg-mock and aggregator were NOT restarted (StartedAt unchanged)
+   PASS all 28 pre-change volcanic hazards are unchanged (same version, same attributes)
+   side by side in the store: 5 hazards WITH confidence_level, 28 WITHOUT - both readable
+\end{lstlisting}
+
+\subsection*{Cuplikan log: perubahan yang tidak didukung dikarantina (langkah 7)}
+\begin{lstlisting}
+$ POST http://localhost:8082/admin/generate {override:{alert_level:"Darurat"}}   # nilai enum baru
+   PASS the valid report issued right after the bad one was stored (the batch was not blocked)
+   PASS report VR-58ae09-0035 with alert_level=Darurat was NOT stored
+{"source":"PVMBG","record_id":"VR-58ae09-0035","field":"alert_level",
+ "reason":"unknown enum value \"Darurat\"","correlation_id":"5dacbefeb284a2f8"}
+\end{lstlisting}
+
+\subsection*{Cuplikan log: satu alur, satu correlation ID (langkah 8)}
+\begin{lstlisting}
+correlation id: 5dacbefeb284a2f8
+{"msg":"outbound_call","target":"pvmbg","latency_ms":2228.447,"status":200}
+{"msg":"mapping_rejected"}
+{"msg":"hazard_stored","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"outcome":"created"}
+{"msg":"poll_ok","fetched":3,"created":1,"quarantined":1}
+{"msg":"event_published","latency_ms":23}
+{"msg":"outbox_published","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"event_id":"pvmbg-VR-58ae09-0036:1"}
+\end{lstlisting}
+
+\textbf{Tes otomatis terkait:}
+\begin{itemize}
+ \item \code{mapping_test.go}: tabel severity pada batas 4,99 / 5,0 / 6,49 / 6,5, warning terlambat, idempotensi, dan \emph{round-trip} JSON.
+ \item \code{poller_test.go}: \code{TestPVMBGSchemaChangeWithoutRestart}, karantina tidak menahan watermark, deduplikasi.
+ \item Tes server mock PVMBG (skema awal dan baru) serta tes kontrak JSON Schema di ketiga service.
+\end{itemize}
+
+\section{Jawaban butir ``Di laporan''}
+
+\begin{jawaban}
+\textbf{Mekanisme yang dipilih:} \emph{tolerant reader} dengan kebijakan \emph{additive-only}. JSON dibaca generik, field
+kanonik divalidasi eksplisit, sisanya diteruskan ke \code{attributes}. Schema registry dan Protobuf/Avro tidak dipilih
+karena sumber tidak berkoordinasi (alasan di bagian~\ref{sec:p1-alasan}).
+
+\textbf{Kebijakan field tak dikenal:} diteruskan ke \code{attributes} (tidak diabaikan).
+
+\textbf{Didukung:} penambahan field bertipe apa pun; hilangnya field yang hanya berstatus atribut; \code{volcano_id}
+baru (turun mutu terkendali).
+
+\textbf{Sengaja tidak didukung} (masuk karantina, batch tetap berlanjut): penghapusan atau penggantian nama field wajib,
+perubahan tipe field wajib, dan nilai enum baru. Perubahan arti atau satuan tidak terdeteksi.
+\end{jawaban}

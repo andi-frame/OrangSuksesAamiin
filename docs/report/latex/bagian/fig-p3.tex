@@ -1,0 +1,27 @@
+\begin{figure}[!htbp]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\footnotesize,
+  actor/.style={draw=accent, fill=accentlight, rounded corners=3pt, thick, minimum width=2.6cm, minimum height=0.8cm, align=center},
+  life/.style={gridgray, dashed},
+  msg/.style={-{Stealth[length=2.2mm]}, thick},
+  ret/.style={-{Stealth[length=2.2mm]}, thick, dashed},
+  lab/.style={font=\sffamily\scriptsize, above, inner sep=2pt, align=center}]
+\node[actor] (c) at (0,0) {Klien\\(Lapangan)};
+\node[actor] (a) at (5.2,0) {Auth\\Service};
+\node[actor] (p) at (10.4,0) {Client-Facing\\API};
+\node[actor] (g) at (15.0,0) {Aggregator};
+\foreach \n in {c,a,p,g} \draw[life] (\n.south) -- ++(0,-10.4);
+\draw[msg] (0,-1.5) -- (5.2,-1.5) node[lab,pos=0.5]{\texttt{POST /v1/token}\\(client\_id, secret)};
+\draw[ret] (5.2,-2.7) -- (0,-2.7) node[lab,pos=0.5]{access JWT (60 s, role)\\$+$ refresh token};
+\draw[msg] (0,-3.9) -- (10.4,-3.9) node[lab,pos=0.5]{\texttt{GET /v1/hazards}, header Bearer access};
+\node[draw=okgreen, fill=okbg, rounded corners=2pt, font=\sffamily\scriptsize, align=center] at (10.4,-4.9) {periksa tanda tangan, \texttt{exp}, peran;\\terapkan kebijakan field};
+\draw[msg] (10.4,-5.9) -- (15.0,-5.9) node[lab,pos=0.5]{\texttt{GET /internal/hazards}\\\texttt{X-Service-Key}};
+\draw[ret] (15.0,-6.7) -- (10.4,-6.7);
+\draw[ret] (10.4,-7.3) -- (0,-7.3) node[lab,pos=0.5]{200: Ringkasan (Media) atau penuh (Lapangan, Pusat)};
+\node[draw=warnorange, fill=warnbg, rounded corners=2pt, font=\sffamily\scriptsize, align=center] at (5.2,-8.3) {setelah 60 detik token kedaluwarsa:\\permintaan berikutnya mendapat 403};
+\draw[msg] (0,-9.4) -- (5.2,-9.4) node[lab,pos=0.5]{\texttt{POST /v1/refresh}\\(refresh token)};
+\draw[ret] (5.2,-10.4) -- (0,-10.4) node[lab,pos=0.5]{pasangan token baru;\\refresh lama tidak berlaku};
+\end{tikzpicture}}
+\caption{Alur autentikasi klien: login, akses, kedaluwarsa, lalu \emph{refresh} tanpa login ulang.}
+\end{figure}

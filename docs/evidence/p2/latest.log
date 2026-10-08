@@ -2,22 +2,23 @@
 == [1] A. PVMBG slow (3s) — BMKG-only via Client-Facing API p95 < 300 ms ==
 $ POST http://localhost:8082/admin/delay {ms:3000}
 {"delay_min_ms":3000,"delay_max_ms":3000}
-   client-api seismic, 40 requests while PVMBG poll is slow: p95=20.9 ms, hard errors (not 200/429)=0
-   PASS p95 20.9 ms < 300 ms (BMKG-only through :8080)
+   client-api seismic, 40 requests while PVMBG poll is slow and 4 readers fetch volcanic data in parallel: p95=152.4 ms, hard errors (not 200/429)=0
+   concurrent volcanic readers (p95 ms, hard errors): 169.5 0;153.9 0;163.5 0;189.9 0
+   PASS p95 152.4 ms < 300 ms (BMKG-only through :8080)
    PASS new BMKG event reachable via client-api while PVMBG is slow
 
 == [2] B. PVMBG outage (error) — stale data, no hard errors, BMKG still fresh ==
 $ POST http://localhost:8082/admin/outage {enabled:true, mode:error}
 {"outage":true,"outage_mode":"error"}
-   PASS volcanic count unchanged (50) during outage
+   PASS volcanic count unchanged (27) during outage
    PASS freshness.PVMBG.stale_since set on client-api list
-   PASS all 50 PVMBG items have stale=true
-   PASS volcanic reads during outage: p95 8.7 ms, no hard errors
+   PASS all 27 PVMBG items have stale=true
+   PASS volcanic reads during outage: p95 19.7 ms, no hard errors
    PASS seismic path still works during PVMBG outage
 
 == [3] C. PVMBG outage (hang) — client-api stays responsive on seismic ==
 {"outage":true,"outage_mode":"hang"}
-   PASS seismic p95 29.2 ms while PVMBG hangs
+   PASS seismic p95 12.1 ms while PVMBG hangs
 
 == [4] D. Recovery — PVMBG up again, no container restart ==
 $ POST http://localhost:8082/admin/outage {enabled:false}
@@ -25,209 +26,64 @@ $ POST http://localhost:8082/admin/outage {enabled:false}
    PASS new volcanic report ingested after recovery
    PASS no service container restarted during demo
 
-== [5] E. Load test k6 (50 VUs, 60s) ==
-
-         /\      Grafana   /‾‾/  
-    /\  /  \     |\  __   /  /   
-   /  \/    \    | |/ /  /   ‾‾\ 
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/ 
-
-     execution: local
-        script: scripts/loadtest/p2.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 50 max VUs, 1m30s max duration (incl. graceful stop):
-              * constant_load: 50 looping VUs for 1m0s (gracefulStop: 30s)
-
-
-running (0m01.0s), 50/50 VUs, 150 complete and 0 interrupted iterations
-constant_load   [   2% ] 50 VUs  0m01.0s/1m0s
-
-running (0m02.0s), 50/50 VUs, 336 complete and 0 interrupted iterations
-constant_load   [   3% ] 50 VUs  0m02.0s/1m0s
-
-running (0m03.0s), 50/50 VUs, 523 complete and 0 interrupted iterations
-constant_load   [   5% ] 50 VUs  0m03.0s/1m0s
-
-running (0m04.0s), 50/50 VUs, 711 complete and 0 interrupted iterations
-constant_load   [   7% ] 50 VUs  0m04.0s/1m0s
-
-running (0m05.0s), 50/50 VUs, 911 complete and 0 interrupted iterations
-constant_load   [   8% ] 50 VUs  0m05.0s/1m0s
-
-running (0m06.0s), 50/50 VUs, 1100 complete and 0 interrupted iterations
-constant_load   [  10% ] 50 VUs  0m06.0s/1m0s
-
-running (0m07.0s), 50/50 VUs, 1300 complete and 0 interrupted iterations
-constant_load   [  12% ] 50 VUs  0m07.0s/1m0s
-
-running (0m08.0s), 50/50 VUs, 1500 complete and 0 interrupted iterations
-constant_load   [  13% ] 50 VUs  0m08.0s/1m0s
-
-running (0m09.0s), 50/50 VUs, 1700 complete and 0 interrupted iterations
-constant_load   [  15% ] 50 VUs  0m09.0s/1m0s
-
-running (0m10.0s), 50/50 VUs, 1879 complete and 0 interrupted iterations
-constant_load   [  17% ] 50 VUs  0m10.0s/1m0s
-
-running (0m11.0s), 50/50 VUs, 2066 complete and 0 interrupted iterations
-constant_load   [  18% ] 50 VUs  0m11.0s/1m0s
-
-running (0m12.0s), 50/50 VUs, 2232 complete and 0 interrupted iterations
-constant_load   [  20% ] 50 VUs  0m12.0s/1m0s
-
-running (0m13.0s), 50/50 VUs, 2415 complete and 0 interrupted iterations
-constant_load   [  22% ] 50 VUs  0m13.0s/1m0s
-
-running (0m14.0s), 50/50 VUs, 2615 complete and 0 interrupted iterations
-constant_load   [  23% ] 50 VUs  0m14.0s/1m0s
-
-running (0m15.0s), 50/50 VUs, 2805 complete and 0 interrupted iterations
-constant_load   [  25% ] 50 VUs  0m15.0s/1m0s
-
-running (0m16.0s), 50/50 VUs, 2990 complete and 0 interrupted iterations
-constant_load   [  27% ] 50 VUs  0m16.0s/1m0s
-
-running (0m17.0s), 50/50 VUs, 3155 complete and 0 interrupted iterations
-constant_load   [  28% ] 50 VUs  0m17.0s/1m0s
-
-running (0m18.0s), 50/50 VUs, 3353 complete and 0 interrupted iterations
-constant_load   [  30% ] 50 VUs  0m18.0s/1m0s
-
-running (0m19.0s), 50/50 VUs, 3548 complete and 0 interrupted iterations
-constant_load   [  32% ] 50 VUs  0m19.0s/1m0s
-
-running (0m20.0s), 50/50 VUs, 3748 complete and 0 interrupted iterations
-constant_load   [  33% ] 50 VUs  0m20.0s/1m0s
-
-running (0m21.0s), 50/50 VUs, 3937 complete and 0 interrupted iterations
-constant_load   [  35% ] 50 VUs  0m21.0s/1m0s
-
-running (0m22.0s), 50/50 VUs, 4126 complete and 0 interrupted iterations
-constant_load   [  37% ] 50 VUs  0m22.0s/1m0s
-
-running (0m23.0s), 50/50 VUs, 4324 complete and 0 interrupted iterations
-constant_load   [  38% ] 50 VUs  0m23.0s/1m0s
-
-running (0m24.0s), 50/50 VUs, 4511 complete and 0 interrupted iterations
-constant_load   [  40% ] 50 VUs  0m24.0s/1m0s
-
-running (0m25.0s), 50/50 VUs, 4700 complete and 0 interrupted iterations
-constant_load   [  42% ] 50 VUs  0m25.0s/1m0s
-
-running (0m26.0s), 50/50 VUs, 4884 complete and 0 interrupted iterations
-constant_load   [  43% ] 50 VUs  0m26.0s/1m0s
-
-running (0m27.0s), 50/50 VUs, 5060 complete and 0 interrupted iterations
-constant_load   [  45% ] 50 VUs  0m27.0s/1m0s
-
-running (0m28.0s), 50/50 VUs, 5259 complete and 0 interrupted iterations
-constant_load   [  47% ] 50 VUs  0m28.0s/1m0s
-
-running (0m29.0s), 50/50 VUs, 5449 complete and 0 interrupted iterations
-constant_load   [  48% ] 50 VUs  0m29.0s/1m0s
-
-running (0m30.0s), 50/50 VUs, 5638 complete and 0 interrupted iterations
-constant_load   [  50% ] 50 VUs  0m30.0s/1m0s
-
-running (0m31.0s), 50/50 VUs, 5832 complete and 0 interrupted iterations
-constant_load   [  52% ] 50 VUs  0m31.0s/1m0s
-
-running (0m32.0s), 50/50 VUs, 6025 complete and 0 interrupted iterations
-constant_load   [  53% ] 50 VUs  0m32.0s/1m0s
-
-running (0m33.0s), 50/50 VUs, 6221 complete and 0 interrupted iterations
-constant_load   [  55% ] 50 VUs  0m33.0s/1m0s
-
-running (0m34.0s), 50/50 VUs, 6418 complete and 0 interrupted iterations
-constant_load   [  57% ] 50 VUs  0m34.0s/1m0s
-
-running (0m35.0s), 50/50 VUs, 6617 complete and 0 interrupted iterations
-constant_load   [  58% ] 50 VUs  0m35.0s/1m0s
-
-running (0m36.0s), 50/50 VUs, 6812 complete and 0 interrupted iterations
-constant_load   [  60% ] 50 VUs  0m36.0s/1m0s
-
-running (0m37.0s), 50/50 VUs, 7012 complete and 0 interrupted iterations
-constant_load   [  62% ] 50 VUs  0m37.0s/1m0s
-
-running (0m38.0s), 50/50 VUs, 7184 complete and 0 interrupted iterations
-constant_load   [  63% ] 50 VUs  0m38.0s/1m0s
-
-running (0m39.0s), 50/50 VUs, 7375 complete and 0 interrupted iterations
-constant_load   [  65% ] 50 VUs  0m39.0s/1m0s
-
-running (0m40.0s), 50/50 VUs, 7571 complete and 0 interrupted iterations
-constant_load   [  67% ] 50 VUs  0m40.0s/1m0s
-
-running (0m41.0s), 50/50 VUs, 7771 complete and 0 interrupted iterations
-constant_load   [  68% ] 50 VUs  0m41.0s/1m0s
-
-running (0m42.0s), 50/50 VUs, 7962 complete and 0 interrupted iterations
-constant_load   [  70% ] 50 VUs  0m42.0s/1m0s
-
-running (0m43.0s), 50/50 VUs, 8126 complete and 0 interrupted iterations
-constant_load   [  72% ] 50 VUs  0m43.0s/1m0s
-
-running (0m44.0s), 50/50 VUs, 8325 complete and 0 interrupted iterations
-constant_load   [  73% ] 50 VUs  0m44.0s/1m0s
-
-running (0m45.0s), 50/50 VUs, 8525 complete and 0 interrupted iterations
-constant_load   [  75% ] 50 VUs  0m45.0s/1m0s
-
-running (0m46.0s), 50/50 VUs, 8722 complete and 0 interrupted iterations
-constant_load   [  77% ] 50 VUs  0m46.0s/1m0s
-
-running (0m47.0s), 50/50 VUs, 8922 complete and 0 interrupted iterations
-constant_load   [  78% ] 50 VUs  0m47.0s/1m0s
-
-running (0m48.0s), 50/50 VUs, 9121 complete and 0 interrupted iterations
-constant_load   [  80% ] 50 VUs  0m48.0s/1m0s
-
-running (0m49.0s), 50/50 VUs, 9321 complete and 0 interrupted iterations
-constant_load   [  82% ] 50 VUs  0m49.0s/1m0s
-
-running (0m50.0s), 50/50 VUs, 9475 complete and 0 interrupted iterations
-constant_load   [  83% ] 50 VUs  0m50.0s/1m0s
-
-running (0m51.0s), 50/50 VUs, 9675 complete and 0 interrupted iterations
-constant_load   [  85% ] 50 VUs  0m51.0s/1m0s
-
-running (0m52.0s), 50/50 VUs, 9875 complete and 0 interrupted iterations
-constant_load   [  87% ] 50 VUs  0m52.0s/1m0s
-
-running (0m53.0s), 50/50 VUs, 10075 complete and 0 interrupted iterations
-constant_load   [  88% ] 50 VUs  0m53.0s/1m0s
-
-running (0m54.0s), 50/50 VUs, 10275 complete and 0 interrupted iterations
-constant_load   [  90% ] 50 VUs  0m54.0s/1m0s
-
-running (0m55.0s), 50/50 VUs, 10443 complete and 0 interrupted iterations
-constant_load   [  92% ] 50 VUs  0m55.0s/1m0s
-
-running (0m56.0s), 50/50 VUs, 10638 complete and 0 interrupted iterations
-constant_load   [  93% ] 50 VUs  0m56.0s/1m0s
-
-running (0m57.0s), 50/50 VUs, 10825 complete and 0 interrupted iterations
-constant_load   [  95% ] 50 VUs  0m57.0s/1m0s
-
-running (0m58.0s), 50/50 VUs, 11013 complete and 0 interrupted iterations
-constant_load   [  97% ] 50 VUs  0m58.0s/1m0s
-
-running (0m59.0s), 50/50 VUs, 11207 complete and 0 interrupted iterations
-constant_load   [  98% ] 50 VUs  0m59.0s/1m0s
-
-running (1m00.0s), 50/50 VUs, 11382 complete and 0 interrupted iterations
-constant_load   [ 100% ] 50 VUs  1m00.0s/1m0s
+== [5] E. Load test k6 (50 VUs, 60s) - every VU logs in and renews its own token ==
 {
-  "p95_ms": 26.729374799999995,
-  "rps": 190.0410446362039,
-  "checks_pass_rate": 0.9876058304966396,
-  "http_req_failed_rate": 0.024788339006720783
+  "config": {
+    "vus": 50,
+    "duration": "60s",
+    "think_time_s": 0.1,
+    "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
+    "tool": "k6"
+  },
+  "requests": 26752,
+  "throughput_rps": 445.0826461673987,
+  "latency_ms": {
+    "p50": 9.3673,
+    "p95": 19.626389999999976,
+    "p99": 28.278220999999935,
+    "max": 68.8216
+  },
+  "status": {
+    "ok_200": 26752,
+    "rejected_429": 0,
+    "other": 0
+  },
+  "rate_429": 0,
+  "unhandled_error_rate": 0,
+  "token_renewals": 50
 }
+   PASS k6 load test passed: unhandled error rate < 1% and p95 < 300 ms (docs/evidence/p2/k6-summary.json)
+   sustained run: {"requests":26752,"throughput_rps":445.0826461673987,"latency_ms":{"p50":9.3673,"p95":19.626389999999976,"p99":28.278220999999935,"max":68.8216},"status":{"ok_200":26752,"rejected_429":0,"other":0},"unhandled_error_rate":0,"token_renewals":50}
 
-running (1m00.3s), 00/50 VUs, 11457 complete and 0 interrupted iterations
-constant_load ✓ [ 100% ] 50 VUs  1m0s
-   PASS k6 load test passed (docs/evidence/p2/k6.log)
+== [6] F. Overload: 150 VUs with no think time for 20 s - excess is shed with 429, never 5xx, service stays up ==
+time="2026-10-08T18:27:33+07:00" level=warning msg="\"env\" level configuration overrode scenarios configuration entirely"
+{
+  "config": {
+    "vus": 150,
+    "duration": "20s",
+    "think_time_s": 0,
+    "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
+    "tool": "k6"
+  },
+  "requests": 81112,
+  "throughput_rps": 4051.3137505650398,
+  "latency_ms": {
+    "p50": 23.6767,
+    "p95": 67.97307999999997,
+    "p99": 188.72986599999996,
+    "max": 507.7832
+  },
+  "status": {
+    "ok_200": 10989,
+    "rejected_429": 70123,
+    "other": 0
+  },
+  "rate_429": 0.8645206627872571,
+  "unhandled_error_rate": 0,
+  "token_renewals": 0
+}
+   overload: {"requests":81112,"throughput_rps":4051.3137505650398,"latency_ms":{"p50":23.6767,"p95":67.97307999999997,"p99":188.72986599999996,"max":507.7832},"status":{"ok_200":10989,"rejected_429":70123,"other":0},"rate_429":0.8645206627872571,"unhandled_error_rate":0}
+   PASS controlled rejections happened and are reported (HTTP 429 count above)
+   PASS no 5xx / auth errors / timeouts under overload (only 200 and 429)
+   PASS client-api still answers /health right after the overload
    PASS P2 client-api demo complete

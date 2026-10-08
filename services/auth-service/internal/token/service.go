@@ -102,7 +102,7 @@ func ParseAccess(secret []byte, access string) (role string, err error) {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil || !parsed.Valid {
 		return "", errors.New("invalid access token")
 	}

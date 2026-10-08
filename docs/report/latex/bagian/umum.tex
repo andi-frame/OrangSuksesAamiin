@@ -1,0 +1,220 @@
+\chapter{Bagian Umum}
+
+\section{Tabel kontribusi}
+
+Tabel ini menunjukkan siapa mengerjakan apa. Pembagian kerja mengikuti tiga tahap: fondasi dan Problem~1, lalu
+Problem~2 dan~3, lalu Problem~4 dan~5 beserta integrasi.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{2.9cm}YYY@{}}
+\toprule
+\textbf{Anggota} & \textbf{Perancangan} & \textbf{Implementasi} & \textbf{Penulisan laporan}\\
+\midrule
+Orang~1 \newline Andi Farhan Hidayat &
+ Kontrak antar-komponen, arsitektur Aggregator, kebijakan skema &
+ Fondasi (\code{pkg/obs}, Compose, Makefile, CI), mock BMKG dan PVMBG, Aggregator, Problem~1, ketahanan ingest, adapter PostgreSQL dan Kafka, outbox dan relay, consumer &
+ Bagian umum, Problem~1, deskripsi mock\\
+Orang~2 \newline Muhammad Rizain Firdaus &
+ Autentikasi JWT tiga peran, kebijakan field Ringkasan/Mentah, pembatas laju, penanda \code{stale} &
+ \code{auth-service}, \code{client-api}, skrip demo dan load test Problem~2 dan~3 &
+ Problem~2, Problem~3\\
+Orang~3 \newline Muhammad Kinan Arkansyaddad &
+ Perbandingan pilihan penyimpanan (PostgreSQL dengan JSONB) dan pilihan penyebaran event (Kafka dengan outbox), semantik pengiriman, dan batasan yang disadari &
+ Skrip demo Problem~4 dan~5 (membangun ulang satu service, field baru tanpa migrasi, consumer baru) dan pengujian pemulihan consumer &
+ Problem~4, Problem~5\\
+\bottomrule
+\end{tabularx}
+\caption{Kontribusi anggota.}
+\end{table}
+
+\section{Deskripsi umum sistem}
+
+Di cerita soal, Astolfo menerima sinyal bencana dari banyak lembaga yang tidak saling bicara. Sistem ini adalah
+\emph{gateway} milik BNPB yang menyambungkannya. Ia melakukan lima hal:
+
+\begin{enumerate}
+ \item \textbf{Mengambil} data dari dua lembaga secara berkala (\emph{polling}): BMKG untuk gempa dan tsunami, PVMBG untuk gunung api.
+ \item \textbf{Menyeragamkan} dua format yang berbeda menjadi satu format milik BNPB, yaitu \emph{HazardEvent}.
+ \item \textbf{Menyimpan} hasilnya di satu penyimpanan, \emph{Canonical Store}, yang hanya dikelola oleh satu service.
+ \item \textbf{Menyebarkan} setiap data baru ke pihak yang berlangganan lewat \emph{message broker}.
+ \item \textbf{Menyajikan} data ke tiga jenis klien (Media, Tim Lapangan, BNPB Pusat) dengan hak akses yang berbeda.
+\end{enumerate}
+
+\textbf{Lingkup Milestone 1} dibatasi oleh soal: dua lembaga sumber (BMKG dan PVMBG), dua jenis bencana (seismik dan
+vulkanik), BNPB sebagai simpul koordinasi, dan semua klien hanya membaca (\emph{read-only}). BMKG dan PVMBG adalah
+\emph{mock} buatan kelompok yang mengikuti kontrak di soal tanpa mengubahnya.
+
+\subsection*{Status penyelesaian}
+
+Tabel berikut merangkum apa yang sudah terbukti lewat demo. Bukti P1 dan sisi ingest P2 dibuat pada 7~Oktober~2026;
+bukti sisi layanan P2, P3, P4, dan P5 pada 8~Oktober~2026. Demo P2 dan P3 dijalankan sekali setelah \cmd{make reset}.
+Demo P4 dan P5 dijalankan setelah reset dan diulang sekali tanpa reset; keduanya lulus kedua kali.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.0cm}Y L{2.0cm}@{}}
+\toprule
+\textbf{Problem} & \textbf{Yang sudah terbukti $\;/\;$ yang masih kurang} & \textbf{Status}\\
+\midrule
+P1 Interoperabilitas data & Pemetaan benar, skema PVMBG berubah saat berjalan tanpa restart, field baru masuk \code{attributes}, perubahan yang tidak didukung dikarantina. & \lulus\\
+P2 Konkurensi dan ketersediaan & p95 BMKG-only di bawah 300~ms saat PVMBG 3~detik, load test 50~koneksi selama 60~detik, outage PVMBG ditangani, pulih tanpa restart. & \lulus\\
+P3 Autentikasi dan kepercayaan & Kredensial antar-lembaga saling menolak, Media hanya Ringkasan, token Lapangan kedaluwarsa lalu di-\emph{refresh}, tidak ada kredensial ter-commit. & \lulus\\
+P4 Microservice dan storage & Satu container (\code{pvmbg-mock}) dihentikan, dibangun ulang, dan dijalankan lagi tanpa menyentuh yang lain; field baru masuk JSONB tanpa migrasi dan record lama tetap terbaca; Canonical Store hanya terjangkau oleh Aggregator. & \lulus\\
+P5 Pub/sub & Event lewat Kafka, dua consumer independen, satu consumer dimatikan lalu menyusul event yang tepat, dan consumer ketiga ditambahkan saat sistem berjalan tanpa mengubah producer. & \lulus\\
+\bottomrule
+\end{tabularx}
+\caption{Status per problem pada saat laporan ini ditulis.}
+\end{table}
+
+\section{Diagram arsitektur}
+
+Gambar~\ref{fig:arsitektur} memperlihatkan seluruh service, protokol, kepemilikan penyimpanan, dan batas jaringan.
+
+\input{bagian/fig-arsitektur}
+
+\subsection*{Penjelasan}
+
+\textbf{Alur masuk.} \code{aggregator} memanggil \code{bmkg-mock} dan \code{pvmbg-mock} lewat HTTP. Kedua mock pasif: mereka
+hanya menjawab, tidak mengirim data sendiri. Setiap sumber punya putaran polling sendiri, sehingga PVMBG yang lambat
+tidak menahan BMKG (Problem~2). Hasil polling dipetakan ke \emph{HazardEvent} dan disimpan.
+
+\textbf{Penyimpanan.} Canonical Store adalah PostgreSQL yang hanya berada di jaringan \code{canonical-net}. Jaringan itu
+hanya berisi \code{aggregator} dan database-nya, jadi service lain secara fisik tidak bisa menyambung ke database
+(Problem~4). Service lain memperoleh data lewat API internal Aggregator.
+
+\textbf{Alur keluar ke klien.} Klien meminta token ke \code{auth-service}, lalu memanggil \code{client-api} dengan token
+itu. \code{client-api} memeriksa token, menentukan field apa yang boleh dilihat peran tersebut, dan meneruskan
+permintaan ke API internal Aggregator memakai \code{X-Service-Key}. \code{client-api} tidak pernah memanggil BMKG
+atau PVMBG (Problem~2 dan~3).
+
+\textbf{Alur event.} Saat Aggregator menyimpan perubahan, ia menulis juga satu baris \emph{outbox} dalam transaksi
+database yang sama. Proses \emph{relay} lalu mengirim baris itu ke topic Kafka \code{hazard.events}. Consumer
+berlangganan ke topic tersebut tanpa diketahui Aggregator (Problem~5). Setiap alur membawa \emph{correlation ID} yang
+sama dari siklus polling sampai ke consumer.
+
+\subsection*{Daftar container}
+
+Sistem terdiri dari sepuluh container, satu di antaranya hanya tugas sekali jalan. Tabel berikut merangkum port, jaringan, dan penyimpanan masing-masing.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.7cm}L{2.5cm}L{2.5cm}Y@{}}
+\toprule
+\textbf{Container} & \textbf{Port host} & \textbf{Jaringan} & \textbf{Penyimpanan yang dimiliki}\\
+\midrule
+\code{bmkg-mock} & 8081 & app-net & tidak ada (data simulasi di memori)\\
+\code{pvmbg-mock} & 8082 & app-net & tidak ada (data simulasi di memori)\\
+\code{aggregator} & 127.0.0.1:8083 & app, canonical, broker & Canonical Store (tabel \code{hazards}, \code{outbox}, \code{poll_cursor})\\
+\code{postgres-canonical} & tidak dibuka & canonical-net & volume \code{canonical-pgdata}\\
+\code{kafka} & tidak dibuka & broker-net & volume \code{kafka-data}\\
+\code{kafka-init} & -- & broker-net & tugas sekali jalan: membuat topic\\
+\code{auth-service} & 8084 & app-net, auth-net & SQLite untuk hash refresh token (volume \code{auth-data})\\
+\code{client-api} & 8080 & app-net & tidak ada (tanpa \emph{state})\\
+\code{consumer-dashboard} & 8091 & broker, app & memori (himpunan \code{event_id})\\
+\code{consumer-notifier} & 8092 & broker, app & memori (himpunan \code{event_id})\\
+\bottomrule
+\end{tabularx}
+\caption{Container, jaringan, dan kepemilikan penyimpanan (dari \texttt{docker-compose.yml}).}\label{tab:container}
+\end{table}
+
+\section{Teknologi terpilih}
+
+Tabel berikut menjawab pertanyaan: teknologi apa yang dipakai untuk tiap komponen, dan kebutuhan sistem mana yang membuatnya dipilih.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.3cm}L{3.8cm}Y@{}}
+\toprule
+\textbf{Komponen} & \textbf{Teknologi} & \textbf{Alasan (dikaitkan dengan kebutuhan)}\\
+\midrule
+Semua service & Go 1.25 & Goroutine ringan cocok untuk satu putaran polling per sumber. Image kecil dan build cepat, sehingga membangun ulang satu service tidak lama (Problem~4). Satu bahasa menekan biaya integrasi tiga orang.\\
+HTTP dan log & \code{net/http}, \code{log/slog} & Tanpa dependensi tambahan. Log JSON membawa \code{cid} lewat \emph{context}, sesuai syarat log terstruktur.\\
+Canonical Store & PostgreSQL 16 dengan kolom JSONB & Kolom tetap untuk field kanonik, \code{attributes} JSONB untuk field yang bisa berubah: field baru tidak butuh migrasi (Problem~1 dan~4). Transaksi memungkinkan pola outbox (Problem~5).\\
+Message broker & Apache Kafka (mode KRaft, satu broker) & Log tahan lama dengan \emph{consumer group} dan \emph{offset}: consumer yang mati dapat menyusul setelah hidup lagi (Problem~5).\\
+Klien Kafka & \code{franz-go} & Go murni, tanpa cgo, sehingga Dockerfile sederhana.\\
+Autentikasi & JWT HS256 dan refresh token buram & Token pendek yang diperiksa lokal, jadi jalur baca tidak bergantung pada Auth Service (Problem~2 dan~3).\\
+Penyimpanan token & SQLite (\code{modernc.org/sqlite}) & Hanya hash refresh token yang disimpan; cukup untuk satu instance dan tanpa cgo.\\
+Pembatas laju & \code{golang.org/x/time/rate} & Token bucket: menolak kelebihan beban seketika dengan 429, bukan mengantre (Problem~2).\\
+Orkestrasi & Docker Compose, empat jaringan & Satu perintah menyalakan semua. Jaringan \emph{internal} menjadi bukti isolasi penyimpanan.\\
+Load test & k6 & Melaporkan throughput, p50/p95/p99, dan laju galat; mendukung ambang lulus.\\
+Kualitas & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitleaks & Tes otomatis dan pencegahan kredensial ter-commit.\\
+\bottomrule
+\end{tabularx}
+\caption{Teknologi per komponen dan alasan pemilihannya.}
+\end{table}
+
+\section{Asumsi}
+
+\begin{enumerate}
+ \item Respons mock berupa JSON array. Parameter \code{since} bersifat \emph{lebih besar dari} (bukan sama dengan) terhadap \code{occurred_at}, \code{issued_at}, atau \code{reported_at}. Field \code{issued_at} pada TsunamiWarning adalah tambahan yang diizinkan soal.
+ \item Warning tsunami dapat terbit \emph{setelah} gempanya. Mock sengaja memberi jeda 2--8 detik. Satu gempa dapat punya beberapa warning dan yang tertinggi menentukan severity.
+ \item Hanya ada satu instance tiap service pada M1. Konkurensi optimistis (\code{expectedVersion}) sudah disiapkan untuk M2.
+ \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya pendekatan untuk simulasi, dan gunung ``Prikitiw'' fiktif mengikuti cerita soal.
+ \item Seluruh waktu memakai UTC dan dipotong ke ketelitian mikrodetik.
+ \item Karantina record yang tidak dapat dipetakan bersifat diagnostik dan disimpan di memori.
+ \item Endpoint \code{/admin/*} pada mock (termasuk \code{extra_fields}, \code{override}, \code{/admin/generate}, \code{/admin/delay}) adalah tambahan untuk demo. Kontrak yang ditetapkan soal tidak diubah.
+ \item Semua klien hanya membaca. Jalur pelaporan dari lapangan ke BNPB berada di luar M1.
+ \item Jaringan Docker dianggap tepercaya; tidak ada TLS di dalamnya. Pada produksi, TLS dipasang di ingress.
+ \item Kredensial pada \code{.env.example} hanyalah contoh. Nilai sebenarnya diisi di \code{.env} yang tidak pernah ter-commit.
+\end{enumerate}
+
+\section{Petunjuk menjalankan}
+
+Ringkasan di sini mengacu ke \code{README.md} di repositori, yang memuat langkah lengkap, daftar variabel, dan cara
+memicu setiap skenario.
+
+\begin{lstlisting}
+cp .env.example .env            # nilai contoh; .env tidak pernah di-commit
+docker compose up --build       # satu perintah untuk seluruh sistem (atau: make up)
+make demo-p1                    # lalu demo-p2, demo-p3, demo-isolation, demo-p4, demo-p5, dst.
+make reset                      # kembali ke kondisi bersih (hapus container dan volume)
+\end{lstlisting}
+
+Satu-satunya prasyarat adalah Docker dengan Compose v2. Port bawaan: BMKG 8081, PVMBG 8082, Client-Facing API 8080,
+Auth Service 8084, Aggregator 8083 (hanya \emph{loopback}), consumer 8091 dan 8092. Semua dapat diubah lewat
+\code{.env}. Setiap demo memeriksa dirinya sendiri (kode keluar tidak nol bila gagal) dan menyimpan transkripnya ke
+\code{docs/evidence/}.
+
+\section{Penggunaan LLM}
+
+\begin{catatan}[Diisi oleh kelompok]
+Soal mewajibkan deklarasi penggunaan LLM di laporan beserta lampiran \emph{Form Penggunaan AI.pdf}. Bagian ini sengaja
+dikosongkan dan diisi sendiri oleh kelompok di akhir:
+\begin{itemize}
+ \item alat yang dipakai dan untuk bagian mana (perancangan, kode, laporan) --- \todo{isi}
+ \item siapa anggota yang memakai dan memahami bagian tersebut --- \todo{isi}
+ \item lampirkan \emph{Form Penggunaan AI.pdf} --- \todo{lampirkan}
+\end{itemize}
+\end{catatan}
+
+\section{Istilah penting}
+
+Beberapa istilah muncul berulang di laporan ini. Artinya dirangkum di sini agar mudah dicari.
+
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L{3.4cm}Y@{}}
+\toprule
+\textbf{Istilah} & \textbf{Artinya dalam laporan ini}\\
+\midrule
+HazardEvent & Format tunggal milik BNPB untuk satu kejadian bahaya, apa pun sumbernya.\\
+Canonical Store & Tempat HazardEvent disimpan. Hanya Aggregator yang boleh membukanya langsung.\\
+Ringkasan / Mentah & Dua klasifikasi field. Ringkasan boleh dilihat Media; Mentah (koordinat presisi, \code{attributes}, \code{source_ref_id}) tidak.\\
+Polling & BNPB yang bertanya ke sumber secara berkala. Sumber tidak mengirim sendiri.\\
+Outbox & Tabel di database yang menampung event sampai terkirim ke broker, supaya tidak ada event hilang bila broker sedang mati.\\
+At-least-once & Setiap event pasti sampai, tetapi bisa sampai lebih dari sekali.\\
+Idempoten & Memproses hal yang sama dua kali memberi hasil yang sama dengan sekali.\\
+Circuit breaker & Pemutus: setelah sumber gagal berkali-kali, panggilan dihentikan sementara agar tidak memboroskan sumber daya.\\
+Token bucket & Pembatas laju: tiap permintaan mengambil satu token; token habis berarti ditolak dengan 429.\\
+Stale & Data masih ditampilkan tetapi diberi tanda bahwa sumbernya sedang tidak memperbarui.\\
+Correlation ID (\code{cid}) & Kode yang sama pada semua log satu alur permintaan, dari service pertama sampai terakhir.\\
+\bottomrule
+\end{tabularx}
+\caption{Daftar istilah.}
+\end{table}

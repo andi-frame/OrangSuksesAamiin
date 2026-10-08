@@ -1,0 +1,97 @@
+\usepackage{fontspec}
+\setmainfont{texgyrepagella}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\setsansfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,ItalicFont=*-italic,BoldItalicFont=*-bolditalic,Scale=MatchLowercase]
+\setmonofont{lmmono10-regular}[Extension=.otf,BoldFont=lmmonolt10-bold,ItalicFont=lmmono10-italic,BoldItalicFont=lmmonolt10-boldoblique,Scale=MatchLowercase]
+\usepackage[indonesian]{babel}
+\usepackage[a4paper,margin=2.4cm,headheight=14pt]{geometry}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.12}
+\usepackage{parskip}
+\setlength{\parskip}{0.55em}
+\usepackage{xcolor}
+\usepackage{booktabs,tabularx,array,longtable,multirow}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em,itemsep=0.2em}
+\usepackage{url}
+\urlstyle{tt}
+\makeatletter
+\g@addto@macro\UrlBreaks{\do\_\do\=\do\:\do\,}
+\g@addto@macro\UrlBigBreaks{\do\_\do\[\do\]\do\(\do\)}
+\makeatother
+\Urlmuskip=0mu plus 0.5mu
+\emergencystretch=2.5em
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit,backgrounds,arrows.meta,shapes.geometric,calc}
+\usepackage[most]{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+
+% ---- warna
+\definecolor{ink}{HTML}{1F2933}
+\definecolor{accent}{HTML}{1F4E79}
+\definecolor{accentlight}{HTML}{E8F0F8}
+\definecolor{okgreen}{HTML}{1E7B4F}
+\definecolor{okbg}{HTML}{E7F5EE}
+\definecolor{warnorange}{HTML}{B35C00}
+\definecolor{warnbg}{HTML}{FFF3E0}
+\definecolor{todored}{HTML}{B00020}
+\definecolor{gridgray}{HTML}{8A97A3}
+\definecolor{codebg}{HTML}{F4F6F8}
+\color{ink}
+
+% ---- judul bagian
+\titleformat{\chapter}[hang]{\sffamily\bfseries\huge\color{accent}}{\thechapter}{0.6em}{}
+\titlespacing*{\chapter}{0pt}{-10pt}{22pt}
+\titleformat{\section}{\sffamily\bfseries\Large\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\sffamily\bfseries\large\color{ink}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\sffamily\bfseries\normalsize\color{ink}}{}{0em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+% ---- header/footer
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.3pt}
+\fancyhead[L]{\sffamily\footnotesize IF4031 -- Laporan Milestone 1}
+\fancyhead[R]{\sffamily\footnotesize BNPB Disaster Coordination Gateway}
+\fancyfoot[C]{\sffamily\footnotesize\thepage}
+
+% ---- tampilan kode / log
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{gridgray!50},
+  breaklines=true, breakatwhitespace=false,
+  columns=fullflexible, keepspaces=true,
+  xleftmargin=2pt, xrightmargin=2pt,
+  aboveskip=0.6em, belowskip=0.4em,
+  upquote=true
+}
+% \code: tanpa spasi, boleh putus baris di / _ - . ; \cmd: mempertahankan spasi (perintah terminal).
+\newcommand{\code}[1]{\path{#1}}
+\newcommand{\cmd}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\todo}[1]{\textcolor{todored}{\textbf{[#1]}}}
+
+% ---- kotak
+\newtcolorbox{ringkas}[1][Singkatnya]{
+  enhanced, breakable, colback=accentlight, colframe=accent, boxrule=0.5pt,
+  left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
+\newtcolorbox{jawaban}[1][Jawaban butir ``Di laporan'']{
+  enhanced, breakable, colback=okbg, colframe=okgreen, boxrule=0.5pt,
+  left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
+\newtcolorbox{catatan}[1][Catatan jujur]{
+  enhanced, breakable, colback=warnbg, colframe=warnorange, boxrule=0.5pt,
+  left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
+
+% ---- tabel
+\renewcommand{\arraystretch}{1.18}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\captionsetup{font={small,sf},labelfont=bf,skip=4pt}
+\newcommand{\lulus}{\textcolor{okgreen}{\textbf{Lulus}}}
+\newcommand{\sebagian}{\textcolor{warnorange}{\textbf{Sebagian}}}
+\newcommand{\belum}{\textcolor{todored}{\textbf{Belum}}}

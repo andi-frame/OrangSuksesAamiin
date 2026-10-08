@@ -7,6 +7,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Limiter is one token bucket shared by all callers: it bounds the work the service accepts (resource
+// exhaustion, P2) and sheds the excess with 429 + Retry-After instead of queueing it.
 type Limiter struct {
 	lim *rate.Limiter
 }
@@ -23,6 +25,11 @@ func New(rps, burst int) *Limiter {
 
 func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// liveness/readiness probes must keep answering while the API sheds load
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !l.lim.Allow() {
 			w.Header().Set("Retry-After", "1")
 			obs.WriteError(w, http.StatusTooManyRequests, "too_many_requests", "rate limit exceeded")

@@ -1,0 +1,31 @@
+\begin{figure}[!htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\footnotesize,
+  box/.style={draw=accent, rounded corners=3pt, thick, fill=white, align=center, minimum height=0.95cm, inner sep=4pt},
+  src/.style={box, draw=gridgray, fill=gray!8},
+  st/.style={draw=okgreen, fill=okbg, thick, cylinder, shape border rotate=90, aspect=0.25, align=center, minimum height=1.4cm, minimum width=2.2cm},
+  zone/.style={draw=gridgray, dashed, rounded corners=6pt, inner sep=8pt},
+  ar/.style={-{Stealth[length=2.2mm]}, thick},
+  lab/.style={font=\sffamily\scriptsize, fill=white, inner sep=1.5pt, align=center}]
+\node[src] (bmkg) at (0,2.0) {BMKG};
+\node[src] (pvmbg) at (0,0) {PVMBG\\(lambat/mati)};
+\node[box] (l1) at (3.0,2.0) {putaran BMKG\\timeout $+$ breaker};
+\node[box] (l2) at (3.0,0) {putaran PVMBG\\timeout $+$ breaker};
+\node[st] (store) at (6.3,1.0) {Canonical\\Store};
+\node[box] (agg) at (9.2,1.0) {API baca\\Aggregator};
+\node[box] (api) at (12.0,1.0) {client-api\\token bucket};
+\node[box] (cl) at (14.5,1.0) {Klien};
+\begin{scope}[on background layer]
+ \node[zone, fit=(bmkg)(pvmbg)(l1)(l2), label={[font=\sffamily\scriptsize,color=gridgray]above:INGEST (di Aggregator)}] {};
+ \node[zone, fit=(agg)(api)(cl), label={[font=\sffamily\scriptsize,color=gridgray]above:LAYANAN (tidak menyentuh sumber)}] {};
+\end{scope}
+\draw[ar] (l1)--(bmkg) node[lab,pos=0.5]{poll};
+\draw[ar] (l2)--(pvmbg) node[lab,pos=0.5]{poll};
+\draw[ar] (l1)--(store); \draw[ar] (l2)--(store);
+\draw[ar] (agg)--(store);
+\draw[ar] (api)--(agg);
+\draw[ar] (cl)--(api);
+\end{tikzpicture}}
+\caption{Model konkurensi. Dua putaran polling menulis ke store; jalur layanan hanya membaca dari store.}
+\end{figure}

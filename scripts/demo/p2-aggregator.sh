@@ -52,7 +52,10 @@ ok "a new BMKG event was ingested $((SECONDS - t0)) s after it appeared, althoug
 info "BMKG last poll latency: $(agg /internal/sources/status | jqx -r '.sources[] | select(.source=="BMKG") | .last_latency_ms') ms; polls: BMKG=$(agg /internal/sources/status | jqx '.sources[] | select(.source=="BMKG") | .polls') PVMBG=$(pv_field .polls) (PVMBG cycles are 3+ s long, BMKG's are ~0.1 s)"
 
 step "B. PVMBG outage (mode: error) - circuit opens, stored data is kept, BMKG keeps flowing"
-BEFORE_COUNT="$(volcanic | jqx '.items|length')"
+# remember WHICH hazards existed: PVMBG keeps issuing reports (one per interval) and a poll already in flight may store
+# one more before the breaker opens, so the count may grow; what must never happen is losing a record that was there.
+BEFORE_IDS="$(volcanic | jqx -c '[.items[].hazard_id]')"
+BEFORE_COUNT="$(echo "$BEFORE_IDS" | jqx 'length')"
 show "POST ${PVMBG_URL}/admin/outage {enabled:true, mode:error}"
 pvmbg_admin /admin/outage '{"enabled":true,"mode":"error"}' | jqx -c '{outage,outage_mode}'
 wait_until "PVMBG marked down (breaker open)" 60 pv_is down
@@ -60,7 +63,9 @@ info "status: $(agg /internal/sources/status | jqx -c '.sources[] | select(.sour
 [ "$(pv_field .stale_since)" != "null" ] && ok "stale_since is set: $(pv_field .stale_since)" || fail "stale_since missing"
 [ "$(bm_state)" = "up" ] && ok "BMKG stays 'up'" || fail "BMKG affected by the PVMBG outage"
 V="$(volcanic)"
-[ "$(echo "$V" | jqx '.items|length')" = "$BEFORE_COUNT" ] && ok "all $BEFORE_COUNT volcanic hazards are still served from the Canonical Store" || fail "volcanic data lost"
+echo "$V" | jqx -e --argjson before "$BEFORE_IDS" '($before - [.items[].hazard_id]) | length == 0' >/dev/null \
+  && ok "all $BEFORE_COUNT volcanic hazards are still served from the Canonical Store (now $(echo "$V" | jqx '.items|length'))" \
+  || fail "volcanic data lost"
 echo "$V" | jqx -e '.freshness.PVMBG.stale_since != null and .freshness.PVMBG.state == "down"' >/dev/null \
   && ok "list response carries freshness.PVMBG {state:down, stale_since:...} for the caller to mark the data stale" || fail "freshness missing from the list response"
 G="$(bmkg_admin /admin/generate '{"count":1}' | jqx -r '.generated[0].event_id')"

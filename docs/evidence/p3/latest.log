@@ -12,6 +12,15 @@ $ GET with empty Bearer
 == [3] C. Media cannot request Mentah explicitly ==
    PASS media ?fields=latitude -> 403
    PASS media ?include=mentah -> 403
+   PASS media ?fields=Latitude -> 403
+   PASS media ?fields=hazard_id,attributes -> 403
+   PASS media ?fields%5B%5D=longitude -> 403
+   PASS media ?fields=source_ref_id -> 403
+   PASS media ?include=MENTAH -> 403
+   PASS media ?include=mentah,summary -> 403
+   PASS media ?include=raw -> 403
+   PASS media ?include=all -> 403
+   PASS media asking only for Ringkasan fields -> 200
 
 == [4] D. Media denied /v1/sources/status; Lapangan allowed ==
    PASS media /v1/sources/status -> 403
@@ -24,7 +33,7 @@ $ GET with empty Bearer
 == [6] F. Access token TTL: expired access rejected; refresh without new client login ==
    expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
    PASS fresh access token works
-   sleeping 61s until JWT exp (+2s skew)...
+   sleeping 57s until JWT exp (+2s skew)...
    PASS expired access token -> 403
 $ POST http://localhost:8084/v1/refresh
    PASS refreshed access works without client_id/secret again

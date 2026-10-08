@@ -2,54 +2,55 @@
 == [1] Start from the ORIGINAL PVMBG schema (no confidence_level) ==
 $ POST http://localhost:8082/admin/schema-version {confidence_level:false, extra_fields:{}}
 {"schema_version":1,"confidence_level":false,"extra_fields":{}}
-   hazards in the Canonical Store (via the Aggregator API): SEISMIC=27 VOLCANIC=27
+   hazards in the Canonical Store (via the Aggregator API): SEISMIC=26 VOLCANIC=26
 
 == [2] Aggregator output with the OLD schema follows the mapping rules (both sources) ==
    example BMKG hazard (tsunami event with warning):
-{"hazard_id":"bmkg-EQ-8d6ab7-0020","source":"BMKG","hazard_type":"SEISMIC","severity":"AWAS","area_name":"Aceh Barat","latitude":4.5175,"longitude":95.3584,"occurred_at":"2026-09-29T17:42:08.279454Z","attributes":{"affected_zones":["Meulaboh","Calang","Simeulue"],"depth_km":23.2,"estimated_arrival":"2026-09-29T17:54:08.279454496Z","issued_at":"2026-09-29T17:44:08.279454496Z","magnitude":7.6,"potential_tsunami":true,"related_event_id":"EQ-8d6ab7-0020","threat_level":"Awas","warning_id":"TW-8d6ab7-0020"}}
+{"hazard_id":"bmkg-EQ-11bf66-0020","source":"BMKG","hazard_type":"SEISMIC","severity":"AWAS","area_name":"Aceh Barat","latitude":4.7423,"longitude":96.1399,"occurred_at":"2026-10-07T12:04:27.166099Z","attributes":{"affected_zones":["Meulaboh","Calang","Simeulue"],"depth_km":31.5,"estimated_arrival":"2026-10-07T12:21:27.16609949Z","issued_at":"2026-10-07T12:06:27.16609949Z","magnitude":7.6,"potential_tsunami":true,"related_event_id":"EQ-11bf66-0020","threat_level":"Awas","warning_id":"TW-11bf66-0020"}}
    example PVMBG hazard (initial schema):
-{"hazard_id":"pvmbg-VR-8c0d0b-0028","source":"PVMBG","hazard_type":"VOLCANIC","severity":"WASPADA","area_name":"Gunung Semeru","latitude":-8.108,"longitude":112.922,"occurred_at":"2026-09-30T01:12:48.303Z","attributes":{"ash_column_height_m":269.2,"eruption_count_24h":1}}
-   PASS BMKG  SeismicEvent -> HazardEvent (severity rule, coordinates, attributes): {"source_events":28,"checked":28,"by_severity":{"AWAS":2,"NORMAL":13,"SIAGA":4,"WASPADA":9},"pass":true}
-   PASS PVMBG VolcanicReport -> HazardEvent (reference table, severity, attributes): {"source_reports":29,"checked":29,"with_confidence_level":0,"pass":true}
+{"hazard_id":"pvmbg-VR-58ae09-0026","source":"PVMBG","hazard_type":"VOLCANIC","severity":"NORMAL","area_name":"Gunung Semeru","latitude":-8.108,"longitude":112.922,"occurred_at":"2026-10-07T19:34:47.169753Z","attributes":{"ash_column_height_m":99.2,"eruption_count_24h":0}}
+   PASS BMKG  SeismicEvent -> HazardEvent (severity rule, coordinates, attributes): {"source_events":26,"checked":26,"by_severity":{"AWAS":2,"NORMAL":12,"SIAGA":3,"WASPADA":9},"pass":true}
+   PASS PVMBG VolcanicReport -> HazardEvent (reference table, severity, attributes): {"source_reports":27,"checked":27,"with_confidence_level":0,"pass":true}
    PASS no stored volcanic hazard has confidence_level yet
 
 == [3] Remember what is running (proof that nothing restarts) and the current data ==
-   bmkg-mock=2026-09-30T01:12:07.983636638Z
-   pvmbg-mock=2026-09-30T01:12:07.999131534Z
-   aggregator=2026-09-30T01:12:08.057324361Z
+   bmkg-mock=2026-10-07T19:34:26.692656617Z
+   pvmbg-mock=2026-10-07T19:34:26.704155352Z
+   aggregator=2026-10-07T19:34:26.728062463Z
 
 == [4] Trigger the schema change WHILE RUNNING: PVMBG starts sending confidence_level + a brand-new field ==
 $ POST http://localhost:8082/admin/schema-version {confidence_level:true, extra_fields:{lava_dome_volume_m3:125000}}
 {"schema_version":2,"confidence_level":true,"extra_fields":{"lava_dome_volume_m3":125000}}
-   PVMBG issued new reports: VR-8c0d0b-0031 VR-8c0d0b-0032 VR-8c0d0b-0033
+   PVMBG issued new reports: VR-58ae09-0029 VR-58ae09-0030 VR-58ae09-0031
 
 == [5] Aggregator still produces VALID HazardEvents - no crash, no restart, no code change ==
    new-schema hazard as stored:
-{"hazard_id":"pvmbg-VR-8c0d0b-0031","severity":"SIAGA","area_name":"Gunung Sinabung","latitude":3.171,"longitude":98.392,"occurred_at":"2026-09-30T01:13:14.600823Z","attributes":{"ash_column_height_m":2284.8,"confidence_level":0.95,"eruption_count_24h":11,"lava_dome_volume_m3":125000}}
-   PASS PVMBG mapping after the change (new reports: attributes == every non-canonical source field, incl. confidence_level and lava_dome_volume_m3; old ones: nothing lost): {"source_reports":34,"checked":33,"with_confidence_level":3,"pass":true}
+{"hazard_id":"pvmbg-VR-58ae09-0029","severity":"AWAS","area_name":"Gunung Lewotobi Laki-laki","latitude":-8.542,"longitude":122.775,"occurred_at":"2026-10-07T19:35:16.432914Z","attributes":{"ash_column_height_m":5345.9,"confidence_level":0.78,"eruption_count_24h":18,"lava_dome_volume_m3":125000}}
+   PASS PVMBG mapping after the change (new reports: attributes == every non-canonical source field, incl. confidence_level and lava_dome_volume_m3; old ones: nothing lost): {"source_reports":32,"checked":32,"with_confidence_level":4,"pass":true}
    PASS confidence_level and the unknown field lava_dome_volume_m3 were forwarded to attributes (declared policy)
    PASS bmkg-mock, pvmbg-mock and aggregator were NOT restarted (StartedAt unchanged)
    PASS both sources are 'up' in /internal/sources/status
 
 == [6] Old records (stored BEFORE the change) are untouched and coexist with the new ones ==
-   PASS all 29 pre-change volcanic hazards are unchanged (same version, same attributes)
-   side by side in the store: 5 hazards WITH confidence_level, 30 WITHOUT - both readable
+   PASS all 28 pre-change volcanic hazards are unchanged (same version, same attributes)
+   side by side in the store: 5 hazards WITH confidence_level, 28 WITHOUT - both readable
 
 == [7] Consciously UNSUPPORTED changes are quarantined, never guessed - and never break the batch ==
 $ POST http://localhost:8082/admin/generate {override:{alert_level:"Darurat"}}   # new enum value
    PASS the valid report issued right after the bad one was stored (the batch was not blocked)
-   PASS report VR-8c0d0b-0036 with alert_level=Darurat was NOT stored
-{"source":"PVMBG","record_id":"VR-8c0d0b-0036","field":"alert_level","reason":"unknown enum value \"Darurat\"","correlation_id":"b83ade06b4294f16"}
+   PASS report VR-58ae09-0035 with alert_level=Darurat was NOT stored
+{"source":"PVMBG","record_id":"VR-58ae09-0035","field":"alert_level","reason":"unknown enum value \"Darurat\"","correlation_id":"5dacbefeb284a2f8"}
    PASS quarantine counter increased (0 -> 1)
 
 == [8] One traceable flow: the same correlation ID from the PVMBG call to the stored hazard to the broker outbox ==
-   correlation id: 2afe3218dc4cc137
-   {"ts":"2026-09-30T01:13:44.101878394Z","msg":"outbound_call","target":"pvmbg","latency_ms":2767.345,"status":200}
-   {"ts":"2026-09-30T01:13:44.105919075Z","msg":"hazard_stored","hazard_id":"pvmbg-VR-8c0d0b-0038","version":1,"outcome":"created"}
-   {"ts":"2026-09-30T01:13:44.10952785Z","msg":"poll_ok","fetched":3,"created":1,"quarantined":0}
-   {"ts":"2026-09-30T01:13:44.368863865Z","msg":"event_published","latency_ms":4}
-   {"ts":"2026-09-30T01:13:44.368917253Z","msg":"outbox_published","hazard_id":"pvmbg-VR-8c0d0b-0038","version":1,"event_id":"pvmbg-VR-8c0d0b-0038:1"}
-   PASS poll -> outbound call (latency logged) -> hazard_stored -> poll_ok share correlation ID 2afe3218dc4cc137
+   correlation id: 5dacbefeb284a2f8
+   {"ts":"2026-10-07T19:35:46.274077668Z","msg":"outbound_call","target":"pvmbg","latency_ms":2228.447,"status":200}
+   {"ts":"2026-10-07T19:35:46.275251949Z","msg":"mapping_rejected"}
+   {"ts":"2026-10-07T19:35:46.279103834Z","msg":"hazard_stored","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"outcome":"created"}
+   {"ts":"2026-10-07T19:35:46.281334211Z","msg":"poll_ok","fetched":3,"created":1,"quarantined":1}
+   {"ts":"2026-10-07T19:35:46.426610458Z","msg":"event_published","latency_ms":23}
+   {"ts":"2026-10-07T19:35:46.427546234Z","msg":"outbox_published","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"event_id":"pvmbg-VR-58ae09-0036:1"}
+   PASS poll -> outbound call (latency logged) -> hazard_stored -> poll_ok share correlation ID 5dacbefeb284a2f8
 
 == [9] Restore the original schema on PVMBG (leaves the system reusable) ==
 {"schema_version":1,"extra_fields":{}}

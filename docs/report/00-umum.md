@@ -41,7 +41,7 @@ flowchart LR
     K[[Kafka · hazard.events]]
     C1[consumer-dashboard]
     C2[consumer-notifier]
-    C3[consumer-pemda]
+    C3[consumer pemda-portal<br/>ditambah saat demo P5]
   end
   AGG -- "HTTP poll" --> BMKG
   AGG -- "HTTP poll" --> PVMBG
@@ -49,8 +49,9 @@ flowchart LR
   AGG -- "outbox → produce" --> K
   K --> C1 & C2 & C3
   CAPI -- "HTTP + X-Service-Key" --> AGG
-  CAPI -- "introspeksi token" --> AUTH
-  Client([Media · Lapangan · Pusat]) --> CAPI
+  Client([Media · Lapangan · Pusat]) -- "token / refresh" --> AUTH
+  AUTH -. "JWT HS256 (rahasia sama, diverifikasi lokal)" .-> CAPI
+  Client --> CAPI
 ```
 
 **Narasi.** Polling berjalan di goroutine terpisah per sumber, terpisah dari jalur layanan: Client-Facing API tidak pernah
@@ -71,6 +72,8 @@ ingest (P5). Setiap alur membawa correlation ID dari siklus poll hingga consumer
 | Broker | **Kafka (KRaft, 1 broker)** | log terdurable dengan replay dan consumer group (catch-up setelah consumer mati); urutan per key; jalur skala M2 |
 | Klien Kafka | franz-go | Go murni (tanpa cgo) |
 | Orkestrasi | Docker Compose, tiga jaringan (`app-net`, `canonical-net`, `broker-net`) | satu perintah; topologi jaringan menjadi bukti isolasi storage |
+| Autentikasi klien | JWT HS256 (`golang-jwt`), refresh token opaque di SQLite (`modernc.org/sqlite`, Go murni) | TTL pendek dengan verifikasi lokal di Client-Facing API (jalur baca tidak bergantung pada Auth Service); refresh dapat dicabut per token |
+| Pembatas laju | `golang.org/x/time/rate` (token bucket) | menolak kelebihan beban dengan 429 alih-alih mengantre (P2) |
 | Load test | k6 | p50/p95/p99, throughput, error rate |
 | Kualitas | GitHub Actions, gofmt/vet, `-race`, gitleaks | tes otomatis dan pencegahan kredensial ter-commit |
 
