@@ -1,0 +1,59 @@
+
+== [1] A. Rebuild only PVMBG while unrelated services keep serving requests ==
+   unrelated containers before rebuild:
+   aggregator|8227f9394375d743fa18e4e32485c1d9286bc2767ba1714fa8e2db154b156ab1|2026-10-08T08:06:07.651085524Z
+   auth-service|40dd2481b63251570c4dc34d5f5d70f0975a9342fc2fd7d7554f181fe45b9817|2026-10-08T08:06:07.345258686Z
+   bmkg-mock|5ad12c9d7d8935aa5c628615c1572a2ee1bdd17ce604d40017fea4451089096c|2026-10-08T08:06:07.120865227Z
+   client-api|179543cd79af38c43b2f00c481fd80056ef6e57b91a48c8a69a8d587a8f21074|2026-10-08T08:06:10.841742768Z
+   consumer-dashboard|636de95c313203acc809f50f2e7a80365812eca13737eb3e4fad7dfa3f3d59c3|2026-10-08T08:06:14.163190991Z
+   consumer-notifier|373acb047d8168aae2b3fa74e14adbc8dbbaa2e9c5caa0c501818a5b7cdbe073|2026-10-08T08:08:28.809913526Z
+   kafka|9640ae962cfd72980857fbefa4857761129c98b8fd801a4853f78034290e9627|2026-10-08T08:06:07.527395689Z
+   postgres-canonical|ced9c5fcfc9b251dc48791ad05b735908596967b5e9b5cc4f92d67a5a808bfba|2026-10-08T08:06:07.951936094Z
+   unrelated containers after rebuild:
+   aggregator|8227f9394375d743fa18e4e32485c1d9286bc2767ba1714fa8e2db154b156ab1|2026-10-08T08:06:07.651085524Z
+   auth-service|40dd2481b63251570c4dc34d5f5d70f0975a9342fc2fd7d7554f181fe45b9817|2026-10-08T08:06:07.345258686Z
+   bmkg-mock|5ad12c9d7d8935aa5c628615c1572a2ee1bdd17ce604d40017fea4451089096c|2026-10-08T08:06:07.120865227Z
+   client-api|179543cd79af38c43b2f00c481fd80056ef6e57b91a48c8a69a8d587a8f21074|2026-10-08T08:06:10.841742768Z
+   consumer-dashboard|636de95c313203acc809f50f2e7a80365812eca13737eb3e4fad7dfa3f3d59c3|2026-10-08T08:06:14.163190991Z
+   consumer-notifier|373acb047d8168aae2b3fa74e14adbc8dbbaa2e9c5caa0c501818a5b7cdbe073|2026-10-08T08:08:28.809913526Z
+   kafka|9640ae962cfd72980857fbefa4857761129c98b8fd801a4853f78034290e9627|2026-10-08T08:06:07.527395689Z
+   postgres-canonical|ced9c5fcfc9b251dc48791ad05b735908596967b5e9b5cc4f92d67a5a808bfba|2026-10-08T08:06:07.951936094Z
+   PASS BMKG-only requests succeeded; IDs and start times of all other containers stayed fixed
+
+== [2] B. Store an old-schema volcanic report ==
+   old row attributes: {"eruption_count_24h": 5, "ash_column_height_m": 911.8}
+   hazards table column fingerprint before: 4555805e1c5790a6fff3c9ce2923df04
+   PASS pvmbg-VR-7f4c0a-0025 stored without confidence_level in PostgreSQL JSONB
+
+== [3] C. Change PVMBG's schema live and store a new report without a migration ==
+   new row attributes: {"confidence_level": 0.98, "eruption_count_24h": 0, "ash_column_height_m": 41.1}
+   hazards table column fingerprint after: 4555805e1c5790a6fff3c9ce2923df04
+   PASS pvmbg-VR-7f4c0a-0026 contains confidence_level; table columns and Aggregator start time did not change
+
+== [4] D. Read old and new records side by side through the Aggregator ==
+   PASS old=VR-7f4c0a-0025 and new=VR-7f4c0a-0026 coexist and are readable; old attributes are unchanged
+
+== [5] E. Prove only the Aggregator can access the Canonical Store ==
+
+== [1] Who is attached to which network (docker network inspect) ==
+   bnpb_app-net: aggregator auth-service bmkg-mock client-api consumer-dashboard consumer-notifier pvmbg-mock
+   bnpb_canonical-net: aggregator postgres-canonical
+   bnpb_broker-net: aggregator consumer-dashboard consumer-notifier kafka
+
+== [2] PostgreSQL (Canonical Store) is reachable ONLY from the Aggregator's network ==
+   networks the database container is attached to: bnpb_canonical-net
+   PASS canonical-net contains exactly: aggregator + postgres-canonical
+   PASS postgres publishes no port to the host
+   PASS container on app-net (where mocks / client-facing API live): postgres-canonical:5432 is unreachable
+   PASS container on broker-net (consumers): postgres-canonical:5432 is unreachable
+   PASS control: a container on canonical-net (i.e. the Aggregator's network) does reach it
+
+== [3] Kafka is reachable only from broker-net (producer + consumers), not from app-net ==
+   PASS container on app-net: kafka:9092 is unreachable
+   PASS control: a container on broker-net does reach kafka:9092
+
+== [4] Other components get hazards only through the Aggregator API ==
+   PASS the Aggregator API demands its service key (401 without, 403 with a wrong one)
+
+ISOLATION PASS
+   PASS P4 independent deployment, flexible storage, and access isolation complete
