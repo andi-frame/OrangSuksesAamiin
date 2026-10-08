@@ -1,0 +1,252 @@
+\chapter{Problem 4 -- Arsitektur Microservice dan Flexible Storage}
+
+\begin{ringkas}
+Sistem dipecah menjadi container yang masing-masing punya satu alasan untuk berubah: mock sumber, Aggregator,
+Auth Service, Client-Facing API, dan consumer. Canonical Store memakai \textbf{PostgreSQL dengan kolom JSONB}, jadi
+field baru seperti \code{confidence_level} tidak memerlukan perubahan tabel. Jaringan Docker \emph{internal} membuat
+database \textbf{secara fisik tidak terjangkau} oleh service selain Aggregator.
+\end{ringkas}
+
+\begin{catatan}[Status bukti Problem 4]
+Ketiga kriteria terbukti lewat satu skrip, \cmd{make demo-p4}: (A) \code{pvmbg-mock} dihentikan, dibangun ulang, dan
+dijalankan ulang sementara container lain tetap berjalan; (B--D) field baru masuk ke PostgreSQL JSONB tanpa
+migrasi dan data lama tetap terbaca; (E) hanya Aggregator yang dapat menjangkau Canonical Store.
+\end{catatan}
+
+\section{Rancangan solusi dan mekanisme}
+
+\subsection{Pembagian service}
+
+Aturan yang dipakai untuk menarik batas: \textbf{satu container, satu alasan untuk berubah, dan satu pemilik untuk setiap
+data}. Perbaikan di satu alasan tidak boleh memaksa container lain dibangun ulang.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.8cm}L{4.4cm}Y@{}}
+\toprule
+\textbf{Container} & \textbf{Tanggung jawab tunggal} & \textbf{Berubah ketika}\\
+\midrule
+\code{bmkg-mock}, \code{pvmbg-mock} & Menyimulasikan lembaga lain; bukan bagian BNPB & kontrak sumber berubah (di luar kendali BNPB)\\
+\code{aggregator} & Mengambil data, memetakannya, memiliki Canonical Store, dan menerbitkan event & aturan pemetaan atau ingest berubah\\
+\code{auth-service} & Menerbitkan dan memperbarui token klien & kebijakan autentikasi berubah\\
+\code{client-api} & Menyajikan data, menegakkan hak akses dan batas laju; tanpa \emph{state} & kebijakan field atau batas laju berubah\\
+\code{consumer-*} & Satu kebutuhan pihak yang berlangganan (dashboard, notifikasi) & kebutuhan pihak itu berubah\\
+\code{postgres-canonical}, \code{kafka} & Infrastruktur penyimpanan dan penyaluran event & versi atau konfigurasi infrastruktur berubah\\
+\bottomrule
+\end{tabularx}
+\caption{Batas service dan alasan masing-masing berubah.}
+\end{table}
+
+Contoh yang dituntut soal: \emph{perbaikan kecil di autentikasi}. Perbaikan itu hanya menyentuh \code{auth-service}
+(atau \code{client-api} untuk pemeriksaannya). Aggregator, mock, dan consumer tidak ikut dibangun ulang.
+
+\subsection{Aturan kepemilikan penyimpanan}
+
+Setiap penyimpanan hanya dimiliki satu service. Komponen lain meminta data lewat API pemiliknya.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.6cm}L{3.0cm}Y@{}}
+\toprule
+\textbf{Penyimpanan} & \textbf{Pemilik} & \textbf{Cara komponen lain memperoleh data}\\
+\midrule
+Canonical Store (PostgreSQL) & \code{aggregator} & API internal Aggregator (\code{/internal/*}) dengan \code{X-Service-Key}\\
+Hash refresh token (SQLite) & \code{auth-service} & endpoint \code{/v1/token} dan \code{/v1/refresh}\\
+Topic Kafka \code{hazard.events} & \code{aggregator} sebagai penerbit & berlangganan sebagai \emph{consumer group}\\
+Himpunan \code{event_id} consumer & masing-masing consumer & tidak dibagikan\\
+\bottomrule
+\end{tabularx}
+\caption{Kepemilikan penyimpanan.}
+\end{table}
+
+\subsection{Penyimpanan yang fleksibel: PostgreSQL dengan JSONB}
+
+Tabel \code{hazards} memakai kolom tetap hanya untuk identitas dan field kanonik. Semua yang bisa berubah masuk ke satu
+kolom \code{attributes} bertipe JSONB.
+
+\begin{lstlisting}[language=SQL]
+CREATE TABLE IF NOT EXISTS hazards (
+  hazard_id     text PRIMARY KEY,
+  source        text NOT NULL,     source_ref_id text NOT NULL,
+  hazard_type   text NOT NULL,     severity      text NOT NULL,
+  area_name     text NOT NULL,
+  latitude      double precision,  longitude     double precision,
+  occurred_at   timestamptz NOT NULL,  ingested_at timestamptz NOT NULL,
+  updated_at    timestamptz NOT NULL,  version     integer NOT NULL,
+  attributes    jsonb NOT NULL DEFAULT '{}'      -- field dinamis: tanpa DDL saat field baru muncul
+);
+\end{lstlisting}
+
+Potongan di atas disederhanakan: definisi aslinya (\code{adapters/postgres/repo.go}) juga memuat indeks dan aturan
+pengurutan teks untuk \code{hazard_id}, tetapi tidak ada kolom lain. Perintah \cmd{CREATE ... IF NOT EXISTS} berjalan \emph{sekali saat container start}, bukan sebagai langkah migrasi
+setiap kali sumber berubah. Repositori tidak memuat direktori migrasi maupun berkas SQL terpisah. Ketika PVMBG mulai
+mengirim \code{confidence_level}, Aggregator tidak di-restart dan tidak ada DDL yang dijalankan; field itu langsung
+masuk ke \code{attributes}.
+
+\subsection{Isolasi jaringan sebagai bukti kepemilikan}
+
+Janji ``hanya Aggregator yang memegang database'' tidak dibiarkan sebagai janji. Compose membuat empat jaringan, tiga
+di antaranya \emph{internal} (tidak bisa diakses dari luar dan tidak bisa dipakai untuk membuka port ke host):
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.3cm}L{2.2cm}Y@{}}
+\toprule
+\textbf{Jaringan} & \textbf{Internal?} & \textbf{Anggota}\\
+\midrule
+\code{app-net} & tidak & mock, aggregator, auth-service, client-api, consumer (hanya port \code{/health} dan \code{/stats})\\
+\code{canonical-net} & ya & \textbf{hanya} aggregator dan postgres-canonical\\
+\code{broker-net} & ya & kafka, aggregator (penerbit), consumer\\
+\code{auth-net} & ya & auth-service\\
+\bottomrule
+\end{tabularx}
+\caption{Jaringan Docker dan anggotanya.}
+\end{table}
+
+\section{Alasan keputusan dan trade-off}
+
+\subsection{Batas service: mengapa dipecah seperti ini}\label{sec:p4-batas}
+
+Ada beberapa cara memotong sistem menjadi service. Tabel berikut membandingkannya dengan pilihan kami.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.9cm}Y@{}}
+\toprule
+\textbf{Pembagian alternatif} & \textbf{Pertimbangan}\\
+\midrule
+Monolit modular (satu container) & Paling sederhana, tetapi inilah kondisi yang dikeluhkan soal: perbaikan autentikasi memaksa seluruh sistem dibangun ulang.\\
+Dipecah per lapisan teknis (poller, mapper, penyimpan, penerbit) & Terlalu halus. Hazard dan baris outbox harus ditulis dalam \emph{satu transaksi}; bila dipisah, transaksi itu menjadi transaksi terdistribusi. Pemetaan juga membutuhkan hasil polling yang sama, sehingga memisahkannya hanya menambah satu lompatan jaringan tanpa manfaat deploy mandiri.\\
+Dipecah per sumber (adapter BMKG dan adapter PVMBG di container sendiri) & Menarik: perubahan skema PVMBG hanya membangun ulang adapter PVMBG. Tidak diambil pada M1 karena setiap adapter butuh kontrak, container, dan jalur ke store tersendiri, sedangkan di dalam Aggregator kedua sumber sudah berjalan di putaran terpisah. \textbf{Kandidat untuk M2.}\\
+\textbf{Dipecah per alasan berubah (dipilih)} & Sumber, Aggregator (pemilik data), autentikasi, penyajian, dan consumer dapat dibangun ulang secara mandiri. Pasangan yang harus konsisten secara transaksi tetap satu container.\\
+\bottomrule
+\end{tabularx}
+\caption{Alternatif pembagian service.}
+\end{table}
+
+\textbf{Harga yang diterima.} Mengubah aturan pemetaan berarti membangun ulang Aggregator, termasuk polling-nya. Ini
+tidak berbahaya karena penanda kemajuan polling (\emph{watermark}) tersimpan di database dan Aggregator tidak
+bergantung pada urutan start (tanpa \code{depends_on} ke mock atau store; ia mencoba ulang koneksi sampai 90~detik).
+Auth Service, Client-Facing API, dan consumer tidak ikut tersentuh.
+
+\subsection{Pilihan penyimpanan}\label{sec:p4-storage}
+
+Kebutuhan utamanya: field baru dari sumber tidak boleh memaksa migrasi tabel. Tabel berikut membandingkan pilihan yang masuk akal.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{3.1cm}YY@{}}
+\toprule
+\textbf{Alternatif} & \textbf{Kelebihan} & \textbf{Konsekuensi bagi sistem ini}\\
+\midrule
+Relasional dengan kolom tetap & Skema tegas, query kuat & Setiap field baru butuh migrasi dan deploy bersama: masalah Problem~1 kembali lewat jalur storage. \textbf{Ditolak.}\\
+Tabel atribut terpisah (EAV) & Fleksibel tanpa DDL & Query menjadi rumit dan lambat (banyak \emph{join}), tipe data hilang. Lebih buruk daripada JSONB.\\
+Document store (misalnya MongoDB) & Cocok untuk dokumen bebas skema & Menambah satu teknologi baru. Menulis hazard dan outbox secara atomik membutuhkan transaksi lintas dokumen (perlu \emph{replica set}), lebih berat untuk satu instance di Compose.\\
+Key-value (misalnya Redis) & Sangat cepat & Tidak ada query berurutan dan paginasi berbasis kunci yang kami butuhkan, dan tidak ada transaksi hazard-plus-outbox.\\
+\textbf{PostgreSQL dengan JSONB (dipilih)} & Kolom tetap untuk yang pasti, JSONB untuk yang berubah; transaksi ACID; indeks dan query lengkap; satu teknologi untuk hazard dan outbox & Lihat konsekuensi di bawah.\\
+\bottomrule
+\end{tabularx}
+\caption{Perbandingan alternatif penyimpanan.}
+\end{table}
+
+\textbf{Konsekuensi pilihan.}
+\begin{itemize}
+ \item \textbf{Untung:} field baru tanpa migrasi; hazard dan entri outbox ditulis atomik, yang menjadi dasar Problem~5; keyset pagination dengan indeks \cmd{(hazard_type, occurred_at, hazard_id)}.
+ \item \textbf{Rugi:} isi \code{attributes} tidak divalidasi tipenya dan belum diindeks, sehingga API belum mendukung penyaringan berdasarkan nilai atribut. Bila kelak dibutuhkan, indeks GIN dapat ditambahkan tanpa mengubah kontrak.
+ \item \textbf{Keputusan kecil yang disengaja:} kolom \code{outbox.payload} bertipe \code{json}, bukan \code{jsonb}, supaya pesan tersimpan persis seperti dibuat (JSONB menata ulang kunci).
+\end{itemize}
+
+\section{Batasan yang disadari}
+
+\begin{itemize}
+ \item \textbf{Demo \emph{rebuild} memakai \code{pvmbg-mock}, bukan Aggregator.} Mock itu dipilih karena paling aman untuk dimatikan saat demo berjalan. Membangun ulang Aggregator berarti polling berhenti sebentar; itu tidak diperagakan oleh skrip ini.
+ \item \textbf{Saat PVMBG dibangun ulang, data vulkanik tidak bertambah} sampai polling pulih. Data seismik dan record lama tetap tersedia dari Canonical Store.
+ \item \textbf{Aggregator masih menggabungkan beberapa tugas} (polling, pemetaan, kepemilikan store, relay, API internal). Ini keputusan sadar (alasannya di atas), tetapi berarti satu container itu relatif besar.
+ \item \textbf{\code{pkg/obs} dipakai bersama} (log, correlation ID, \emph{health}). Isinya hanya utilitas teknis, tanpa logika bisnis, sehingga sesuai aturan soal. Namun perubahan di sana tetap berarti semua service perlu dibangun ulang agar memakainya.
+ \item \textbf{Satu instance} PostgreSQL dan satu broker Kafka, tanpa replika. Ketahanan terhadap kegagalan bersamaan adalah bahan M2.
+ \item Port API internal Aggregator dibuka ke \emph{loopback} host (127.0.0.1:8083) untuk operator dan skrip demo; klien tidak memakainya.
+ \item Karantina disimpan di memori, bukan di Canonical Store.
+\end{itemize}
+
+\section{Bukti penyelesaian}
+
+Tabel berikut menjawab tiap kriteria di soal beserta status buktinya saat ini.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}L{4.3cm}YL{1.9cm}@{}}
+\toprule
+\textbf{Kriteria soal} & \textbf{Bukti} & \textbf{Status}\\
+\midrule
+Setiap komponen berjalan sebagai container terpisah & Setiap service punya \code{Dockerfile} sendiri dan satu perintah (\cmd{docker compose up --build}) menyalakan semuanya. Daftar container ada di Tabel~\ref{tab:container}. & \lulus\\
+Satu container dapat dihentikan, dibangun ulang, dan dijalankan ulang tanpa merestart yang lain; sistem tetap melayani permintaan lain & \cmd{make demo-p4}, langkah A: \code{pvmbg-mock} dihentikan, dibangun ulang (\cmd{docker compose build}), lalu dijalankan lagi dengan \cmd{docker compose up -d --no-deps}. Selama itu permintaan khusus data BMKG lewat Client-Facing API tetap berstatus 200. ID container dan waktu start delapan container lain dicatat sebelum dan sesudah, dan harus identik. & \lulus\\
+HazardEvent tersimpan tanpa migrasi saat field baru muncul; record lama dan baru berdampingan & \cmd{make demo-p4}, langkah B sampai D. Laporan lama (tanpa \code{confidence_level}) disimpan, skema PVMBG diubah saat sistem berjalan, lalu laporan baru disimpan. Keduanya ada di PostgreSQL dan terbaca lewat Aggregator, dan atribut laporan lama tidak berubah. Sidik jari kolom tabel \code{hazards} sama sebelum dan sesudah, begitu pula waktu start Aggregator, jadi tidak ada DDL dan tidak ada restart. Demo Problem~1 menunjukkan hal serupa pada skala lebih besar (5 hazard dengan dan 28 tanpa field itu). & \lulus\\
+Canonical Store hanya dapat diakses langsung oleh Aggregator & \cmd{make demo-isolation}, juga dijalankan sebagai langkah E \cmd{make demo-p4}: lihat cuplikan di bawah. & \lulus\\
+\bottomrule
+\end{tabularx}
+\caption{Kriteria Problem~4 dan buktinya.}
+\end{table}
+
+\subsection*{Isolasi Canonical Store (\cmd{make demo-isolation})}
+\begin{lstlisting}
+bnpb_app-net:       aggregator auth-service bmkg-mock client-api consumer-dashboard consumer-notifier pvmbg-mock
+bnpb_canonical-net: aggregator postgres-canonical
+bnpb_broker-net:    aggregator consumer-dashboard consumer-notifier kafka
+
+   PASS canonical-net contains exactly: aggregator + postgres-canonical
+   PASS postgres publishes no port to the host
+   PASS container on app-net (where mocks / client-facing API live): postgres-canonical:5432 is unreachable
+   PASS container on broker-net (consumers): postgres-canonical:5432 is unreachable
+   PASS control: a container on canonical-net (i.e. the Aggregator's network) does reach it
+   PASS container on app-net: kafka:9092 is unreachable
+   PASS the Aggregator API demands its service key (401 without, 403 with a wrong one)
+ISOLATION PASS
+\end{lstlisting}
+
+Baris ``control'' penting: ia membuktikan bahwa penolakan di atas \emph{bukan} karena pengujiannya rusak. Container
+percobaan di jaringan yang sama dengan Aggregator berhasil menyambung, sedangkan container di jaringan lain tidak.
+
+\subsection*{Field baru tanpa migrasi (\cmd{make demo-p4}, langkah B--D)}
+\begin{lstlisting}
+[2] B. Store an old-schema volcanic report
+    old row attributes: {"eruption_count_24h": 3, "ash_column_height_m": 2730}
+    hazards table column fingerprint before: 4555805e1c5790a6fff3c9ce2923df04
+    PASS pvmbg-VR-0c2b58-0025 stored without confidence_level in PostgreSQL JSONB
+[3] C. Change PVMBG's schema live and store a new report without a migration
+    new row attributes: {"confidence_level": 0.82, "eruption_count_24h": 15,
+                         "ash_column_height_m": 1822.6}
+    hazards table column fingerprint after: 4555805e1c5790a6fff3c9ce2923df04
+    PASS pvmbg-VR-0c2b58-0028 contains confidence_level; table columns and
+         Aggregator start time did not change
+[4] D. Read old and new records side by side through the Aggregator
+    PASS old=VR-0c2b58-0025 and new=VR-0c2b58-0028 coexist and are readable;
+         old attributes are unchanged
+\end{lstlisting}
+
+Sidik jari yang sama sebelum dan sesudah berarti daftar kolom tabel tidak berubah. Field baru hanya muncul di
+dalam kolom \code{attributes}.
+
+\subsection*{Membangun ulang satu service (\cmd{make demo-p4}, langkah A)}
+\begin{lstlisting}
+[1] A. Rebuild only PVMBG while unrelated services keep serving requests
+    unrelated containers before rebuild:  (8 baris: nama | ID container | waktu start)
+    unrelated containers after rebuild:   (8 baris, identik)
+    PASS BMKG-only requests succeeded; IDs and start times of all other
+         containers stayed fixed
+\end{lstlisting}
+
+\section{Jawaban butir ``Di laporan''}
+
+\begin{jawaban}[Alasan penentuan batas service]
+Batas ditarik menurut \emph{alasan berubah} dan \emph{kepemilikan data}. Sumber, Aggregator (pemilik Canonical Store),
+autentikasi, penyajian, dan consumer dipisah karena masing-masing berubah karena alasan yang berbeda. Polling,
+pemetaan, penyimpanan, dan outbox tetap satu container karena hazard dan baris outbox harus ditulis dalam satu
+transaksi. Pembagian per lapisan teknis ditolak karena mengubah transaksi itu menjadi terdistribusi; pembagian per
+sumber adalah kandidat M2. Rincian di bagian~\ref{sec:p4-batas}.
+\end{jawaban}
+
+\begin{jawaban}[Perbandingan alternatif penyimpanan]
+Dibandingkan: relasional kolom tetap, EAV, document store, key-value, dan PostgreSQL dengan JSONB (bagian~\ref{sec:p4-storage}). PostgreSQL dengan JSONB dipilih karena memberi fleksibilitas dokumen untuk field yang berubah
+\emph{sekaligus} transaksi ACID yang dibutuhkan pola outbox, dengan satu teknologi saja. Konsekuensinya: isi
+\code{attributes} belum divalidasi tipenya dan belum diindeks.
+\end{jawaban}
