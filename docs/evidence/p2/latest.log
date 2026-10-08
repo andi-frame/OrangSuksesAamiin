@@ -2,23 +2,23 @@
 == [1] A. PVMBG slow (3s) — BMKG-only via Client-Facing API p95 < 300 ms ==
 $ POST http://localhost:8082/admin/delay {ms:3000}
 {"delay_min_ms":3000,"delay_max_ms":3000}
-   client-api seismic, 40 requests while PVMBG poll is slow and 4 readers fetch volcanic data in parallel: p95=62.9 ms, hard errors (not 200/429)=0
-   concurrent volcanic readers (p95 ms, hard errors): 75.0 0;65.7 0;87.8 0;55.8 0
-   PASS p95 62.9 ms < 300 ms (BMKG-only through :8080)
+   client-api seismic, 40 requests while PVMBG poll is slow and 4 readers fetch volcanic data in parallel: p95=152.4 ms, hard errors (not 200/429)=0
+   concurrent volcanic readers (p95 ms, hard errors): 169.5 0;153.9 0;163.5 0;189.9 0
+   PASS p95 152.4 ms < 300 ms (BMKG-only through :8080)
    PASS new BMKG event reachable via client-api while PVMBG is slow
 
 == [2] B. PVMBG outage (error) — stale data, no hard errors, BMKG still fresh ==
 $ POST http://localhost:8082/admin/outage {enabled:true, mode:error}
 {"outage":true,"outage_mode":"error"}
-   PASS volcanic count unchanged (50) during outage
+   PASS volcanic count unchanged (27) during outage
    PASS freshness.PVMBG.stale_since set on client-api list
-   PASS all 50 PVMBG items have stale=true
-   PASS volcanic reads during outage: p95 60.3 ms, no hard errors
+   PASS all 27 PVMBG items have stale=true
+   PASS volcanic reads during outage: p95 19.7 ms, no hard errors
    PASS seismic path still works during PVMBG outage
 
 == [3] C. PVMBG outage (hang) — client-api stays responsive on seismic ==
 {"outage":true,"outage_mode":"hang"}
-   PASS seismic p95 34.3 ms while PVMBG hangs
+   PASS seismic p95 12.1 ms while PVMBG hangs
 
 == [4] D. Recovery — PVMBG up again, no container restart ==
 $ POST http://localhost:8082/admin/outage {enabled:false}
@@ -35,16 +35,16 @@ $ POST http://localhost:8082/admin/outage {enabled:false}
     "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
     "tool": "k6"
   },
-  "requests": 26943,
-  "throughput_rps": 448.34311161345096,
+  "requests": 26752,
+  "throughput_rps": 445.0826461673987,
   "latency_ms": {
-    "p50": 7.1427,
-    "p95": 29.466699999999996,
-    "p99": 42.69678199999998,
-    "max": 68.3995
+    "p50": 9.3673,
+    "p95": 19.626389999999976,
+    "p99": 28.278220999999935,
+    "max": 68.8216
   },
   "status": {
-    "ok_200": 26943,
+    "ok_200": 26752,
     "rejected_429": 0,
     "other": 0
   },
@@ -53,10 +53,10 @@ $ POST http://localhost:8082/admin/outage {enabled:false}
   "token_renewals": 50
 }
    PASS k6 load test passed: unhandled error rate < 1% and p95 < 300 ms (docs/evidence/p2/k6-summary.json)
-   sustained run: {"requests":26943,"throughput_rps":448.34311161345096,"latency_ms":{"p50":7.1427,"p95":29.466699999999996,"p99":42.69678199999998,"max":68.3995},"status":{"ok_200":26943,"rejected_429":0,"other":0},"unhandled_error_rate":0,"token_renewals":50}
+   sustained run: {"requests":26752,"throughput_rps":445.0826461673987,"latency_ms":{"p50":9.3673,"p95":19.626389999999976,"p99":28.278220999999935,"max":68.8216},"status":{"ok_200":26752,"rejected_429":0,"other":0},"unhandled_error_rate":0,"token_renewals":50}
 
 == [6] F. Overload: 150 VUs with no think time for 20 s - excess is shed with 429, never 5xx, service stays up ==
-time="2026-10-08T02:47:56+07:00" level=warning msg="\"env\" level configuration overrode scenarios configuration entirely"
+time="2026-10-08T18:27:33+07:00" level=warning msg="\"env\" level configuration overrode scenarios configuration entirely"
 {
   "config": {
     "vus": 150,
@@ -65,24 +65,24 @@ time="2026-10-08T02:47:56+07:00" level=warning msg="\"env\" level configuration 
     "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
     "tool": "k6"
   },
-  "requests": 189082,
-  "throughput_rps": 9447.510267113586,
+  "requests": 81112,
+  "throughput_rps": 4051.3137505650398,
   "latency_ms": {
-    "p50": 11.6616,
-    "p95": 37.19100999999997,
-    "p99": 61.18921700000001,
-    "max": 239.0195
+    "p50": 23.6767,
+    "p95": 67.97307999999997,
+    "p99": 188.72986599999996,
+    "max": 507.7832
   },
   "status": {
     "ok_200": 10989,
-    "rejected_429": 178093,
+    "rejected_429": 70123,
     "other": 0
   },
-  "rate_429": 0.9418823579187866,
+  "rate_429": 0.8645206627872571,
   "unhandled_error_rate": 0,
   "token_renewals": 0
 }
-   overload: {"requests":189082,"throughput_rps":9447.510267113586,"latency_ms":{"p50":11.6616,"p95":37.19100999999997,"p99":61.18921700000001,"max":239.0195},"status":{"ok_200":10989,"rejected_429":178093,"other":0},"rate_429":0.9418823579187866,"unhandled_error_rate":0}
+   overload: {"requests":81112,"throughput_rps":4051.3137505650398,"latency_ms":{"p50":23.6767,"p95":67.97307999999997,"p99":188.72986599999996,"max":507.7832},"status":{"ok_200":10989,"rejected_429":70123,"other":0},"rate_429":0.8645206627872571,"unhandled_error_rate":0}
    PASS controlled rejections happened and are reported (HTTP 429 count above)
    PASS no 5xx / auth errors / timeouts under overload (only 200 and 429)
    PASS client-api still answers /health right after the overload

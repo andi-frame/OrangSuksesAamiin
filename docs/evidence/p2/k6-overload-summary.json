@@ -6,20 +6,20 @@
     "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
     "tool": "k6"
   },
-  "requests": 189082,
-  "throughput_rps": 9447.510267113586,
+  "requests": 81112,
+  "throughput_rps": 4051.3137505650398,
   "latency_ms": {
-    "p50": 11.6616,
-    "p95": 37.19100999999997,
-    "p99": 61.18921700000001,
-    "max": 239.0195
+    "p50": 23.6767,
+    "p95": 67.97307999999997,
+    "p99": 188.72986599999996,
+    "max": 507.7832
   },
   "status": {
     "ok_200": 10989,
-    "rejected_429": 178093,
+    "rejected_429": 70123,
     "other": 0
   },
-  "rate_429": 0.9418823579187866,
+  "rate_429": 0.8645206627872571,
   "unhandled_error_rate": 0,
   "token_renewals": 0
 }
