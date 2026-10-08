@@ -4,19 +4,16 @@
    PASS consumer-notifier /health
 
 == [2] B. New hazard event is published and received by BOTH consumers ==
-   generated BMKG event EQ-11bf66-0051 — waiting for Kafka fan-out
-   PASS dashboard processed=107 notifier processed=107
+   generated BMKG event EQ-c8206b-0041 — waiting for Kafka fan-out
+   PASS dashboard processed=82 notifier processed=24
 
 == [3] C. Notifier stopped — Aggregator still ingests; dashboard still receives events ==
- Container bnpb-consumer-notifier-1  Stopping
- Container bnpb-consumer-notifier-1  Stopped
-   PASS aggregator ingested bmkg-EQ-11bf66-0053 while notifier is down
+   PASS aggregator ingested bmkg-EQ-c8206b-0042 while notifier is down
    PASS dashboard still consuming (producer not blocked by dead consumer)
 
 == [4] D. Notifier restarts and catches up ==
- Container bnpb-kafka-1  Waiting
- Container bnpb-kafka-1  Healthy
- Container bnpb-consumer-notifier-1  Starting
- Container bnpb-consumer-notifier-1  Started
-   PASS notifier caught up after restart processed=6
+   PASS notifier caught up with the exact offline event bmkg-EQ-c8206b-0042:1
+
+== [5] E. Add a new consumer group to the same topic without touching the producer ==
+   PASS dashboard, notifier, and new pemda group received bmkg-EQ-c8206b-0044:1; producer was unchanged
    PASS P5 pub/sub demo complete

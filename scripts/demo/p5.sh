@@ -4,11 +4,19 @@
 # Proves:
 #   - Events reach the broker; consumers in separate groups both process new events
 #   - Stopping one consumer does not block the Aggregator (ingest continues)
-#   - Restarted consumer catches up (processed count increases)
+#   - Restarted consumer receives the exact event published while it was stopped
+#   - A third consumer joins the existing topic without changing the producer
 #
 # Prerequisite: make up (REPOSITORY_BACKEND=postgres, PUBLISHER_BACKEND=kafka in .env)
 . "$(dirname "$0")/../lib.sh"
 require_stack
+
+PEMDA_CONTAINER="p5-pemda-demo"
+cleanup() {
+  docker compose start consumer-notifier >/dev/null 2>&1 || true
+  docker rm -f "$PEMDA_CONTAINER" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 DASH_URL="http://localhost:${CONSUMER_DASHBOARD_PORT:-8091}"
 NOTIF_URL="http://localhost:${CONSUMER_NOTIFIER_PORT:-8092}"
@@ -19,6 +27,31 @@ has_hazard_agg() {
 
 notif_up() {
   [ "$(code "${NOTIF_URL}/health")" = "200" ]
+}
+
+consumer_logged_event() {
+  local service="$1" event_id="$2"
+  docker compose logs --no-log-prefix "$service" 2>/dev/null |
+    jqx -e --arg event_id "$event_id" \
+      'select(.msg == "consumer_event" and .event_id == $event_id)' >/dev/null
+}
+
+producer_logged_event() {
+  local event_id="$1"
+  docker compose logs --no-log-prefix aggregator 2>/dev/null |
+    jqx -e --arg event_id "$event_id" \
+      'select(.msg == "outbox_published" and .event_id == $event_id)' >/dev/null
+}
+
+pemda_up() {
+  docker exec "$PEMDA_CONTAINER" wget -q -O /dev/null http://127.0.0.1:8092/health
+}
+
+pemda_logged_event() {
+  local event_id="$1"
+  docker logs "$PEMDA_CONTAINER" 2>/dev/null |
+    jqx -e --arg event_id "$event_id" \
+      'select(.msg == "consumer_event" and .event_id == $event_id)' >/dev/null
 }
 
 cons_processed() {
@@ -46,23 +79,43 @@ G="$(bmkg_admin /admin/generate '{"count":1}' | jqx -r '.generated[0].event_id')
 info "generated BMKG event $G — waiting for Kafka fan-out"
 wait_consume "$DASH_URL" "$BEFORE_D" 90
 wait_consume "$NOTIF_URL" "$BEFORE_N" 90
+wait_until "broker acknowledges bmkg-$G:1" 30 producer_logged_event "bmkg-$G:1"
+wait_until "dashboard logs bmkg-$G:1" 30 consumer_logged_event consumer-dashboard "bmkg-$G:1"
+wait_until "notifier logs bmkg-$G:1" 30 consumer_logged_event consumer-notifier "bmkg-$G:1"
 ok "dashboard processed=$(cons_processed "$DASH_URL") notifier processed=$(cons_processed "$NOTIF_URL")"
 
 step "C. Notifier stopped — Aggregator still ingests; dashboard still receives events"
-docker compose stop consumer-notifier >/dev/null
+docker compose stop consumer-notifier >/dev/null 2>&1 || fail "could not stop notifier"
 sleep 2
 BEFORE_D2="$(cons_processed "$DASH_URL")"
 G2="$(bmkg_admin /admin/generate '{"count":1}' | jqx -r '.generated[0].event_id')"
 wait_until "BMKG $G2 ingested" 45 has_hazard_agg "bmkg-$G2"
+wait_until "broker acknowledges bmkg-$G2:1" 90 producer_logged_event "bmkg-$G2:1"
 ok "aggregator ingested bmkg-$G2 while notifier is down"
 wait_consume "$DASH_URL" "$BEFORE_D2" 90
+wait_until "dashboard logs bmkg-$G2:1" 30 consumer_logged_event consumer-dashboard "bmkg-$G2:1"
 ok "dashboard still consuming (producer not blocked by dead consumer)"
 
 step "D. Notifier restarts and catches up"
-docker compose start consumer-notifier >/dev/null
+docker compose start consumer-notifier >/dev/null 2>&1 || fail "could not restart notifier"
 wait_until "notifier /health" 60 notif_up
-NOTIF_BEFORE="$(cons_processed "$NOTIF_URL")"
-wait_consume "$NOTIF_URL" "$NOTIF_BEFORE" 120
-ok "notifier caught up after restart processed=$(cons_processed "$NOTIF_URL")"
+wait_until "notifier receives offline event bmkg-$G2:1" 120 consumer_logged_event consumer-notifier "bmkg-$G2:1"
+ok "notifier caught up with the exact offline event bmkg-$G2:1"
+
+step "E. Add a new consumer group to the same topic without touching the producer"
+AGG_ID="$(docker compose ps -q aggregator)"
+AGG_STARTED="$(started_at aggregator)"
+docker rm -f "$PEMDA_CONTAINER" >/dev/null 2>&1 || true
+docker compose run -d --no-deps --name "$PEMDA_CONTAINER" \
+  -e CONSUMER_NAME=pemda -e KAFKA_GROUP=pemda-portal consumer-notifier >/dev/null 2>&1 || fail "could not start pemda consumer"
+wait_until "new pemda consumer healthy" 60 pemda_up
+G3="$(bmkg_admin /admin/generate '{"count":1}' | jqx -r '.generated[0].event_id')"
+wait_until "broker acknowledges bmkg-$G3:1" 90 producer_logged_event "bmkg-$G3:1"
+wait_until "dashboard logs bmkg-$G3:1" 90 consumer_logged_event consumer-dashboard "bmkg-$G3:1"
+wait_until "notifier logs bmkg-$G3:1" 90 consumer_logged_event consumer-notifier "bmkg-$G3:1"
+wait_until "pemda logs bmkg-$G3:1" 90 pemda_logged_event "bmkg-$G3:1"
+[ "$AGG_ID" = "$(docker compose ps -q aggregator)" ] || fail "producer container was replaced"
+[ "$AGG_STARTED" = "$(started_at aggregator)" ] || fail "producer container was restarted"
+ok "dashboard, notifier, and new pemda group received bmkg-$G3:1; producer was unchanged"
 
 ok "P5 pub/sub demo complete"
