@@ -53,9 +53,9 @@ Legenda: ✅ terbukti dan lulus · 🟡 sebagian · ⬜ belum (pemilik: nama di 
 
 | Kriteria | Demo | Bukti | Owner | Status |
 |---|---|---|---|---|
-| Tiap komponen container terpisah; satu dapat di-stop/rebuild/start tanpa merestart yang lain | `make demo-p4` | – | 3 | ⬜ (Dockerfile per service: ✅) |
-| HazardEvent di penyimpanan tanpa migrasi saat field baru muncul; record lama dan baru berdampingan | `make demo-p4` (Postgres JSONB), `repotest` | – | 3 | ⬜ (kontrak: ✅ `repotest`) |
-| Canonical Store hanya dapat diakses Aggregator | `make demo-isolation` | `docs/evidence/p4/isolation.log` | 1 | ✅ |
+| Tiap komponen container terpisah; satu dapat di-stop/rebuild/start tanpa merestart yang lain | `make demo-p4` langkah A (`pvmbg-mock` di-stop, di-build, dijalankan lagi; ID dan `StartedAt` container lain tetap) | `docs/evidence/p4/latest.log` | 3 | ✅ |
+| HazardEvent di penyimpanan tanpa migrasi saat field baru muncul; record lama dan baru berdampingan | `make demo-p4` langkah B–D (Postgres JSONB, sidik kolom tabel tetap), `repotest` | `docs/evidence/p4/latest.log` | 3 | ✅ |
+| Canonical Store hanya dapat diakses Aggregator | `make demo-isolation`; juga langkah E `make demo-p4` | `docs/evidence/p4/isolation.log`, `docs/evidence/p4/latest.log` | 1 | ✅ |
 
 ## Problem 5 — pub/sub (Owner: 3; producer: 1)
 

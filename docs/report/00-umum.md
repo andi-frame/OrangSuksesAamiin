@@ -41,7 +41,7 @@ flowchart LR
     K[[Kafka · hazard.events]]
     C1[consumer-dashboard]
     C2[consumer-notifier]
-    C3[consumer-pemda]
+    C3[consumer pemda-portal<br/>ditambah saat demo P5]
   end
   AGG -- "HTTP poll" --> BMKG
   AGG -- "HTTP poll" --> PVMBG

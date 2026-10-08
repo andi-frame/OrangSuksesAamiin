@@ -7,7 +7,7 @@ tiga jenis client dengan hak akses berbeda. BMKG dan PVMBG adalah **mock** yang 
 ```
 BMKG mock :8081 ◄─poll─┐                                   ┌─► consumer-dashboard
 PVMBG mock :8082 ◄─poll─┤ AGGREGATOR ─outbox─► Kafka ─────┼─► consumer-notifier
-                        │  │ (pemilik satu-satunya)        └─► consumer-pemda
+                        │  │ (pemilik satu-satunya)        └─► consumer baru (pemda-portal, demo P5)
                         │  └─► PostgreSQL (Canonical Store, jaringan internal)
 Client ─► Client-Facing API :8080 ─► API internal Aggregator :8083     Auth Service
 ```
