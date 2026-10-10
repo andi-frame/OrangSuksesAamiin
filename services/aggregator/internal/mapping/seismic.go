@@ -34,7 +34,7 @@ func SeverityFromMagnitude(m float64) domain.Severity {
 	}
 }
 
-// Seismic maps a raw SeismicEvent to a HazardEvent WITHOUT tsunami information;
+// Seismic maps a raw SeismicEvent to a HazardEvent without tsunami information;
 // call ApplyWarnings afterwards to fold warnings in.
 func Seismic(raw map[string]any, ingestedAt time.Time) (*domain.HazardEvent, error) {
 	id, err := reqString(raw, "event_id")

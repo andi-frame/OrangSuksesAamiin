@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// PVMBG access tokens have their own structure, deliberately different from
+// PVMBG access tokens have their own structure, different from
 // BMKG's opaque API key:
 //
 //	pvmbg.v1.<base64url(claims-json)>.<base64url(HMAC-SHA256(secret, "pvmbg.v1."+payload))>

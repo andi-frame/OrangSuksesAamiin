@@ -5,7 +5,7 @@
 #   A. PVMBG slowed to 3 s        -> the Aggregator's BMKG side is unaffected
 #   B. PVMBG outage (mode error)  -> circuit opens, data kept, stale_since set, BMKG keeps flowing
 #   C. PVMBG outage (mode hang)   -> requests never answered; timeouts bounded; API still fast
-#   D. outage ends                -> back to normal WITHOUT restart
+#   D. outage ends                -> back to normal without restart
 #
 # The Client-Facing API (load test, 429, stale_since in responses) is Orang 2's part; it relies on
 # exactly the freshness information exercised here.

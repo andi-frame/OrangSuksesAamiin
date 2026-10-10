@@ -152,7 +152,7 @@ func (s *server) volcanicReports(w http.ResponseWriter, r *http.Request) {
 	if !s.delay(r.Context()) {
 		return
 	}
-	// The schema flag is read AFTER the delay: it reflects the moment of the
+	// The schema flag is read after the delay: it reflects the moment of the
 	// response, so a switch flipped while the request was waiting is honoured.
 	obs.WriteJSON(w, http.StatusOK, s.store.Since(since, s.state.Confidence()))
 }

@@ -22,7 +22,7 @@ type QuarantineEntry struct {
 }
 
 // Quarantine keeps the most recent rejected records (bounded ring) and counts
-// all of them. It is deliberately in-memory: it is a diagnostic aid, not a
+// all of them. It is in-memory: it is a diagnostic aid, not a
 // store of record (documented limitation).
 type Quarantine struct {
 	log *slog.Logger

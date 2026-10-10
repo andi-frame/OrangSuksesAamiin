@@ -11,7 +11,7 @@ import (
 )
 
 // Known top-level fields of a PVMBG VolcanicReport (contract). confidence_level
-// is deliberately NOT listed: it is handled by the generic "unknown field ->
+// is not listed: it is handled by the generic "unknown field ->
 // attributes" rule, which is exactly what Problem 1 demonstrates.
 var volcanicKnown = set(
 	"report_id", "volcano_id", "alert_level", "eruption_count_24h",

@@ -1,10 +1,10 @@
 // Package ports defines the interfaces through which the Aggregator talks to
-// its infrastructure. The Aggregator owns the Canonical Store (P4): nothing but
-// a Repository implementation ever touches the database, and nothing but a
-// Publisher implementation ever touches the broker.
+// its infrastructure. The Aggregator owns the Canonical Store (P4), so only a
+// Repository implementation touches the database and only a Publisher
+// implementation touches the broker.
 //
-// Backends are pluggable (see internal/adapters): memory/log for tests and
-// local dev, postgres/kafka for the real system.
+// Backends are pluggable (see internal/adapters): memory and log for tests and
+// local runs, postgres and kafka for the real system.
 package ports
 
 import (
@@ -27,10 +27,10 @@ var (
 	ErrVersionConflict = errors.New("version conflict")
 )
 
-// OutboxEntry is a broker message that must be published because a hazard was
-// created or changed. It is written in the SAME transaction as the hazard
-// (transactional outbox), so a stored hazard can never lose its event and a
-// broker outage never blocks ingestion.
+// OutboxEntry is a broker message waiting to be published after a hazard was
+// created or changed. It is written in the same transaction as the hazard
+// (transactional outbox), so a stored hazard always has its event and a broker
+// outage doesn't block ingestion.
 type OutboxEntry struct {
 	EventID       string // "<hazard_id>:<version>" - unique, idempotency key
 	HazardID      string // message key => per-hazard ordering in Kafka

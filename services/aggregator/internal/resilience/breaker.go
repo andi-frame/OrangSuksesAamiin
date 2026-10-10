@@ -10,7 +10,7 @@ import (
 
 // Breaker is a small circuit breaker: after `threshold` consecutive failures it
 // opens for `openFor` (calls are skipped, so a dead PVMBG costs nothing), then
-// lets ONE probe through (half-open); a success closes it, a failure re-opens.
+// lets one probe through (half-open); a success closes it, a failure re-opens.
 type Breaker struct {
 	threshold int
 	openFor   time.Duration

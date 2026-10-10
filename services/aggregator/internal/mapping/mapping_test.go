@@ -233,7 +233,7 @@ func TestConfidenceLevelAppearsWithoutCodeChange(t *testing.T) {
 }
 
 func TestUnknownFieldPolicyIsConsistent(t *testing.T) {
-	// Policy: EVERY unknown top-level field goes to attributes, verbatim, whatever
+	// Policy: every unknown top-level field goes to attributes, verbatim, whatever
 	// its JSON type, for both sources.
 	extras := `,"confidence_level":0.9,"str":"x","num":3,"flag":true,"nested":{"a":[1,2,{"b":null}]},"list":["p","q"],"nothing":null`
 	want := map[string]any{}
