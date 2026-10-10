@@ -11,7 +11,7 @@ PVMBG mock :8082 ◄─poll─┤ AGGREGATOR ─outbox─► Kafka ────�
                         │  └─► PostgreSQL (Canonical Store, jaringan internal)
 Client ─► Client-Facing API :8080 ─► API internal Aggregator :8083     Auth Service
 ```
-Diagram lengkap dan narasi: `docs/report/00-umum.md`. Kontrak antar-komponen: `docs/contracts.md`.
+Diagram lengkap dan penjelasannya ada di laporan (`docs/IF4031_M1_OrangSuksesAamiin.pdf`). Kontrak antarkomponen: `docs/contracts.md`.
 
 ## 1. Prasyarat
 
@@ -36,7 +36,7 @@ Mulai dari kondisi bersih (hapus data dan volume): `make reset`. Berhenti: `make
 |---|---|---|
 | BMKG mock | **8081** | `BMKG_PORT` |
 | PVMBG mock | **8082** | `PVMBG_PORT` |
-| Client-Facing API (BNPB) | **8080** | dimiliki Orang 2 |
+| Client-Facing API (BNPB) | **8080** | `CLIENT_API_PORT` |
 | Aggregator (API internal) | 127.0.0.1:**8083** | hanya loopback; klien memakai 8080 |
 | Auth Service | **8084** | `AUTH_SERVICE_PORT` |
 | Consumer dashboard / notifier | **8091** / **8092** | stats: `GET /stats` |
@@ -83,8 +83,8 @@ Jalankan setelah `make up` (untuk hasil yang bersih: `make reset` dulu).
 | **P3** kredensial mock | `make demo-mock-auth` | kredensial BMKG ditolak PVMBG dan sebaliknya; tiap container hanya memegang rahasianya sendiri |
 | **P3** client downstream | `make demo-p3` | 401/403, Media hanya Ringkasan (semua bentuk permintaan Mentah → 403), token kedaluwarsa 60 s → refresh tanpa login, refresh lama ditolak (±70 detik) |
 | **P4** isolasi storage | `make demo-isolation` | Canonical Store dan Kafka tidak terjangkau dari container lain |
-| **P4** rebuild satu service, JSONB | `make demo-p4` | *Orang 3* |
-| **P5** pub/sub | `make demo-p5` | 2 consumer groups, fan-out, catch-up after stop |
+| **P4** rebuild satu service, JSONB | `make demo-p4` | `pvmbg-mock` dihentikan, di-rebuild, dan dijalankan lagi tanpa menyentuh container lain; field baru masuk ke JSONB tanpa migrasi dan record lama tetap terbaca; Canonical Store hanya terjangkau Aggregator |
+| **P5** pub/sub | `make demo-p5` | event sampai ke dua consumer group, satu consumer dimatikan lalu menyusul event yang terlewat, dan group baru ditambahkan tanpa mengubah producer |
 | Kredensial tidak ter-commit | `make secrets` | `.env` tidak dilacak/tidak pernah di-commit; gitleaks bersih; `.env.example` ada |
 | Semua sekaligus | `make evidence` | menjalankan semua demo |
 
@@ -122,13 +122,13 @@ Aggregator tidak memiliki `depends_on` ke mock atau store: ia tetap berjalan dan
 ```
 docker-compose.yml   .env.example   Makefile
 contracts/           openapi/*.yaml, schemas/*.json   (kontrak yang divalidasi test)
-docs/                contracts.md, adapters.md, traceability.md, report/, evidence/
+docs/                contracts.md, adapters.md, traceability.md, report/ (sumber laporan), evidence/, laporan PDF
 scripts/             lib.sh, wait-healthy.sh, check-secrets.sh, demo/*.sh
 pkg/obs/             utilitas teknis bersama: log JSON, correlation ID, klien HTTP ber-latensi, health, env
 services/
-  bmkg-mock/  pvmbg-mock/  aggregator/        (Orang 1)
-  auth-service/  client-api/                   (Orang 2)
-  consumer-hazard/ (2 groups in compose)       (P5)
+  bmkg-mock/  pvmbg-mock/  aggregator/
+  auth-service/  client-api/
+  consumer-hazard/   (dijalankan dua kali di compose: dashboard dan notifier)
 tools/pvmbg-token/   pembuat token PVMBG
 deploy/kafka/        pembuat topic (kafka-init)
 ```
