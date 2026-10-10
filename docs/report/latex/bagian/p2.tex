@@ -9,8 +9,8 @@ tetap tersaji dengan penanda \code{stale}.
 
 \section{Rancangan solusi dan mekanisme}
 
-\textbf{Pokok idenya: pisahkan \emph{mengambil data} dari \emph{melayani klien}.} Prototipe Astolfo memanggil BMKG lalu
-PVMBG secara berurutan di dalam satu permintaan klien, sehingga lambatnya PVMBG dirasakan semua orang. Pada rancangan
+\textbf{Pokok idenya: pisahkan \emph{mengambil data} dari \emph{melayani klien}.} Gateway yang memanggil BMKG lalu
+PVMBG secara berurutan di dalam satu permintaan klien membuat lambatnya PVMBG dirasakan semua orang. Pada rancangan
 kami, jalur layanan tidak pernah menyentuh sumber.
 
 \input{bagian/fig-p2}

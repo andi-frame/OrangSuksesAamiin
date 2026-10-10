@@ -123,7 +123,7 @@ Ada beberapa cara untuk menghadapi skema sumber yang berubah. Tabel berikut memb
 \toprule
 \textbf{Alternatif} & \textbf{Pertimbangan}\\
 \midrule
-Struct tetap (prototipe Astolfo) & Sederhana dan bertipe, tetapi field baru hilang diam-diam, atau pesan gagal dibaca seluruhnya. Persis masalah di soal.\\
+Struct tetap & Sederhana dan bertipe, tetapi field baru hilang diam-diam, atau pesan gagal dibaca seluruhnya. Persis masalah di soal.\\
 Schema registry & Validasi terpusat. Tetapi menuntut sumber ikut mendaftarkan skema, sedangkan PVMBG mengubah skema \emph{tanpa memberi tahu siapa pun}. Registry tidak akan pernah mutakhir tepat waktu.\\
 Protobuf atau Avro (schema evolution) & Evolusi terformalisasi, tetapi sumber mengirim JSON biasa. Lapisan konversi tetap harus tahu skema baru.\\
 Pemetaan dinamis lewat berkas konfigurasi & Tanpa redeploy kode, tetapi seseorang tetap harus mengubah konfigurasi saat field baru muncul. Itu masih intervensi manual.\\

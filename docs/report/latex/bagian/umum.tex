@@ -31,8 +31,8 @@ Orang~3 \newline 13523152 - Muhammad Kinan Arkansyaddad &
 
 \section{Deskripsi umum sistem}
 
-Di cerita soal, Astolfo menerima sinyal bencana dari banyak lembaga yang tidak saling bicara. Sistem ini, ARGUS
-(\emph{Aggregated Real-time Geohazard Unified System}), adalah \emph{gateway} milik BNPB yang menyambungkannya. Ia melakukan lima hal:
+ARGUS (\emph{Aggregated Real-time Geohazard Unified System}) adalah \emph{gateway} milik BNPB yang menyatukan data
+kebencanaan dari BMKG dan PVMBG. Ia melakukan lima hal:
 
 \begin{enumerate}
  \item \textbf{Mengambil} data dari dua lembaga secara berkala (\emph{polling}): BMKG untuk gempa dan tsunami, PVMBG untuk gunung api.
@@ -154,7 +154,7 @@ Kualitas & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitleaks & 
  \item Respons mock berupa JSON array. Parameter \code{since} bersifat \emph{lebih besar dari} (bukan sama dengan) terhadap \code{occurred_at}, \code{issued_at}, atau \code{reported_at}. Field \code{issued_at} pada TsunamiWarning adalah tambahan yang diizinkan soal.
  \item Warning tsunami dapat terbit \emph{setelah} gempanya. Mock sengaja memberi jeda 2--8 detik. Satu gempa dapat punya beberapa warning dan yang tertinggi menentukan severity.
  \item Hanya ada satu instance tiap service pada M1. Konkurensi optimistis (\code{expectedVersion}) sudah disiapkan untuk M2.
- \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya pendekatan untuk simulasi, dan gunung ``Prikitiw'' fiktif mengikuti cerita soal.
+ \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya pendekatan untuk simulasi, dan gunung ``Prikitiw'' bersifat fiktif.
  \item Seluruh waktu memakai UTC dan dipotong ke ketelitian mikrodetik.
  \item Karantina record yang tidak dapat dipetakan bersifat diagnostik dan disimpan di memori.
  \item Endpoint \code{/admin/*} pada mock (termasuk \code{extra_fields}, \code{override}, \code{/admin/generate}, \code{/admin/delay}) adalah tambahan untuk demo. Kontrak yang ditetapkan soal tidak diubah.

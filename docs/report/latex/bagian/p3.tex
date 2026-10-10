@@ -58,7 +58,7 @@ Tabel berikut membandingkan beberapa cara mengamankan akses klien dengan pilihan
 \toprule
 \textbf{Alternatif} & \textbf{Mengapa tidak dipilih}\\
 \midrule
-Satu kunci untuk semua (kondisi awal Astolfo) & Persis masalah di soal: kunci Media bocor berarti data mentah bocor, dan kunci BMKG menembus PVMBG.\\
+Satu kunci untuk semua & Persis masalah di soal: kunci Media bocor berarti data mentah bocor, dan kunci BMKG menembus PVMBG.\\
 API key statis per klien, tanpa token & Tidak ada kedaluwarsa dan refresh, padahal Lapangan wajib bertoken pendek. Kunci yang bocor berlaku selamanya.\\
 Token buram dengan introspeksi ke Auth Service tiap permintaan & Pencabutan seketika, tetapi setiap permintaan klien menambah satu panggilan jaringan dan Auth Service menjadi titik gagal bagi jalur baca. Ini bertentangan dengan tujuan Problem~2.\\
 JWT asimetris (RS256 atau EdDSA) & Lebih aman: Client-Facing API cukup memegang kunci publik, sehingga bila API dibobol, penyerang tidak bisa mencetak token. Tetapi menambah pengelolaan kunci. \textbf{Dicatat sebagai perbaikan M2.}\\
