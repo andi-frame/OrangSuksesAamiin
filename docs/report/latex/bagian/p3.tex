@@ -27,20 +27,20 @@ Klien downstream & \code{client_id} dan \code{client_secret} per peran, lalu JWT
 \caption{Lima domain kepercayaan dan kredensialnya masing-masing.}
 \end{table}
 
-Aggregator memegang \emph{token} PVMBG, tetapi \textbf{tidak memegang rahasia penanda tangannya}. Akibatnya Aggregator
+Aggregator memegang \emph{token} PVMBG, tetapi tidak memegang rahasia penanda tangannya. Akibatnya Aggregator
 bisa memanggil PVMBG, tetapi tidak bisa mencetak \emph{token} baru atau mengadministrasi PVMBG.
 
 \subsection{Klien downstream: Media, Tim Lapangan, BNPB Pusat}
 
 \begin{itemize}
- \item \textbf{Tiga identitas yang benar-benar berbeda} (\code{AUTH_MEDIA_*}, \code{AUTH_LAPANGAN_*}, \code{AUTH_PUSAT_*}, masing-masing dengan id dan secret sendiri), bukan satu akun dengan \emph{flag} peran di sisi klien. Peran ditentukan Auth Service dari identitas yang berhasil \emph{login}, lalu ditulis ke klaim \code{role} \emph{di dalam token yang ditandatangani}. Klien tidak dapat memilih perannya sendiri.
- \item \textbf{Access \emph{token}} berupa JWT HS256 dengan klaim \code{sub}, \code{role}, \code{jti}, \code{iat}, dan \code{exp}. TTL-nya \textbf{60~detik} (\code{AUTH_ACCESS_TTL_SEC}, dapat diubah).
- \item \textbf{\emph{Refresh} \emph{token}} berupa 256 bit acak yang \textbf{tidak pernah disimpan dalam bentuk asli}. Yang disimpan hanya hash SHA-256 di SQLite milik Auth Service (volume yang hanya dipasang pada \emph{container} itu). \emph{Token} ini sekali pakai: \cmd{POST /v1/refresh} menandai \emph{token} lama sebagai \code{revoked} dalam transaksi yang sama dengan pembacaannya, lalu menerbitkan pasangan \emph{token} baru. TTL-nya \code{AUTH_REFRESH_TTL_SEC} (24~jam).
- \item \textbf{Penegakan di sisi BNPB pada setiap permintaan} (\code{services/client-api}):
+ \item Tiga identitas yang benar-benar berbeda (\code{AUTH_MEDIA_*}, \code{AUTH_LAPANGAN_*}, \code{AUTH_PUSAT_*}, masing-masing dengan id dan \emph{secret} sendiri), bukan satu akun dengan \emph{flag} peran di sisi klien. Peran ditentukan Auth Service dari identitas yang berhasil \emph{login}, lalu ditulis ke klaim \code{role} \emph{di dalam token yang ditandatangani}. Klien tidak dapat memilih perannya sendiri.
+ \item Access \emph{token} berupa JWT HS256 dengan klaim \code{sub}, \code{role}, \code{jti}, \code{iat}, dan \code{exp}. TTL-nya 60~detik (\code{AUTH_ACCESS_TTL_SEC}, dapat diubah).
+ \item \emph{Refresh} \emph{token} berupa 256 bit acak yang tidak pernah disimpan dalam bentuk asli. Yang disimpan hanya \emph{hash} SHA-256 di SQLite milik Auth Service (volume yang hanya dipasang pada \emph{container} itu). \emph{Token} ini sekali pakai: \cmd{POST /v1/refresh} menandai \emph{token} lama sebagai \code{revoked} dalam transaksi yang sama dengan pembacaannya, lalu menerbitkan pasangan \emph{token} baru. TTL-nya \code{AUTH_REFRESH_TTL_SEC} (24~jam).
+ \item Penegakan di sisi BNPB pada setiap permintaan (\code{services/client-api}):
   \begin{enumerate}
-   \item Tanpa \cmd{Authorization: Bearer} berarti \textbf{401}. \emph{Token} rusak, kedaluwarsa, salah tanda tangan, atau berperan tidak dikenal berarti \textbf{403}.
-   \item \textbf{Media} hanya menerima \emph{field} Ringkasan lewat \emph{whitelist} (\code{policy.FilterItem}). \emph{Field} baru yang kelak muncul di HazardEvent tidak otomatis bocor ke Media.
-   \item Permintaan Media atas \emph{field} Mentah (\code{fields=latitude}, \code{include=mentah}, dan sejenisnya) \textbf{ditolak dengan 403}. Aturannya juga berbasis \emph{whitelist} (\code{policy.CheckQuery}): setiap nilai \code{fields} harus berupa \emph{field} Ringkasan, dan \code{include} hanya boleh kosong atau \code{summary}. Variasi penulisan (huruf besar, spasi, \code{fields[]}, parameter berulang, daftar dipisah koma, nama yang tidak dikenal) tidak lolos.
+   \item Tanpa \cmd{Authorization: Bearer} berarti 401. \emph{Token} rusak, kedaluwarsa, salah tanda tangan, atau berperan tidak dikenal berarti 403.
+   \item Media hanya menerima \emph{field} Ringkasan lewat \emph{whitelist} (\code{policy.FilterItem}). \emph{Field} baru yang kelak muncul di HazardEvent tidak otomatis bocor ke Media.
+   \item Permintaan Media atas \emph{field} Mentah (\code{fields=latitude}, \code{include=mentah}, dan sejenisnya) ditolak dengan 403. Aturannya juga berbasis \emph{whitelist} (\code{policy.CheckQuery}): setiap nilai \code{fields} harus berupa \emph{field} Ringkasan, dan \code{include} hanya boleh kosong atau \code{summary}. Variasi penulisan (huruf besar, spasi, \code{fields[]}, parameter berulang, daftar dipisah koma, nama yang tidak dikenal) tidak lolos.
    \item \code{/v1/sources/status} hanya untuk Lapangan dan Pusat, sedangkan Media mendapat 403.
   \end{enumerate}
  \item Kredensial, kunci penandatangan, dan konfigurasi dibaca dari \emph{environment variable}. \emph{Service} berhenti dengan pesan yang jelas jika variabelnya kosong (\code{obs.MustEnv}). Repositori hanya memuat \code{.env.example} yang berisi nilai contoh.
@@ -50,7 +50,7 @@ bisa memanggil PVMBG, tetapi tidak bisa mencetak \emph{token} baru atau mengadmi
 
 \section{Alasan keputusan dan trade-off}
 
-Tabel berikut membandingkan beberapa cara mengamankan akses klien dengan pilihan kami.
+Ada beberapa cara mengamankan akses klien. Kami membandingkannya sebelum memilih JWT dengan refresh token.
 
 \begin{table}[!htbp]
 \centering\small
@@ -59,9 +59,9 @@ Tabel berikut membandingkan beberapa cara mengamankan akses klien dengan pilihan
 \textbf{Alternatif} & \textbf{Alasan tidak dipilih}\\
 \midrule
 Satu kunci untuk semua & Jika kunci Media bocor, data mentah ikut bocor, dan kunci BMKG bisa menembus PVMBG. Ini justru masalah yang harus diselesaikan.\\
-API key statis per klien, tanpa \emph{token} & Tidak ada kedaluwarsa dan \emph{refresh}, padahal Tim Lapangan wajib memakai \emph{token} berumur pendek. Kunci yang bocor akan berlaku selamanya.\\
+API \emph{key} statis per klien, tanpa \emph{token} & Tidak ada kedaluwarsa dan \emph{refresh}, padahal Tim Lapangan wajib memakai \emph{token} berumur pendek. Kunci yang bocor akan berlaku selamanya.\\
 \emph{Token} opaque dengan introspeksi ke Auth Service pada tiap permintaan & Pencabutan bisa seketika, tetapi setiap permintaan klien menambah satu panggilan jaringan dan Auth Service menjadi titik gagal bagi jalur baca. Hal ini bertentangan dengan tujuan Problem~2.\\
-JWT asimetris (RS256 atau EdDSA) & Lebih aman, karena Client-Facing API cukup memegang kunci publik sehingga penyerang yang berhasil membobol API tidak bisa mencetak \emph{token}. Namun pengelolaan kuncinya lebih rumit. \textbf{Dicatat sebagai perbaikan untuk M2.}\\
+JWT asimetris (RS256 atau EdDSA) & Lebih aman, karena Client-Facing API cukup memegang kunci publik sehingga penyerang yang berhasil membobol API tidak bisa mencetak \emph{token}. Namun pengelolaan kuncinya lebih rumit. Dicatat sebagai perbaikan untuk M2.\\
 OAuth2 atau Keycloak lengkap & Berlebihan untuk tiga klien \emph{read-only}, dan sulit didemokan dengan TTL 60~detik.\\
 \textbf{JWT HS256 dengan \emph{refresh} \emph{token} opaque (dipilih)} & Verifikasi dilakukan lokal (jalur baca tidak bergantung pada Auth Service), TTL pendek, dan \emph{refresh} \emph{token} dapat dicabut per \emph{token}. Sederhana dan mudah dibuktikan.\\
 \bottomrule
@@ -79,10 +79,10 @@ itu JWT asimetris dicatat sebagai langkah berikutnya.
 \begin{itemize}
  \item Access \emph{token} lama tidak dicabut seketika saat \emph{refresh}. JWT bersifat \emph{stateless}, sehingga \emph{token} yang belum kedaluwarsa tetap berlaku sampai \code{exp} (paling lama 60~detik). Yang dicabut seketika adalah \emph{refresh token} lama (terbukti: jika dipakai ulang, hasilnya 403). Pencabutan seketika menuntut introspeksi atau daftar \code{jti} yang selalu diperbarui.
  \item Tidak ada deteksi pemakaian ulang \emph{refresh} \emph{token}. Satu keluarga \emph{token} tidak dicabut ketika \emph{refresh} \emph{token} yang sudah terpakai muncul lagi.
- \item \code{/v1/token} tidak membatasi jumlah percobaan (tanpa lockout atau \emph{rate limit} per klien). Perbandingan secret memakai waktu konstan.
+ \item \code{/v1/token} tidak membatasi jumlah percobaan (tanpa \emph{lockout} atau \emph{rate limit} per klien). Perbandingan \emph{secret} memakai waktu konstan.
  \item \emph{Rate limiter} Client-Facing API bersifat global dan dipasang sebelum autentikasi, sehingga banjir permintaan tanpa \emph{token} ikut menghabiskan jatah. Pembatasan per klien setelah autentikasi menjadi perbaikan untuk M2.
- \item \emph{Token} kedaluwarsa dijawab dengan \textbf{403}, bukan 401, mengikuti kontrak yang dibekukan di \code{docs/contracts.md}.
- \item Tidak ada TLS di dalam jaringan Compose. Secret klien bersifat statis di \emph{environment} tanpa perkakas rotasi. SQLite pada Auth Service hanya cocok untuk satu \emph{instance}, sehingga M2 membutuhkan penyimpanan bersama.
+ \item \emph{Token} kedaluwarsa dijawab dengan 403, bukan 401, mengikuti kontrak yang dibekukan di \code{docs/contracts.md}.
+ \item Tidak ada TLS di dalam jaringan Compose. \emph{Secret} klien bersifat statis di \emph{environment} tanpa perkakas rotasi. SQLite pada Auth Service hanya cocok untuk satu \emph{instance}, sehingga M2 membutuhkan penyimpanan bersama.
 \end{itemize}
 
 \section{Bukti penyelesaian}
@@ -98,7 +98,7 @@ Setiap kriteria pada spesifikasi dibuktikan oleh demo yang memeriksa hasilnya se
 Kredensial BMKG ditolak PVMBG dan sebaliknya (401/403) & \cmd{make demo-mock-auth}: kunci BMKG sebagai Bearer $\rightarrow$ 403, \emph{token} PVMBG di \code{X-BMKG-Key} $\rightarrow$ 403, \emph{token} yang dirusak $\rightarrow$ 403, tanpa kredensial $\rightarrow$ 401, dan \emph{token} admin silang $\rightarrow$ 403. Setiap \emph{container} hanya memegang rahasianya sendiri.\\
 Media hanya menerima Ringkasan, dan permintaan \emph{field} mentah ditolak server & \cmd{make demo-p3} langkah B (isi respons tanpa \code{latitude}, \code{longitude}, \code{attributes}, dan \code{source_ref_id}) dan langkah C (sepuluh bentuk permintaan Mentah $\rightarrow$ 403, permintaan yang hanya meminta Ringkasan $\rightarrow$ 200). Tes: \code{TestMediaNeverReceivesMentahOnListOrGet} dan \code{TestMediaExplicitMentahRequestIs403}.\\
 \emph{Token} Tim Lapangan kedaluwarsa secara alami, \emph{refresh} tanpa \emph{login} ulang, \emph{token} lama ditolak & \cmd{make demo-p3} langkah F: \emph{token} valid $\rightarrow$ tunggu sampai \code{exp} $\rightarrow$ 403 $\rightarrow$ \cmd{POST /v1/refresh} $\rightarrow$ 200 dengan \emph{token} baru \emph{tanpa} \code{client_secret} $\rightarrow$ \emph{refresh} \emph{token} lama dipakai ulang $\rightarrow$ 403.\\
-Tidak ada kredensial yang ter-hardcode atau ter-\emph{commit}, dan \code{.env.example} tersedia & \cmd{make secrets}: \code{.env} tidak pernah ter-\emph{commit}, gitleaks bersih (riwayat \emph{commit} dan \emph{working tree}), tidak ada literal kredensial di kode Go non-test, dan \code{.env.example} memuat seluruh variabel.\\
+Tidak ada kredensial yang ter-hardcode atau ter-\emph{commit}, dan \code{.env.example} tersedia & \cmd{make secrets}: \code{.env} tidak pernah ter-\emph{commit}, gitleaks bersih (riwayat \emph{commit} dan \emph{working tree}), tidak ada literal kredensial di kode Go non-test, dan \code{.env.example} ada (skrip hanya memeriksa keberadaannya dan menghitung jumlah variabelnya, bukan kelengkapannya).\\
 401 dibedakan dari 403 & \cmd{make demo-p3} langkah A dan \code{TestMissingTokenIs401AndBadTokenIs403}: tanpa \emph{token} menghasilkan 401, sedangkan \emph{token} sampah, kedaluwarsa, kunci lain, tanpa \code{exp}, peran tidak dikenal, dan \code{alg=none} semuanya menghasilkan 403.\\
 \bottomrule
 \end{tabularx}
@@ -107,53 +107,76 @@ Tidak ada kredensial yang ter-hardcode atau ter-\emph{commit}, dan \code{.env.ex
 
 \subsection*{Kredensial saling menolak (\cmd{make demo-mock-auth})}
 \begin{lstlisting}
-[1] BMKG mock (X-BMKG-Key)
+== [1] BMKG mock (X-BMKG-Key) ==
    PASS own key                         -> HTTP 200
    PASS no credential                   -> HTTP 401
    PASS wrong key                       -> HTTP 403
    PASS PVMBG bearer token              -> HTTP 403
-[2] PVMBG mock (Authorization: Bearer <pvmbg-token>)
+...
+== [2] PVMBG mock (Authorization: Bearer <pvmbg-token>) ==
    PASS own token                       -> HTTP 200
+...
    PASS BMKG key presented as bearer    -> HTTP 403
    PASS tampered PVMBG token            -> HTTP 403
-   claims: {"aud":"pvmbg-api","exp":...,"iss":"pvmbg-geologi","sub":"bnpb-aggregator"}
-[5] Each container only holds the secrets of its own trust domain
-   PASS bmkg-mock has no PVMBG/internal secret; pvmbg-mock has no BMKG/internal secret;
-        the aggregator holds tokens but cannot mint or administer
+...
+   claims: {"aud":"pvmbg-api","exp":2106086156,"iat":1790726156,"iss":"pvmbg-geologi","sub":"bnpb-aggregator"}
+...
+== [5] Each container only holds the secrets of its own trust domain (docker compose exec ... env) ==
+   bmkg-mock  : BMKG_ADMIN_TOKEN BMKG_API_KEY BMKG_DELAY_MAX_MS BMKG_DELAY_MIN_MS BMKG_EVENT_INTERVAL_SEC BMKG_PORT BMKG_SEED_COUNT BMKG_WARNING_DELAY_MAX_SEC BMKG_WARNING_DELAY_MIN_SEC
+   pvmbg-mock : PVMBG_ADMIN_TOKEN PVMBG_DELAY_MAX_MS PVMBG_DELAY_MIN_MS PVMBG_HANG_MAX_SEC PVMBG_PORT PVMBG_REPORT_INTERVAL_SEC PVMBG_SEED_COUNT PVMBG_TOKEN_SECRET
+   aggregator : AGGREGATOR_PORT AGGREGATOR_SERVICE_KEY BMKG_API_KEY BMKG_URL CANONICAL_DB_URL KAFKA_BROKERS KAFKA_TOPIC PVMBG_GATEWAY_TOKEN PVMBG_URL
+   PASS bmkg-mock has no PVMBG/internal secret; pvmbg-mock has no BMKG/internal secret; the aggregator holds tokens but cannot mint or administer
+...
+MOCK AUTH PASS
 \end{lstlisting}
 
 \subsection*{Media, Mentah, dan token kedaluwarsa (\cmd{make demo-p3})}
 \begin{lstlisting}
-[1] PASS no header -> 401        PASS empty Bearer -> 401        PASS garbage JWT -> 403
-[2] PASS media list omits all Mentah fields on first item
-[3] PASS media ?fields=latitude -> 403         PASS media ?include=mentah -> 403
-    PASS media ?fields=Latitude -> 403         PASS media ?fields%5B%5D=longitude -> 403
-    PASS media ?include=raw -> 403             PASS media asking only for Ringkasan fields -> 200
-[4] PASS media /v1/sources/status -> 403       PASS lapangan /v1/sources/status -> 200
-[6] expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
-    PASS fresh access token works
-    PASS expired access token -> 403
-    PASS refreshed access works without client_id/secret again
-    PASS rotated refresh token cannot be reused (403)
+   PASS no header -> 401
+...
+   PASS empty Bearer -> 401
+   PASS garbage JWT -> 403
+...
+   PASS media list omits all Mentah fields on first item
+...
+   PASS media ?fields=latitude -> 403
+   PASS media ?include=mentah -> 403
+...
+   PASS media ?fields%5B%5D=longitude -> 403
+...
+   PASS media ?include=raw -> 403
+...
+   PASS media asking only for Ringkasan fields -> 200
+...
+   PASS media /v1/sources/status -> 403
+   PASS lapangan /v1/sources/status -> 200
+...
+   expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
+   PASS fresh access token works
+   sleeping 57s until JWT exp (+2s skew)...
+   PASS expired access token -> 403
+...
+   PASS refreshed access works without client_id/secret again
+   PASS rotated refresh token cannot be reused (403)
 \end{lstlisting}
 
 \section{Jawaban}
 
 \begin{jawaban}[Mekanisme yang dipakai]
-Mekanisme terdiri dari dua lapis. \textbf{(1) Antarinstansi:} kredensial BMKG (kunci opaque) dan PVMBG (\emph{token} yang
+Mekanisme terdiri dari dua lapis. (1) Antarinstansi: kredensial BMKG (kunci opaque) dan PVMBG (\emph{token} yang
 ditandatangani dengan HMAC dan berstruktur lain, dengan rahasia penandatangan hanya ada di \emph{mock} PVMBG) tidak saling
-berlaku, dan masing-masing diperiksa oleh pemiliknya. \textbf{(2) Klien downstream:} Auth Service menerbitkan JWT HS256
+berlaku, dan masing-masing diperiksa oleh pemiliknya. (2) Klien downstream: Auth Service menerbitkan JWT HS256
 berumur 60~detik untuk tiap peran, ditambah \emph{refresh} \emph{token} opaque yang sekali pakai. Client-Facing API memeriksa setiap
 permintaan dan menegakkan klasifikasi Ringkasan dan Mentah di sisi server.
 \end{jawaban}
 
 \begin{jawaban}[Mengapa tidak membuka celah baru]
 \begin{itemize}
- \item \textbf{Pemalsuan \emph{token}.} Algoritma dikunci ke HS256 (\code{alg=none} dan algoritma lain ditolak, dan sudah diuji). Klaim \code{exp} wajib ada dan diperiksa (\emph{token} bertanda tangan tanpa \code{exp} ditolak, dan sudah diuji). Peran harus salah satu dari tiga nilai yang dikenal.
- \item \textbf{Eskalasi peran dari sisi klien.} Peran hanya berasal dari klaim yang ditandatangani. \emph{Header} atau parameter buatan klien (misalnya \code{X-Role}) tidak dibaca. Media tidak punya jalur ke \emph{field} Mentah karena respons dibentuk dengan \emph{whitelist}, bukan dengan membuang \emph{field} yang dikenal.
- \item \textbf{Kebocoran lintas domain.} Rahasia tiap domain terpisah dan tidak dipakai ulang. Aggregator tidak memegang rahasia penandatangan PVMBG (diverifikasi oleh \code{demo-mock-auth}).
- \item \textbf{Pencurian dari penyimpanan.} \emph{Refresh} \emph{token} hanya tersimpan sebagai hash, dan databasenya tidak dapat dijangkau \emph{service} lain. Dampak pencurian \emph{refresh} \emph{token} dibatasi oleh sifatnya yang sekali pakai dan oleh TTL.
- \item \textbf{Jendela penyalahgunaan.} \emph{Token} yang dicuri hanya berguna paling lama 60~detik (access \emph{token}) atau satu kali pakai (\emph{refresh} \emph{token}).
- \item \textbf{Batasan yang diakui} ada di bagian~\ref{sec:p3-batasan}: tidak ada pencabutan access \emph{token} seketika, dan rahasia HS256 dipegang dua \emph{service} BNPB.
+ \item Pemalsuan \emph{token}. Algoritma dikunci ke HS256 (\code{alg=none} dan algoritma lain ditolak, dan sudah diuji). Klaim \code{exp} wajib ada dan diperiksa (\emph{token} bertanda tangan tanpa \code{exp} ditolak, dan sudah diuji). Peran harus salah satu dari tiga nilai yang dikenal.
+ \item Eskalasi peran dari sisi klien. Peran hanya berasal dari klaim yang ditandatangani. \emph{Header} atau parameter buatan klien (misalnya \code{X-Role}) tidak dibaca. Media tidak punya jalur ke \emph{field} Mentah karena respons dibentuk dengan \emph{whitelist}, bukan dengan membuang \emph{field} yang dikenal.
+ \item Kebocoran lintas domain. Rahasia tiap domain terpisah dan tidak dipakai ulang. Aggregator tidak memegang rahasia penandatangan PVMBG (diverifikasi oleh \code{demo-mock-auth}).
+ \item Pencurian dari penyimpanan. \emph{Refresh} \emph{token} hanya tersimpan sebagai \emph{hash}, dan databasenya tidak dapat dijangkau \emph{service} lain. Dampak pencurian \emph{refresh} \emph{token} dibatasi oleh sifatnya yang sekali pakai dan oleh TTL.
+ \item Jendela penyalahgunaan. \emph{Token} yang dicuri hanya berguna paling lama 60~detik (access \emph{token}) atau satu kali pakai (\emph{refresh} \emph{token}).
+ \item Batasan yang diakui ada di bagian~\ref{sec:p3-batasan}: tidak ada pencabutan access \emph{token} seketika, dan rahasia HS256 dipegang dua \emph{service} BNPB.
 \end{itemize}
 \end{jawaban}

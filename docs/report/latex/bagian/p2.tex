@@ -16,10 +16,10 @@ kami, jalur layanan tidak pernah menyentuh sumber.
 \input{bagian/fig-p2}
 
 \begin{enumerate}
- \item \textbf{Satu putaran \emph{polling} per sumber} (\code{poller/loop.go}). BMKG dan PVMBG masing-masing punya goroutine sendiri dengan \emph{timeout} permintaan (\code{SOURCE_TIMEOUT_SEC}), \emph{timeout} siklus, dan \emph{circuit breaker} (\code{resilience/breaker.go}). Breaker terbuka setelah beberapa kegagalan beruntun, lalu mengirim satu percobaan (\emph{half-open}) setelah \code{BREAKER_OPEN_SEC}. Siklus berikutnya baru dimulai \code{POLL_INTERVAL_SEC} setelah siklus sebelumnya selesai, sehingga sumber yang lambat tidak pernah menerima permintaan yang menumpuk.
- \item \textbf{Jalur layanan tidak memanggil BMKG maupun PVMBG.} Client-Facing API membaca \cmd{GET /internal/*} milik Aggregator, yang membaca Canonical Store. Tiap permintaan klien dilayani goroutine \code{net/http} sendiri, sehingga permintaan data BMKG tidak berbagi antrean atau lock dengan apa pun yang menunggu PVMBG.
- \item \textbf{\emph{Rate limiter} dengan \emph{token bucket}} di Client-Facing API (\code{CLIENT_RATE_LIMIT_RPS} dan \code{CLIENT_RATE_LIMIT_BURST}, nilai bawaan 500 dan 1000). Kelebihan beban \emph{langsung ditolak} dengan status \code{429} dan \emph{header} \code{Retry-After}, tidak dimasukkan ke antrean. \emph{Endpoint} \code{/health} dan \code{/ready} dikecualikan agar pemeriksaan kesehatan tetap terjawab saat beban tinggi.
- \item \textbf{\emph{Graceful degradation}.} Aggregator menyimpan \code{freshness} untuk tiap sumber (\code{state}, \code{last_success_at}, \code{stale_since}). Saat PVMBG mati, data vulkanik terakhir tetap disajikan dari \emph{store}. Client-Facing API menandai tiap item dengan \cmd{stale: true} dan meneruskan \code{freshness.PVMBG.stale_since}. Tidak ada jalur yang mengubah matinya satu sumber menjadi error 500 atau permintaan yang menggantung.
+ \item Satu putaran \emph{polling} per sumber (\code{poller/loop.go}). BMKG dan PVMBG masing-masing punya goroutine sendiri dengan \emph{timeout} permintaan (\code{SOURCE_TIMEOUT_SEC}), \emph{timeout} siklus, dan \emph{circuit breaker} (\code{resilience/breaker.go}). Breaker terbuka setelah beberapa kegagalan beruntun, lalu mengirim satu percobaan (\emph{half-open}) setelah \code{BREAKER_OPEN_SEC}. Siklus berikutnya baru dimulai \code{POLL_INTERVAL_SEC} setelah siklus sebelumnya selesai, sehingga sumber yang lambat tidak pernah menerima permintaan yang menumpuk.
+ \item Jalur layanan tidak memanggil BMKG maupun PVMBG. Client-Facing API membaca \cmd{GET /internal/*} milik Aggregator, yang membaca Canonical Store. Tiap permintaan klien dilayani goroutine \code{net/http} sendiri, sehingga permintaan data BMKG tidak berbagi antrean atau \emph{lock} dengan apa pun yang menunggu PVMBG.
+ \item \emph{Rate limiter} dengan \emph{token bucket} di Client-Facing API (\code{CLIENT_RATE_LIMIT_RPS} dan \code{CLIENT_RATE_LIMIT_BURST}, nilai bawaan 500 dan 1000). Kelebihan beban \emph{langsung ditolak} dengan status \code{429} dan \emph{header} \code{Retry-After}, tidak dimasukkan ke antrean. \emph{Endpoint} \code{/health} dan \code{/ready} dikecualikan agar pemeriksaan kesehatan tetap terjawab saat beban tinggi.
+ \item \emph{Graceful degradation}. Aggregator menyimpan \code{freshness} untuk tiap sumber (\code{state}, \code{last_success_at}, \code{stale_since}). Saat PVMBG mati, data vulkanik terakhir tetap disajikan dari \emph{store}. Client-Facing API menandai tiap item dengan \cmd{stale: true} dan meneruskan \code{freshness.PVMBG.stale_since}. Tidak ada jalur yang mengubah matinya satu sumber menjadi \emph{error} 500 atau permintaan yang menggantung.
 \end{enumerate}
 
 \subsection{Pencegahan tiga kegagalan}\label{sec:p2-tiga}
@@ -40,7 +40,7 @@ Tidak ada degradasi terkendali & Data terakhir dari Canonical Store disajikan be
 
 \section{Alasan keputusan dan trade-off}
 
-Model konkurensi di atas bukan satu-satunya pilihan. Tabel berikut memuat alternatif yang kami pertimbangkan.
+Model konkurensi di atas bukan satu-satunya pilihan. Alternatif yang kami pertimbangkan ada di tabel berikut.
 
 \begin{table}[!htbp]
 \centering\small
@@ -49,7 +49,7 @@ Model konkurensi di atas bukan satu-satunya pilihan. Tabel berikut memuat altern
 \textbf{Alternatif} & \textbf{Alasan tidak dipilih}\\
 \midrule
 Memanggil BMKG dan PVMBG \emph{secara paralel} pada tiap permintaan klien & Menghilangkan pemblokiran berurutan, tetapi permintaan tetap menunggu PVMBG yang paling lambat (3~detik) atau harus \emph{timeout}. Setiap lonjakan klien juga melipatgandakan beban ke sumber yang sudah lemah.\\
-Cache dengan TTL di Client-Facing API & Hanya menyembunyikan masalah. Data bisa basi tanpa penanda, dan satu fakta tersimpan di dua tempat (melanggar aturan satu \emph{storage} satu pemilik).\\
+\emph{Cache} dengan TTL di Client-Facing API & Hanya menyembunyikan masalah. Data bisa basi tanpa penanda, dan satu fakta tersimpan di dua tempat (melanggar aturan satu \emph{storage} satu pemilik).\\
 Antrean dan \emph{worker pool} untuk permintaan klien & Membatasi konkurensi, tetapi menukar penolakan cepat dengan latensi yang membengkak karena antrean memenuhi memori.\\
 Semaphore konkurensi (batas permintaan yang sedang berjalan) & Efektif melindungi dari permintaan yang lambat. Pada sistem ini permintaan klien cepat (\emph{store} lokal), sehingga laju adalah ukuran yang lebih tepat.\\
 \textbf{Putaran per sumber, \emph{store} sebagai penyangga, \emph{token bucket} (dipilih)} & Terpisah secara struktural, dengan perilaku saat gagal yang deterministik dan dapat didemokan.\\
@@ -69,8 +69,8 @@ berikut).
  \item Tidak ada batas jumlah koneksi bersamaan selain laju. Beban koneksi lambat (\emph{slowloris}) hanya dibatasi oleh \code{ReadHeaderTimeout} selama 5~detik.
  \item Client-Facing API dan Aggregator berjalan dengan satu \emph{instance}. Skala horizontal, termasuk \emph{rate limiter} terdistribusi, masuk ke M2.
  \item Penanda \code{stale} pada permintaan satu hazard membutuhkan satu panggilan tambahan ke \code{/internal/sources/status}.
- \item Data saat outage adalah potret terakhir, tanpa estimasi atau ekstrapolasi.
- \item Hasil \emph{load test} berasal dari \textbf{satu mesin}: k6, Docker, dan semua \emph{service} berbagi CPU pada satu mesin Windows~11. Angka absolutnya bukan klaim kapasitas produksi. \emph{Throughput} pada uji sustained dibatasi oleh \emph{think time} 0,1~detik per VU (sekitar 450 permintaan per detik untuk 50 VU), bukan oleh kemampuan server.
+ \item Data saat \emph{outage} adalah potret terakhir, tanpa estimasi atau ekstrapolasi.
+ \item Hasil \emph{load test} berasal dari satu mesin: k6, Docker, dan semua \emph{service} berbagi CPU pada satu mesin Windows~11. Angka absolutnya bukan klaim kapasitas produksi. \emph{Throughput} pada uji \emph{sustained} dibatasi oleh \emph{think time} 0,1~detik per VU (sekitar 450 permintaan per detik untuk 50 VU), bukan oleh kemampuan server.
 \end{itemize}
 
 \section{Konfigurasi dan tooling load test}\label{sec:p2-load}
@@ -83,15 +83,15 @@ berikut).
 \toprule
 \textbf{Item} & \textbf{Nilai}\\
 \midrule
-Tool & \textbf{k6} (biner lokal, atau \code{grafana/k6:0.54.0} lewat Docker jika biner tidak ada)\\
+\emph{Tool} & k6 (biner lokal, atau \code{grafana/k6:0.54.0} lewat Docker jika biner tidak ada)\\
 Skrip & \code{scripts/loadtest/p2.js}, dijalankan oleh \code{scripts/loadtest/run-p2.sh} (bagian dari \cmd{make demo-p2}, langkah E dan F)\\
 Target & \texttt{GET /v1/hazards?hazard\_type=SEISMIC\&limit=20} pada Client-Facing API port 8080, dengan peran Lapangan\\
-Uji \emph{sustained} & \textbf{50 VU konstan selama 60 detik}, think time 0,1~detik (\code{K6_VUS}, \code{K6_DURATION}, \code{K6_THINK_S})\\
-Uji \emph{overload} & 150 VU selama 20 detik tanpa think time, sengaja melampaui batas laju 500 permintaan per detik\\
-Autentikasi & Tiap VU \emph{login} sendiri, lalu memperbarui \emph{token} lewat \cmd{POST /v1/refresh} 10~detik sebelum \code{exp} (TTL 60~detik). Versi awal skrip memakai satu \emph{token} untuk seluruh 60~detik sehingga kedaluwarsa \emph{token} terhitung sebagai error. Hal ini sudah diperbaiki\\
-Klasifikasi respons & \textbf{200} berarti sukses, \textbf{429} berarti penolakan terkendali (dilaporkan, tidak dihitung sebagai error), dan \textbf{tak tertangani} berarti selain keduanya (5xx, 401/403, \emph{timeout})\\
+Uji \emph{sustained} & 50 VU konstan selama 60 detik, \emph{think time} 0,1~detik (\code{K6_VUS}, \code{K6_DURATION}, \code{K6_THINK_S})\\
+Uji \emph{overload} & 150 VU selama 20 detik tanpa \emph{think time}, sengaja melampaui batas laju 500 permintaan per detik\\
+Autentikasi & Tiap VU \emph{login} sendiri, lalu memperbarui \emph{token} lewat \cmd{POST /v1/refresh} 10~detik sebelum \code{exp} (TTL 60~detik). Versi awal skrip memakai satu \emph{token} untuk seluruh 60~detik sehingga kedaluwarsa \emph{token} terhitung sebagai \emph{error}. Hal ini sudah diperbaiki\\
+Klasifikasi respons & 200 berarti sukses, 429 berarti penolakan terkendali (dilaporkan, tidak dihitung sebagai \emph{error}), dan tak tertangani berarti selain keduanya (5xx, 401/403, \emph{timeout})\\
 Ambang lulus & \texttt{unhandled < 1\%} dan \texttt{p95 < 300 ms}. \cmd{make demo-p2} gagal jika ambang terlampaui\\
-Kondisi sistem & PVMBG diberi \emph{delay} 3~detik pada langkah A, dan seluruh stack berasal dari \cmd{make reset}\\
+Kondisi sistem & PVMBG diberi \emph{delay} 3~detik pada langkah A, dan seluruh \emph{stack} berasal dari \cmd{make reset}\\
 \bottomrule
 \end{tabularx}
 \caption{Konfigurasi \emph{load test}.}
@@ -100,9 +100,10 @@ Kondisi sistem & PVMBG diberi \emph{delay} 3~detik pada langkah A, dan seluruh s
 \section{Bukti penyelesaian}
 
 Angka berasal dari \cmd{make demo-p2} dan \cmd{make demo-p2-aggregator}, dengan berkas mentah di
-\code{docs/evidence/p2/}. Angkanya berbeda dari satu run ke run lain, sedangkan yang ditegakkan skrip adalah kriteria
-lulus atau gagalnya. Sebagai contoh, pada dua run berbeda p95 BMKG-only bernilai 62,9~ms dan 152,4~ms, dan keduanya jauh
-di bawah batas 300~ms. Angka pada tabel berasal dari run terbaru (8~Oktober~2026, setelah \cmd{make reset}).
+\code{docs/evidence/p2/}. Angkanya berbeda dari satu \emph{run} ke \emph{run} lain, sedangkan yang ditegakkan skrip adalah kriteria
+lulus atau gagalnya. Sebagai contoh, transkrip P2 sebelumnya (\emph{commit} \code{ce8ef95}) mencatat p95 BMKG-only 62,9~ms,
+sedangkan transkrip yang dilampirkan sekarang mencatat 152,4~ms. Keduanya jauh di bawah batas 300~ms. Angka pada
+tabel berasal dari transkrip terbaru (8~Oktober~2026).
 
 \begin{table}[!htbp]
 \centering\small
@@ -110,41 +111,118 @@ di bawah batas 300~ms. Angka pada tabel berasal dari run terbaru (8~Oktober~2026
 \toprule
 \textbf{Kriteria pada spesifikasi} & \textbf{Hasil} & \textbf{Berkas bukti}\\
 \midrule
-\textbf{p95 BMKG-only di bawah 300~ms} saat PVMBG \emph{delay} 3~detik, bersamaan dengan permintaan data PVMBG & 4 pembaca data vulkanik paralel $+$ 40 permintaan BMKG-only: \textbf{p95 152,4~ms}, 0 error. Pembaca vulkanik p95 154--190~ms. & \code{latest.log}, langkah A\\
-\textbf{\emph{Load test}} $\ge$50 koneksi, $\ge$60~detik & 26.752 permintaan, \textbf{445,1 req/s}, \textbf{p50 9,4~ms, p95 19,6~ms, p99 28,3~ms}, maksimum 69~ms. Status 200: 26.752, 429: 0, lainnya: 0. \textbf{Error tak tertangani 0\%} (batas 1\%). 50 perpanjangan \emph{token} berjalan di tengah uji. & \code{k6-summary.json}\\
-\textbf{Overload terkendali} (150 VU) & 81.112 permintaan (sekitar 4.050 req/s): 200: 10.989, \textbf{429: 70.123 (86,5\%)}, \textbf{lainnya: 0}, p95 68~ms. \code{/health} tetap 200 setelahnya dan tidak ada crash. & \code{k6-overload-summary.json}, \code{latest.log}, langkah F\\
-\textbf{Outage PVMBG} (mode \code{error}) & 27 item vulkanik tetap disajikan, \textbf{semuanya \cmd{stale: true}}, dan \code{freshness.PVMBG.stale_since} terisi. Pembacaan vulkanik p95 19,7~ms dengan 0 error, dan \emph{event} BMKG baru tetap masuk. & \code{latest.log}, langkah B; \code{aggregator-latest.log}\\
-Outage mode \code{hang} (tidak menjawab) & Pembacaan seismik p95 12,1~ms dan klien tidak menggantung. Di sisi Aggregator, p95 9,0~ms. & \code{latest.log}, langkah C\\
-\textbf{Pulih tanpa \emph{restart}} & PVMBG kembali \code{up}, laporan baru ter-ingest, dan \code{StartedAt} lima \emph{container} tidak berubah. & \code{latest.log}, langkah D\\
+p95 BMKG-only di bawah 300~ms saat PVMBG \emph{delay} 3~detik, bersamaan dengan permintaan data PVMBG & 4 pembaca data vulkanik paralel $+$ 40 permintaan BMKG-only: p95 152,4~ms, 0 \emph{error}. Pembaca vulkanik p95 154--190~ms. & \code{latest.log}, langkah A\\
+\emph{Load test} $\ge$50 koneksi, $\ge$60~detik & 26.752 permintaan, 445,1 req/s, p50 9,4~ms, p95 19,6~ms, p99 28,3~ms, maksimum 69~ms. Status 200: 26.752, 429: 0, lainnya: 0. \emph{Error} tak tertangani 0\% (batas 1\%). 50 perpanjangan \emph{token} berjalan di tengah uji. & \code{k6-summary.json}\\
+\emph{Overload} terkendali (150 VU) & 81.112 permintaan (sekitar 4.050 req/s): 200: 10.989, 429: 70.123 (86,5\%), lainnya: 0, p95 68~ms. \code{/health} tetap 200 setelahnya dan tidak ada \emph{crash}. & \code{k6-overload-summary.json}, \code{latest.log}, langkah F\\
+\emph{Outage} PVMBG (mode \code{error}) & 27 item vulkanik tetap disajikan, semuanya \cmd{stale: true}, dan \code{freshness.PVMBG.stale_since} terisi. Pembacaan vulkanik p95 19,7~ms dengan 0 \emph{error}, dan \emph{event} BMKG baru tetap masuk. & \code{latest.log}, langkah B; \code{aggregator-latest.log}\\
+\emph{Outage} mode \code{hang} (tidak menjawab) & Pembacaan seismik p95 12,1~ms dan klien tidak menggantung. Di sisi Aggregator, p95 9,0~ms. & \code{latest.log}, langkah C\\
+Pulih tanpa \emph{restart} & PVMBG kembali \code{up}, laporan baru ter-\emph{ingest}, dan \code{StartedAt} lima \emph{container} tidak berubah. & \code{latest.log}, langkah D\\
 \emph{Correlation ID} lintas \emph{service} & Satu \code{cid} melintasi \code{request} client-api, \code{outbound_call}, dan \code{request} aggregator. & \code{cid-trace.log}\\
 \bottomrule
 \end{tabularx}
 \caption{Kriteria Problem~2 dan buktinya.}
 \end{table}
 
-Catatan tentang overload: dalam 20~detik, \emph{token bucket} dengan 500 \emph{token} per detik dan \emph{burst} 1000 secara teori
+Catatan tentang \emph{overload}: dalam 20~detik, \emph{token bucket} dengan 500 \emph{token} per detik dan \emph{burst} 1000 secara teori
 meloloskan sekitar $500\times 20+1000 \approx 11.000$ permintaan. Hasil ukur 10.989 permintaan sukses sangat dekat dengan
 angka itu, yang berarti pembatas bekerja sesuai konfigurasi. Semua sisanya ditolak dengan 429 tanpa satu pun 5xx.
 
 \subsection*{Sisi Aggregator saat PVMBG mati (\cmd{make demo-p2-aggregator})}
 \begin{lstlisting}
-A. PVMBG answers in 3 s:   Aggregator API seismic p95 = 19.3 ms, non-200 = 0
+== [1] A. PVMBG answers in 3 s - the BMKG side of the Aggregator must not feel it ==
+...
+   Aggregator API, seismic data, 30 requests while PVMBG takes 3 s per call: p95 = 19.3 ms, non-200 = 0
+   PASS p95 19.3 ms < 300 ms
    PASS a new BMKG event was ingested 2 s after it appeared, although PVMBG is slow
-B. PVMBG outage (error):   PASS stale_since is set: 2026-10-07T19:44:08.985391266Z
+...
+== [2] B. PVMBG outage (mode: error) - circuit opens, stored data is kept, BMKG keeps flowing ==
+...
+   PASS stale_since is set: 2026-10-07T19:44:08.985391266Z
+...
    PASS all 87 volcanic hazards are still served from the Canonical Store (now 88)
+...
+   PASS seismic ingestion continued normally during the outage
    PASS volcanic reads during the outage: p95 77.5 ms, 0 errors (no 500, no hanging request)
    PASS while the circuit is open polls are skipped, not sent to the dead service (skipped_by_breaker=44)
-C. PVMBG outage (hang):    PASS Aggregator API answers in p95 9.0 ms
-   last_error: ... net/http: request canceled (Client.Timeout exceeded while awaiting headers)
-D. Outage ends:            PASS PVMBG is 'up' again, stale_since=null
+...
+== [3] C. PVMBG outage (mode: hang) - no answer at all; timeouts are bounded, the API stays fast ==
+...
+   PASS during a HANGING PVMBG the Aggregator API answers in p95 9.0 ms
+   PASS PVMBG still reported down; last_error: pvmbg: Get "http://pvmbg-mock:8082/volcanic-reports?since=2026-10-07T19%3A44%3A02.12915Z": net/http: request canceled (Client.Timeout exceeded while awaiting headers)
+...
+== [4] D. Outage ends - normal operation resumes WITHOUT restarting anything ==
+...
+   PASS PVMBG is 'up' again, stale_since=null
+...
    PASS nothing was restarted (StartedAt of bmkg-mock, pvmbg-mock, aggregator unchanged)
+...
+P2 (ingest side) PASS
 \end{lstlisting}
 
 \subsection*{Satu correlation ID melintasi dua service (\code{cid-trace.log})}
 \begin{lstlisting}
-{"msg":"request","service":"aggregator","path":"/internal/hazards","status":200,"duration_ms":0.885,"cid":"demo-p2-trace-0001"}
-{"msg":"outbound_call","service":"client-api","target":"aggregator","latency_ms":1.463,"status":200,"cid":"demo-p2-trace-0001"}
-{"msg":"request","service":"client-api","path":"/v1/hazards","status":200,"duration_ms":2.107,"cid":"demo-p2-trace-0001"}
+# GET /v1/hazards dengan X-Correlation-ID: demo-p2-trace-0001 (lapangan), satu cid melintasi client-api -> aggregator
+{"ts":"2026-10-07T17:28:29.459436399Z","level":"INFO","msg":"request","service":"aggregator","method":"GET","path":"/internal/hazards","status":200,"duration_ms":0.885,"bytes":2352,"remote":"172.30.0.6:49350","cid":"demo-p2-trace-0001"}
+{"ts":"2026-10-07T17:28:29.45969494Z","level":"INFO","msg":"outbound_call","service":"client-api","target":"aggregator","method":"GET","url":"http://aggregator:8083/internal/hazards","latency_ms":1.463,"status":200,"cid":"demo-p2-trace-0001"}
+{"ts":"2026-10-07T17:28:29.460178117Z","level":"INFO","msg":"request","service":"client-api","method":"GET","path":"/v1/hazards","status":200,"duration_ms":2.107,"bytes":2422,"remote":"172.30.0.1:55996","cid":"demo-p2-trace-0001"}
+\end{lstlisting}
+
+\subsection*{Keluaran k6 uji sustained (\code{k6-summary.json})}
+\begin{lstlisting}
+{
+  "config": {
+    "vus": 50,
+    "duration": "60s",
+    "think_time_s": 0.1,
+    "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
+    "tool": "k6"
+  },
+  "requests": 26752,
+  "throughput_rps": 445.0826461673987,
+  "latency_ms": {
+    "p50": 9.3673,
+    "p95": 19.626389999999976,
+    "p99": 28.278220999999935,
+    "max": 68.8216
+  },
+  "status": {
+    "ok_200": 26752,
+    "rejected_429": 0,
+    "other": 0
+  },
+  "rate_429": 0,
+  "unhandled_error_rate": 0,
+  "token_renewals": 50
+}
+\end{lstlisting}
+
+\subsection*{Keluaran k6 uji overload (\code{k6-overload-summary.json})}
+\begin{lstlisting}
+{
+  "config": {
+    "vus": 150,
+    "duration": "20s",
+    "think_time_s": 0,
+    "path": "/v1/hazards?hazard_type=SEISMIC&limit=20",
+    "tool": "k6"
+  },
+  "requests": 81112,
+  "throughput_rps": 4051.3137505650398,
+  "latency_ms": {
+    "p50": 23.6767,
+    "p95": 67.97307999999997,
+    "p99": 188.72986599999996,
+    "max": 507.7832
+  },
+  "status": {
+    "ok_200": 10989,
+    "rejected_429": 70123,
+    "other": 0
+  },
+  "rate_429": 0.8645206627872571,
+  "unhandled_error_rate": 0,
+  "token_renewals": 0
+}
 \end{lstlisting}
 
 Tes otomatis yang terkait:
@@ -159,11 +237,11 @@ Tes otomatis yang terkait:
 \section{Jawaban}
 
 \begin{jawaban}
-\textbf{Model konkurensi.} Putaran \emph{polling} terpisah untuk tiap sumber (dengan \emph{timeout} dan \emph{circuit breaker}) menulis ke
+Model konkurensi. Putaran \emph{polling} terpisah untuk tiap sumber (dengan \emph{timeout} dan \emph{circuit breaker}) menulis ke
 Canonical Store. Jalur layanan hanya membaca \emph{store} lewat API Aggregator, dengan \emph{token bucket} di depannya. Pemetaan ke
 tiga kegagalan ada di bagian~\ref{sec:p2-tiga}.
 
-\textbf{Konfigurasi dan tooling \emph{load test}.} Memakai k6 dengan 50 VU selama 60~detik (sustained) dan 150 VU selama
-20~detik (overload). Respons diklasifikasi menjadi 200, 429, atau tak tertangani, dengan ambang
+Konfigurasi dan \emph{tooling} \emph{load test}. Memakai k6 dengan 50 VU selama 60~detik (\emph{sustained}) dan 150 VU selama
+20~detik (\emph{overload}). Respons diklasifikasi menjadi 200, 429, atau tak tertangani, dengan ambang
 \texttt{unhandled < 1\%} dan \texttt{p95 < 300 ms}. Rinciannya ada di bagian~\ref{sec:p2-load}.
 \end{jawaban}

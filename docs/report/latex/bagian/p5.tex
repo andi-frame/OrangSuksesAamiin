@@ -1,9 +1,9 @@
 \chapter{Problem 5 -- Fan-out Event Distribution \mbox{(Pub/Sub)}}
 
 \begin{ringkas}
-Aggregator \textbf{tidak pernah memanggil \emph{consumer}}. Setiap perubahan hazard ditulis ke tabel \emph{outbox} dalam
+Aggregator tidak pernah memanggil \emph{consumer}. Setiap perubahan hazard ditulis ke tabel \emph{outbox} dalam
 transaksi yang sama dengan hazard-nya, lalu sebuah \emph{relay} mempublikasikannya ke \emph{topic} Kafka \code{hazard.events}.
-Setiap \emph{consumer} men-\emph{subscribe} dengan \emph{consumer group} masing-masing. Pengiriman bersifat \textbf{at-least-once},
+Setiap \emph{consumer} men-\emph{subscribe} dengan \emph{consumer group} masing-masing. Pengiriman bersifat \emph{at-least-once},
 sehingga \emph{consumer} membuang duplikat berdasarkan \code{event_id}. \emph{Consumer} yang mati tidak menahan \emph{producer}, dan akan
 menyusul \emph{event} yang terlewat saat hidup kembali.
 \end{ringkas}
@@ -22,9 +22,9 @@ demo untuk membuktikan bahwa menambah \emph{consumer} tidak membutuhkan perubaha
 \subsection{Sisi producer: transactional outbox}
 
 \begin{enumerate}
- \item Saat Aggregator menyimpan hazard baru atau versi baru, ia \emph{juga} menulis satu baris \code{outbox} dalam \textbf{transaksi database yang sama}. Keduanya berhasil bersama atau gagal bersama, sehingga tidak ada hazard yang tersimpan tanpa \emph{event}.
- \item \textbf{\emph{Relay}} (\code{aggregator/internal/relay}) membaca baris \emph{outbox} yang belum terkirim, mengirimnya ke Kafka berurutan dari yang paling lama, dan baru menandainya terkirim \emph{setelah} Kafka mengakuinya. Jika satu pengiriman gagal, \emph{relay} berhenti di titik itu (untuk menjaga urutan per hazard), menunggu dengan jeda yang makin panjang, lalu mencoba lagi.
- \item Akibatnya, jika Kafka mati, ingest tidak berhenti dan tidak ada \emph{event} yang hilang. \emph{Event} menunggu di \emph{outbox} dan terkirim berurutan setelah \emph{broker} pulih (\code{TestBrokerOutageDoesNotStopIngestionOrLoseEvents}).
+ \item Saat Aggregator menyimpan hazard baru atau versi baru, ia \emph{juga} menulis satu baris \code{outbox} dalam transaksi database yang sama. Keduanya berhasil bersama atau gagal bersama, sehingga tidak ada hazard yang tersimpan tanpa \emph{event}.
+ \item \emph{Relay} (\code{aggregator/internal/relay}) membaca baris \emph{outbox} yang belum terkirim, mengirimnya ke Kafka berurutan dari yang paling lama, dan baru menandainya terkirim \emph{setelah} Kafka mengakuinya. Jika satu pengiriman gagal, \emph{relay} berhenti di titik itu (untuk menjaga urutan per hazard), menunggu dengan jeda yang makin panjang, lalu mencoba lagi.
+ \item Akibatnya, jika Kafka mati, \emph{ingest} tidak berhenti dan tidak ada \emph{event} yang hilang. \emph{Event} menunggu di \emph{outbox} dan terkirim berurutan setelah \emph{broker} pulih (\code{TestBrokerOutageDoesNotStopIngestionOrLoseEvents}).
  \item \emph{Producer} Kafka memakai \code{acks=all} dan mode idempoten (\code{franz-go}).
 \end{enumerate}
 
@@ -35,11 +35,11 @@ demo untuk membuktikan bahwa menambah \emph{consumer} tidak membutuhkan perubaha
 \textbf{Item} & \textbf{Nilai}\\
 \midrule
 \emph{Topic} & \code{hazard.events} dengan 3 partisi, replikasi 1, dan retensi 7~hari. Dibuat oleh \code{kafka-init}, dan pembuatan \emph{topic} otomatis dimatikan.\\
-Key pesan & \code{hazard_id}. Semua versi satu hazard masuk ke satu partisi, sehingga urutannya per hazard terjaga.\\
+\emph{Key} pesan & \code{hazard_id}. Semua versi satu hazard masuk ke satu partisi, sehingga urutannya per hazard terjaga.\\
 Isi pesan & JSON dengan \code{event_id}, \code{kind} (\code{created} atau \code{updated}), \code{emitted_at}, \code{hazard}, dan \code{schema}. Skemanya ada di \code{contracts/schemas/kafka-envelope.json}.\\
 \emph{Header} pesan & \code{correlation_id} (sama dengan siklus \emph{polling} yang menghasilkan perubahan) dan \code{event_id}.\\
-Key idempotensi & \cmd{event_id = <hazard_id>:<version>}\\
-\emph{Consumer group} & Satu group per \emph{consumer}: \code{dashboard-updater} dan \code{notifier}. Group \code{pemda-portal} ditambahkan saat demo.\\
+\emph{Key} idempotensi & \cmd{event_id = <hazard_id>:<version>}\\
+\emph{Consumer group} & Satu \emph{group} per \emph{consumer}: \code{dashboard-updater} dan \code{notifier}. \emph{Group} \code{pemda-portal} ditambahkan saat demo.\\
 \bottomrule
 \end{tabularx}
 \caption{Konfigurasi Kafka dan format pesan.}
@@ -47,7 +47,7 @@ Key idempotensi & \cmd{event_id = <hazard_id>:<version>}\\
 
 \subsection{Sisi consumer}
 
-Setiap \emph{consumer} (\code{services/consumer-hazard}) men-\emph{subscribe} \emph{topic} dengan group-nya sendiri. Untuk tiap pesan, \emph{consumer}
+Setiap \emph{consumer} (\code{services/consumer-hazard}) men-\emph{subscribe} \emph{topic} dengan \emph{group}-nya sendiri. Untuk tiap pesan, \emph{consumer}
 (1) membaca \emph{header} untuk melanjutkan \code{cid}, (2) membuang pesan yang \code{event_id}-nya sudah pernah diproses,
 (3) memproses pesan, lalu (4) menandai \emph{offset} untuk di-\emph{commit}. Karena \emph{offset} ditandai \emph{setelah} pesan
 diproses, pesan tidak pernah hilang jika \emph{consumer} mati di tengah jalan. Dalam kasus terburuk, pesan itu diproses lagi.
@@ -57,12 +57,12 @@ diproses, pesan tidak pernah hilang jika \emph{consumer} mati di tengah jalan. D
 \begin{itemize}
  \item \emph{Producer} ke Kafka: \emph{relay} menandai baris terkirim hanya setelah mendapat pengakuan. Jika Aggregator mati \emph{tepat di antara} pengakuan dan penandaan, baris yang sama dikirim ulang. Satu \emph{event} bisa tiba dua kali, tetapi tidak pernah nol kali.
  \item Kafka ke \emph{consumer}: \emph{offset} di-\emph{commit} setelah pemrosesan, sehingga pesan yang belum selesai diproses akan dikirim ulang setelah \emph{consumer} hidup kembali.
- \item \textbf{Konsekuensinya, \emph{consumer} harus idempotent.} Kelompok menanganinya dengan membuang duplikat berdasarkan \code{event_id}, yang bersifat deterministik (\code{hazard_id:version}).
+ \item Konsekuensinya, \emph{consumer} harus \emph{idempotent}. Kelompok menanganinya dengan membuang duplikat berdasarkan \code{event_id}, yang bersifat deterministik (\code{hazard_id:version}).
 \end{itemize}
 
 \section{Alasan keputusan dan trade-off}
 
-Tabel berikut membandingkan beberapa cara mendistribusikan \emph{event} dengan pilihan kami.
+Sebelum memilih Kafka, kami membandingkan beberapa cara mendistribusikan \emph{event}.
 
 \begin{table}[!htbp]
 \centering\small
@@ -74,22 +74,22 @@ Tabel berikut membandingkan beberapa cara mendistribusikan \emph{event} dengan p
 RabbitMQ & Antrean yang matang dan ringan. Pada antrean biasa, pesan yang sudah dikonsumsi dihapus, sehingga \emph{consumer} baru tidak bisa membaca ulang dan setiap \emph{consumer} membutuhkan antrean sendiri yang harus dikelola. (RabbitMQ Streams menutup celah ini, tetapi itu pola lain yang tidak kami telusuri.)\\
 NATS (core) & Sangat ringan dan cepat, tetapi tidak menyimpan pesan. \emph{Consumer} yang mati kehilangan \emph{event}, sehingga tidak memenuhi kriteria menyusul. (JetStream menambahkan penyimpanan, tetapi tidak kami pilih.)\\
 Redis Pub/Sub & Sederhana, tetapi bersifat \emph{fire-and-forget}: \emph{consumer} yang mati tidak menerima apa pun saat kembali.\\
-\textbf{Apache Kafka (dipilih)} & \emph{Log} yang tahan lama. Pesan disimpan sesuai retensi dan tiap \emph{consumer group} punya \emph{offset} sendiri. \emph{Consumer} yang mati menyusul dari \emph{offset} terakhirnya, dan group baru dapat men-\emph{subscribe} tanpa menyentuh \emph{producer}.\\
+\textbf{Apache Kafka (dipilih)} & \emph{Log} yang tahan lama. Pesan disimpan sesuai retensi dan tiap \emph{consumer group} punya \emph{offset} sendiri. \emph{Consumer} yang mati menyusul dari \emph{offset} terakhirnya, dan \emph{group} baru dapat men-\emph{subscribe} tanpa menyentuh \emph{producer}.\\
 \bottomrule
 \end{tabularx}
 \caption{Alternatif \emph{broker} dan pola distribusi.}
 \end{table}
 
 Pola yang dipakai adalah \emph{publish-subscribe} dengan satu \emph{consumer group} untuk tiap pihak yang berlangganan. Jika dua
-\emph{consumer} dimasukkan ke group yang sama, Kafka akan \emph{membagi} \emph{event} di antara mereka (pola antrean kerja), bukan
-menyalinnya. Karena tiap pihak harus menerima \emph{semua} \emph{event}, kami memberi tiap pihak group sendiri.
+\emph{consumer} dimasukkan ke \emph{group} yang sama, Kafka akan \emph{membagi} \emph{event} di antara mereka (pola antrean kerja), bukan
+menyalinnya. Karena tiap pihak harus menerima \emph{semua} \emph{event}, kami memberi tiap pihak \emph{group} sendiri.
 
 Untuk semantik pengiriman, \emph{at-most-once} ditolak karena \emph{event} peringatan bisa hilang tanpa diketahui, dan itu tidak
 dapat diterima untuk data kebencanaan. \emph{Exactly-once} ditolak karena menuntut transaksi dari ujung ke ujung dan jauh
-lebih rumit. \emph{Consumer} yang idempotent menghasilkan efek yang sama dengan biaya yang jauh lebih kecil.
+lebih rumit. \emph{Consumer} yang \emph{idempotent} menghasilkan efek yang sama dengan biaya yang jauh lebih kecil.
 
 Konsekuensi memilih Kafka adalah bebannya yang lebih berat dibanding RabbitMQ atau NATS (membutuhkan memori JVM, dengan
-heap dibatasi 256--512~MB di Compose) dan operasinya yang lebih rumit. Untuk kebutuhan menyusul setelah mati dan
+\emph{heap} dibatasi 256--512~MB di Compose) dan operasinya yang lebih rumit. Untuk kebutuhan menyusul setelah mati dan
 menambah \emph{consumer} tanpa mengubah \emph{producer}, harga itu kami nilai layak.
 
 \section{Batasan yang disadari}
@@ -97,11 +97,11 @@ menambah \emph{consumer} tanpa mengubah \emph{producer}, harga itu kami nilai la
 \begin{itemize}
  \item Pembuangan duplikat hanya dilakukan di memori. Kumpulan \code{event_id} hilang saat \emph{consumer} di-\emph{restart}, dan entri lama tidak pernah dihapus (memori tumbuh seiring jumlah \emph{event}). Setelah \emph{restart}, pesan yang belum di-\emph{commit} bisa diproses lagi. Pada M1 \emph{consumer} hanya mencatat dan menghitung sehingga aman. Untuk aksi nyata (misalnya notifikasi sungguhan), pemrosesan ulang harus aman diulang atau memakai penyimpanan dedup yang tahan lama.
  \item Retensi 7~hari. \emph{Consumer} yang mati lebih lama dari itu kehilangan \emph{event} yang sudah kedaluwarsa.
- \item Group baru membaca semua riwayat yang masih tersimpan. Hal ini kami periksa secara terpisah dari skrip demo: group baru memproses 153 \emph{event}, sama dengan jumlah di dashboard. Perilaku ini berguna untuk \emph{consumer} yang perlu mengejar data, tetapi \emph{consumer} yang hanya menginginkan \emph{event} baru harus mengaturnya sendiri.
+ \item \emph{Group} baru membaca semua riwayat yang masih tersimpan (diukur pada bagian bukti di bawah). Perilaku ini berguna untuk \emph{consumer} yang perlu mengejar data, tetapi \emph{consumer} yang hanya menginginkan \emph{event} baru harus mengaturnya sendiri.
  \item Hanya ada satu \emph{broker} dengan replikasi 1. Jika disk \emph{broker} hilang, \emph{event} yang belum dibaca ikut hilang. Replikasi dan penanganan kegagalan bersamaan menjadi bahan untuk M2.
- \item Urutan hanya terjamin per hazard (satu key, satu partisi), bukan urutan global lintas hazard.
+ \item Urutan hanya terjamin per hazard (satu \emph{key}, satu partisi), bukan urutan global lintas hazard.
  \item Pesan yang rusak dilewati dan dicatat di \emph{log} (\code{consumer_bad_message}). Belum ada \emph{dead-letter queue}.
- \item \emph{Consumer} pada M1 bersifat tiruan: dashboard dan notifier hanya mencatat dan menghitung \emph{event}, belum menggerakkan tampilan atau mengirim notifikasi sungguhan.
+ \item \emph{Consumer} pada M1 bersifat tiruan: \emph{dashboard} dan \emph{notifier} hanya mencatat dan menghitung \emph{event}, belum menggerakkan tampilan atau mengirim notifikasi sungguhan.
  \item Hanya ada satu \emph{relay} untuk satu Aggregator. Jika Aggregator dijalankan dalam beberapa \emph{instance} (M2), pembacaan \emph{outbox} perlu dikunci agar \emph{event} tidak terkirim ganda.
  \item \emph{Consumer} untuk portal pemerintah daerah (\code{pemda-portal}) hanya ada saat demo dan tidak termasuk dalam Compose sehari-hari.
 \end{itemize}
@@ -118,9 +118,9 @@ Bukti berasal dari \cmd{make demo-p5} (transkrip: \code{docs/evidence/p5/latest.
 \textbf{Kriteria pada spesifikasi} & \textbf{Bukti} & \textbf{Status}\\
 \midrule
 \emph{Event} dipublikasikan ke \emph{broker}, bukan langsung ke \emph{consumer} & Alur \emph{outbox} dan \emph{relay}. Skrip demo menunggu \emph{log} \code{outbox_published} untuk ID \emph{event} yang baru dibuat, yang menandakan Kafka sudah mengakuinya. Tes ada di \code{relay_test.go} (daftar di bawah tabel). Aggregator tidak memiliki alamat \emph{consumer} mana pun di konfigurasinya. & \lulus\\
-Dua \emph{consumer} independen menerima \emph{event}, dan \emph{producer} tidak mengenal mereka & Langkah B: satu \emph{event} BMKG baru dibangkitkan, dan kedua \emph{consumer} (group berbeda) sama-sama mencatat ID yang sama (\code{bmkg-EQ-9b73f8-0061:1}) di lognya. & \lulus\\
-Satu \emph{consumer} dihentikan: \emph{producer} tidak tertahan dan \emph{consumer} lain normal; setelah hidup lagi, apa yang terjadi pada \emph{event} yang terlewat & Langkah C: \code{consumer-notifier} dihentikan, Aggregator tetap menyimpan dan mempublikasikan \emph{event} baru (\code{bmkg-EQ-9b73f8-0063:1}), dan dashboard tetap menerimanya. Langkah D: notifier dinyalakan lagi dan \textbf{menyusul} \emph{event} yang tepat itu. Skrip memeriksa ID \emph{event} di \emph{log} notifier, bukan sekadar kenaikan angka. \emph{Event} tidak hilang karena Kafka menyimpannya dan \emph{offset} group dicatat di \emph{broker}. & \lulus\\
-Menambah \emph{consumer} baru pada \emph{topic} yang sudah ada, tanpa mengubah kode \emph{producer} & Langkah E: \emph{container} baru dengan \code{KAFKA_GROUP=pemda-portal} dinyalakan lewat \cmd{docker compose run} saat sistem berjalan. \emph{Event} berikutnya (\code{bmkg-EQ-9b73f8-0065:1}) diterima oleh ketiga group. Skrip memeriksa bahwa ID \emph{container} dan waktu start Aggregator tidak berubah. & \lulus\\
+Dua \emph{consumer} independen menerima \emph{event}, dan \emph{producer} tidak mengenal mereka & Langkah B: satu \emph{event} BMKG baru dibangkitkan, dan kedua \emph{consumer} (\emph{group} berbeda) sama-sama mencatat ID yang sama (\code{bmkg-EQ-9b73f8-0061:1}) di lognya. & \lulus\\
+Satu \emph{consumer} dihentikan: \emph{producer} tidak tertahan dan \emph{consumer} lain normal; setelah hidup lagi, apa yang terjadi pada \emph{event} yang terlewat & Langkah C: \code{consumer-notifier} dihentikan, Aggregator tetap menyimpan dan mempublikasikan \emph{event} baru (\code{bmkg-EQ-9b73f8-0063:1}), dan \emph{dashboard} tetap menerimanya. Langkah D: \emph{notifier} dinyalakan lagi dan menyusul \emph{event} yang tepat itu. Skrip memeriksa ID \emph{event} di \emph{log} \emph{notifier}, bukan sekadar kenaikan angka. \emph{Event} tidak hilang karena Kafka menyimpannya dan \emph{offset} \emph{group} dicatat di \emph{broker}. & \lulus\\
+Menambah \emph{consumer} baru pada \emph{topic} yang sudah ada, tanpa mengubah kode \emph{producer} & Langkah E: \emph{container} baru dengan \code{KAFKA_GROUP=pemda-portal} dinyalakan lewat \cmd{docker compose run} saat sistem berjalan. \emph{Event} berikutnya (\code{bmkg-EQ-9b73f8-0065:1}) diterima oleh ketiga \emph{group}. Skrip memeriksa bahwa ID \emph{container} dan waktu \emph{start} Aggregator tidak berubah. & \lulus\\
 \bottomrule
 \end{tabularx}
 \caption{Kriteria Problem~5 dan buktinya.}
@@ -128,46 +128,78 @@ Menambah \emph{consumer} baru pada \emph{topic} yang sudah ada, tanpa mengubah k
 
 \subsection*{Cuplikan transkrip (\cmd{make demo-p5})}
 \begin{lstlisting}
-[1] A. Both consumers are healthy and subscribed
-    PASS consumer-dashboard /health        PASS consumer-notifier /health
-[2] B. New hazard event is published and received by BOTH consumers
-    generated BMKG event EQ-9b73f8-0061 - waiting for Kafka fan-out
-    PASS dashboard processed=126 notifier processed=23
-[3] C. Notifier stopped - Aggregator still ingests; dashboard still receives events
-    PASS aggregator ingested bmkg-EQ-9b73f8-0063 while notifier is down
-    PASS dashboard still consuming (producer not blocked by dead consumer)
-[4] D. Notifier restarts and catches up
-    PASS notifier caught up with the exact offline event bmkg-EQ-9b73f8-0063:1
-[5] E. Add a new consumer group to the same topic without touching the producer
-    PASS dashboard, notifier, and new pemda group received bmkg-EQ-9b73f8-0065:1;
-         producer was unchanged
-    PASS P5 pub/sub demo complete
+== [1] A. Both consumers are healthy and subscribed ==
+   PASS consumer-dashboard /health
+   PASS consumer-notifier /health
+
+== [2] B. New hazard event is published and received by BOTH consumers ==
+   generated BMKG event EQ-9b73f8-0061 — waiting for Kafka fan-out
+   PASS dashboard processed=126 notifier processed=23
+
+== [3] C. Notifier stopped — Aggregator still ingests; dashboard still receives events ==
+   PASS aggregator ingested bmkg-EQ-9b73f8-0063 while notifier is down
+   PASS dashboard still consuming (producer not blocked by dead consumer)
+
+== [4] D. Notifier restarts and catches up ==
+   PASS notifier caught up with the exact offline event bmkg-EQ-9b73f8-0063:1
+
+== [5] E. Add a new consumer group to the same topic without touching the producer ==
+   PASS dashboard, notifier, and new pemda group received bmkg-EQ-9b73f8-0065:1; producer was unchanged
+   PASS P5 pub/sub demo complete
 \end{lstlisting}
 
-Angka \code{processed} berbeda antara dashboard dan notifier karena skrip me-\emph{restart} notifier, dan penghitungnya
-disimpan di memori sehingga mulai dari nol lagi. Karena itu skrip membuktikan ID \emph{event}, bukan jumlahnya.
+Angka \code{processed} pada \emph{dashboard} dan \emph{notifier} berbeda karena penghitungnya disimpan di memori dan mulai dari nol
+setiap \emph{container} di-\emph{restart}. Pada transkrip ini \emph{notifier} memang lebih baru dijalankan daripada \emph{dashboard} (waktu
+\emph{start} keduanya berbeda di \code{docs/evidence/p4/latest.log}). Karena itu skrip membuktikan ID \emph{event}, bukan jumlahnya.
+
+\subsection*{Group baru membaca riwayat topic (\code{new-group-replay.log})}
+\begin{lstlisting}
+# Pengukuran terpisah dari make demo-p5: group consumer baru pada topic yang sudah berisi riwayat
+# Dijalankan pada 2026-10-10T15:01:23Z terhadap stack yang sudah berjalan beberapa jam.
+
+$ docker compose run -d --no-deps --name hist-check -e CONSUMER_NAME=histcheck -e KAFKA_GROUP=history-check-2 consumer-notifier
+(started)
+
+$ docker logs hist-check | grep -c consumer_event      # event yang diproses group baru
+2210
+$ curl localhost:8091/stats                              # consumer-dashboard (group dashboard-updater)
+{"processed":2210,"deduplicated":0,"last_event_id":"pvmbg-VR-66efe7-1007:1","last_hazard_id":"pvmbg-VR-66efe7-1007","last_kind":"created","consumer":"dashboard","group":"dashboard-updater"}
+
+$ curl localhost:8092/stats                              # consumer-notifier (group notifier)
+{"processed":2046,"deduplicated":0,"last_event_id":"pvmbg-VR-66efe7-1007:1","last_hazard_id":"pvmbg-VR-66efe7-1007","last_kind":"created","consumer":"notifier","group":"notifier"}
+
+$ docker logs hist-check | head -1                       # event paling awal yang diterima group baru
+{"ts":"2026-10-10T15:01:24.459436498Z","level":"INFO","msg":"consumer_event","service":"consumer-hazard","consumer":"histcheck","group":"history-check-2","event_id":"bmkg-EQ-771279-0003:1","kind":"created","hazard_id":"bmkg-EQ-771279-0003","cid":"dd2eb9a51b1d1
+\end{lstlisting}
+
+Skrip demo hanya memeriksa bahwa \emph{group} baru menerima \emph{event} yang terbit setelah ia bergabung. Perilaku membaca
+riwayat kami ukur terpisah di atas \emph{stack} yang sudah berjalan beberapa jam: \emph{group} \code{history-check-2} yang baru
+dibuat sudah memproses 2.210 \emph{event} setelah 25~detik, sama dengan jumlah yang sudah diproses \code{dashboard-updater} pada
+saat yang sama. \emph{Event} paling awal yang diterimanya adalah \code{bmkg-EQ-771279-0003:1}. Jumlah pada \emph{notifier} lebih
+kecil (2.046) karena \emph{container}-nya pernah di-\emph{restart} oleh skrip demo, sehingga penghitungnya mulai dari nol.
+Pengukuran ini dijalankan pada 10~Oktober~2026, bukan pada \emph{run} demo 8~Oktober.
 
 Tes otomatis yang terkait (\code{relay_test.go}):
 \begin{itemize}
  \item \code{TestFlushPublishesInOrderWithHeadersAndMarksDelivered}: urutan, \emph{header}, dan penandaan terkirim.
- \item \code{TestBrokerOutageDoesNotStopIngestionOrLoseEvents}: \emph{broker} mati tidak menghentikan ingest dan tidak menghilangkan \emph{event}.
- \item \code{TestPartialFailureKeepsOrderAndResumes}: kegagalan di tengah batch tetap menjaga urutan, dan pengiriman dilanjutkan.
+ \item \code{TestBrokerOutageDoesNotStopIngestionOrLoseEvents}: \emph{broker} mati tidak menghentikan \emph{ingest} dan tidak menghilangkan \emph{event}.
+ \item \code{TestPartialFailureKeepsOrderAndResumes}: kegagalan di tengah \emph{batch} tetap menjaga urutan, dan pengiriman dilanjutkan.
  \item \code{TestRunDeliversNewEntriesUntilCancelled}: \emph{relay} terus mengirim entri baru sampai dihentikan.
 \end{itemize}
 
 \section{Jawaban}
 
 \begin{jawaban}[\emph{Broker} dan pola yang dipilih]
-\emph{Broker} yang dipilih adalah \textbf{Apache Kafka} (mode KRaft, satu \emph{broker}) dengan pola \emph{publish-subscribe}: satu
+\emph{Broker} yang dipilih adalah Apache Kafka (mode KRaft, satu \emph{broker}) dengan pola \emph{publish-subscribe}: satu
 \emph{topic} \code{hazard.events} dan satu \emph{consumer group} untuk tiap pihak yang berlangganan. Kafka dipilih karena pesannya
-disimpan, sehingga \emph{consumer} yang mati dapat menyusul dan group baru dapat ditambahkan tanpa mengubah \emph{producer}. \emph{Producer}
+disimpan, sehingga \emph{consumer} yang mati dapat menyusul dan \emph{group} baru dapat ditambahkan tanpa mengubah \emph{producer}. \emph{Producer}
 menulis lewat \emph{transactional outbox} agar tidak ada \emph{event} yang hilang saat \emph{broker} sedang mati.
 \end{jawaban}
 
 \begin{jawaban}[Semantik pengiriman dan konsekuensi bagi \emph{consumer}]
-Semantik yang berlaku adalah \textbf{at-least-once}. \emph{Producer} menunggu pengakuan penuh (\code{acks=all}, idempotent),
+Semantik yang berlaku adalah \emph{at-least-once}. \emph{Producer} menunggu pengakuan penuh (\code{acks=all}, \emph{idempotent}),
 \emph{relay} menandai terkirim setelah pengakuan, dan \emph{consumer} meng-\emph{commit} \emph{offset} setelah memproses. \emph{Event} tidak hilang, tetapi
-dapat tiba lebih dari sekali. Karena itu \textbf{\emph{consumer} harus idempotent}. Kelompok menanganinya dengan membuang
+dapat tiba lebih dari sekali. Karena itu \emph{consumer} harus \emph{idempotent}. Kelompok menanganinya dengan membuang
 duplikat berdasarkan \cmd{event_id = hazard_id:version}, yang bersifat deterministik. Batasannya, kumpulan dedup berada
 di memori dan hilang saat \emph{restart}, sehingga aksi sungguhan pada \emph{consumer} di kemudian hari harus aman diulang.
 \end{jawaban}

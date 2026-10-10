@@ -2,7 +2,7 @@
 
 \section{Tabel kontribusi}
 
-Tabel berikut memuat pembagian kerja anggota. Pengerjaan dibagi dalam tiga tahap: fondasi dan Problem~1, kemudian
+Pembagian kerja anggota ada di tabel berikut. Pengerjaan dibagi dalam tiga tahap: fondasi dan Problem~1, kemudian
 Problem~2 dan~3, dan terakhir Problem~4 dan~5 beserta integrasinya.
 
 \begin{table}[!htbp]
@@ -14,7 +14,7 @@ Problem~2 dan~3, dan terakhir Problem~4 dan~5 beserta integrasinya.
 \midrule
 13523128~-~Andi Farhan Hidayat &
  Kontrak antarkomponen, arsitektur Aggregator, kebijakan skema &
- Fondasi (\code{pkg/obs}, Compose, Makefile, CI), \emph{mock} BMKG dan PVMBG, Aggregator, Problem~1, ketahanan proses ingest, adapter PostgreSQL dan Kafka, \emph{outbox} dan \emph{relay}, \emph{consumer} &
+ Fondasi (\code{pkg/obs}, Compose, Makefile, CI), \emph{mock} BMKG dan PVMBG, Aggregator, Problem~1, ketahanan proses \emph{ingest}, adapter PostgreSQL dan Kafka, \emph{outbox} dan \emph{relay}, \emph{consumer} &
  Bagian umum, Problem~1, deskripsi \emph{mock}\\
 13523164~-~Muhammad Rizain Firdaus &
  Autentikasi JWT dengan tiga peran, kebijakan \emph{field} Ringkasan dan Mentah, \emph{rate limiter}, penanda \code{stale} &
@@ -48,9 +48,12 @@ yang dibuat sendiri oleh kelompok sesuai kontrak pada spesifikasi, tanpa menguba
 
 \subsection*{Status penyelesaian}
 
-Tabel berikut merangkum hasil demo tiap problem. Bukti P1 dan sisi ingest P2 direkam pada 7~Oktober~2026, sedangkan bukti
-sisi layanan P2, P3, P4, dan P5 pada 8~Oktober~2026. Demo P2 dan P3 dijalankan sekali setelah \cmd{make reset}. Demo P4 dan
-P5 dijalankan setelah reset, lalu diulang sekali tanpa reset, dan keduanya lulus pada kedua percobaan.
+Hasil demo tiap problem dirangkum pada tabel di bawah, dan transkrip lengkapnya ada di \code{docs/evidence/}. Bukti P1 dan
+sisi \emph{ingest} P2 direkam pada 7~Oktober~2026 pukul 19.34 UTC (dini hari 8~Oktober WIB), sedangkan bukti sisi layanan
+P2, P3, P4, dan P5 direkam pada 8~Oktober~2026. Pada 10~Oktober~2026 semua demo kami jalankan ulang dari kondisi bersih
+(\cmd{make reset}) dengan kode yang sama dan semuanya lulus, tetapi transkrip \emph{run} ulang itu tidak dilampirkan. Seluruh
+angka di laporan ini berasal dari transkrip 7 dan 8~Oktober. Satu-satunya pengukuran dari 10~Oktober adalah \emph{group}
+\emph{consumer} baru yang membaca riwayat \emph{topic}, yang dibahas di Problem~5.
 
 \begin{table}[!htbp]
 \centering
@@ -60,7 +63,7 @@ P5 dijalankan setelah reset, lalu diulang sekali tanpa reset, dan keduanya lulus
 \textbf{Problem} & \textbf{Hasil yang terbukti} & \textbf{Status}\\
 \midrule
 P1 Interoperabilitas data & Pemetaan sesuai aturan, skema PVMBG berubah saat sistem berjalan tanpa \emph{restart}, \emph{field} baru masuk ke \code{attributes}, dan perubahan yang tidak didukung dikarantina. & \lulus\\
-P2 Konkurensi dan ketersediaan & p95 permintaan BMKG-only di bawah 300~ms saat PVMBG diberi \emph{delay} 3~detik, \emph{load test} 50~koneksi selama 60~detik, outage PVMBG tertangani, dan sistem pulih tanpa \emph{restart}. & \lulus\\
+P2 Konkurensi dan ketersediaan & p95 permintaan BMKG-only di bawah 300~ms saat PVMBG diberi \emph{delay} 3~detik, \emph{load test} 50~koneksi selama 60~detik, \emph{outage} PVMBG tertangani, dan sistem pulih tanpa \emph{restart}. & \lulus\\
 P3 Autentikasi dan kepercayaan & Kredensial antarlembaga saling menolak, Media hanya menerima \emph{field} Ringkasan, \emph{token} Tim Lapangan kedaluwarsa lalu di-\emph{refresh}, dan tidak ada kredensial yang ter-\emph{commit}. & \lulus\\
 P4 Microservice dan \emph{storage} & Satu \emph{container} (\code{pvmbg-mock}) dihentikan, di-\emph{rebuild}, dan dijalankan lagi tanpa menyentuh \emph{container} lain. \emph{Field} baru masuk ke JSONB tanpa migrasi, \emph{record} lama tetap terbaca, dan Canonical Store hanya terjangkau oleh Aggregator. & \lulus\\
 P5 Pub/sub & \emph{Event} dipublikasikan lewat Kafka ke dua \emph{consumer} independen. Satu \emph{consumer} dimatikan lalu menyusul \emph{event} yang terlewat, dan \emph{consumer} ketiga ditambahkan saat sistem berjalan tanpa mengubah \emph{producer}. & \lulus\\
@@ -112,8 +115,8 @@ jaringan, dan penyimpanan tiap \emph{container}.
 \code{aggregator} & 127.0.0.1:8083 & app, canonical, \emph{broker} & Canonical Store (tabel \code{hazards}, \code{outbox}, \code{poll_cursor})\\
 \code{postgres-canonical} & tidak dibuka & canonical-net & volume \code{canonical-pgdata}\\
 \code{kafka} & tidak dibuka & broker-net & volume \code{kafka-data}\\
-\code{kafka-init} & -- & broker-net & job sekali jalan untuk membuat \emph{topic}\\
-\code{auth-service} & 8084 & app-net, auth-net & SQLite untuk hash \emph{refresh} \emph{token} (volume \code{auth-data})\\
+\code{kafka-init} & -- & broker-net & \emph{job} sekali jalan untuk membuat \emph{topic}\\
+\code{auth-service} & 8084 & app-net, auth-net & SQLite untuk \emph{hash} \emph{refresh} \emph{token} (volume \code{auth-data})\\
 \code{client-api} & 8080 & app-net & tidak ada (\emph{stateless})\\
 \code{consumer-dashboard} & 8091 & \emph{broker}, app & memori (kumpulan \code{event_id})\\
 \code{consumer-notifier} & 8092 & \emph{broker}, app & memori (kumpulan \code{event_id})\\
@@ -124,7 +127,7 @@ jaringan, dan penyimpanan tiap \emph{container}.
 
 \section{Teknologi terpilih}
 
-Tabel berikut memuat teknologi yang dipakai pada tiap komponen beserta kebutuhan sistem yang mendasarinya.
+Teknologi yang dipakai pada tiap komponen dan kebutuhan sistem yang mendasarinya dirangkum berikut.
 
 \begin{table}[!htbp]
 \centering
@@ -133,16 +136,16 @@ Tabel berikut memuat teknologi yang dipakai pada tiap komponen beserta kebutuhan
 \toprule
 \textbf{Komponen} & \textbf{Teknologi} & \textbf{Alasan pemilihan}\\
 \midrule
-Semua \emph{service} & Go 1.25 & Goroutine yang ringan cocok untuk satu putaran \emph{polling} per sumber. Image kecil dan build cepat, sehingga \emph{rebuild} satu \emph{service} tidak lama (Problem~4). Satu bahasa untuk semua \emph{service} juga mengurangi biaya integrasi di antara tiga anggota.\\
+Semua \emph{service} & Go 1.25 & Goroutine yang ringan cocok untuk satu putaran \emph{polling} per sumber. Setiap \emph{service} dikompilasi menjadi satu \emph{binary} statis (tanpa cgo) lewat \emph{multi-stage build}, sehingga \emph{image} akhirnya hanya berisi \emph{binary} di atas Alpine dan \emph{rebuild} satu \emph{service} tidak menyentuh yang lain (Problem~4). Satu bahasa untuk semua \emph{service} juga mengurangi biaya integrasi di antara tiga anggota.\\
 HTTP dan \emph{log} & \code{net/http}, \code{log/slog} & Tidak butuh dependensi tambahan. \emph{Log} berformat JSON membawa \code{cid} lewat \emph{context}, sesuai syarat \emph{log} terstruktur.\\
 Canonical Store & PostgreSQL 16 dengan kolom JSONB & \emph{Field} kanonik disimpan di kolom tetap, sedangkan \emph{field} yang bisa berubah masuk ke \code{attributes} (JSONB), jadi \emph{field} baru tidak membutuhkan migrasi (Problem~1 dan~4). Transaksi database juga memungkinkan pola \emph{outbox} (Problem~5).\\
 \emph{Message broker} & Apache Kafka (mode KRaft, satu \emph{broker}) & \emph{Log} yang tahan lama dengan \emph{consumer group} dan \emph{offset}, sehingga \emph{consumer} yang mati bisa menyusul \emph{event} yang terlewat setelah hidup kembali (Problem~5).\\
 Klien Kafka & \code{franz-go} & Ditulis murni dalam Go (tanpa cgo), sehingga Dockerfile tetap sederhana.\\
 Autentikasi & JWT HS256 dan \emph{refresh} \emph{token} opaque & Access \emph{token} berumur pendek dan diverifikasi secara lokal, sehingga jalur baca tidak bergantung pada Auth Service (Problem~2 dan~3).\\
-Penyimpanan \emph{token} & SQLite (\code{modernc.org/sqlite}) & Hanya hash \emph{refresh} \emph{token} yang disimpan. Cukup untuk satu \emph{instance} dan tanpa cgo.\\
+Penyimpanan \emph{token} & SQLite (\code{modernc.org/sqlite}) & Hanya \emph{hash} \emph{refresh} \emph{token} yang disimpan. Cukup untuk satu \emph{instance} dan tanpa cgo.\\
 \emph{Rate limiter} & \code{golang.org/x/time/rate} & Algoritma \emph{token bucket} yang langsung menolak kelebihan beban dengan status 429, bukan memasukkannya ke antrean (Problem~2).\\
 Orkestrasi & Docker Compose dengan empat jaringan & Satu perintah menyalakan seluruh sistem. Jaringan \emph{internal} menjadi bukti isolasi penyimpanan.\\
-\emph{Load test} & k6 & Melaporkan \emph{throughput}, p50/p95/p99, dan error rate, serta mendukung ambang batas lulus.\\
+\emph{Load test} & k6 & Melaporkan \emph{throughput}, p50/p95/p99, dan \emph{error} rate, serta mendukung ambang batas lulus.\\
 Kualitas kode & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitleaks & Pengujian otomatis dan pencegahan kredensial yang ter-\emph{commit}.\\
 \bottomrule
 \end{tabularx}
@@ -153,10 +156,10 @@ Kualitas kode & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitlea
 
 \begin{enumerate}
  \item Respons \emph{mock} berupa JSON array. Parameter \code{since} bersifat \emph{lebih besar dari} (bukan sama dengan) terhadap \code{occurred_at}, \code{issued_at}, atau \code{reported_at}. \emph{Field} \code{issued_at} pada TsunamiWarning merupakan tambahan yang diizinkan spesifikasi.
- \item Warning tsunami dapat terbit \emph{setelah} gempanya. \emph{Mock} sengaja memberi jeda 2--8 detik. Satu gempa dapat memiliki beberapa warning, dan warning dengan level tertinggi menentukan severity.
+ \item \emph{Warning} tsunami dapat terbit \emph{setelah} gempanya. \emph{Mock} sengaja memberi jeda 2--8 detik. Satu gempa dapat memiliki beberapa \emph{warning}, dan \emph{warning} dengan level tertinggi menentukan \emph{severity}.
  \item Pada M1 hanya ada satu \emph{instance} untuk tiap \emph{service}. Optimistic concurrency (\code{expectedVersion}) sudah disiapkan untuk M2.
  \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya hanya pendekatan untuk simulasi, dan gunung ``Prikitiw'' bersifat fiktif.
- \item Seluruh waktu memakai UTC dan dibulatkan ke mikrodetik.
+ \item Waktu pada \emph{field} kanonik (\code{occurred_at}, \code{ingested_at}) memakai UTC dan dipotong ke mikrodetik. Nilai waktu di dalam \code{attributes} diteruskan apa adanya dari sumber, sehingga dapat berketelitian lebih tinggi.
  \item Karantina untuk \emph{record} yang tidak dapat dipetakan hanya bersifat diagnostik dan disimpan di memori.
  \item \emph{Endpoint} \code{/admin/*} pada \emph{mock} (termasuk \code{extra_fields}, \code{override}, \code{/admin/generate}, dan \code{/admin/delay}) adalah tambahan untuk keperluan demo. Kontrak yang ditetapkan spesifikasi tidak diubah.
  \item Semua klien hanya membaca. Jalur pelaporan dari lapangan ke BNPB berada di luar lingkup M1.
@@ -197,8 +200,8 @@ Canonical Store & Tempat HazardEvent disimpan. Hanya Aggregator yang boleh menga
 Ringkasan / Mentah & Dua klasifikasi \emph{field}. \emph{Field} Ringkasan boleh dilihat Media, sedangkan \emph{field} Mentah (koordinat presisi, \code{attributes}, \code{source_ref_id}) tidak.\\
 \emph{Polling} & BNPB menanyakan data ke sumber secara berkala. Sumber tidak mengirim data sendiri.\\
 \emph{Outbox} & Tabel di database yang menampung \emph{event} sampai berhasil dikirim ke \emph{broker}, sehingga tidak ada \emph{event} yang hilang saat \emph{broker} sedang mati.\\
-At-least-once & Setiap \emph{event} pasti sampai, tetapi bisa sampai lebih dari sekali.\\
-Idempotent & Memproses hal yang sama dua kali menghasilkan keadaan yang sama dengan memprosesnya sekali.\\
+\emph{At-least-once} & Setiap \emph{event} pasti sampai, tetapi bisa sampai lebih dari sekali.\\
+\emph{Idempotent} & Memproses hal yang sama dua kali menghasilkan keadaan yang sama dengan memprosesnya sekali.\\
 \emph{Circuit breaker} & Setelah sebuah sumber gagal berulang kali, pemanggilan ke sumber itu dihentikan sementara agar tidak membebani sumber yang sedang bermasalah.\\
 \emph{Token bucket} & Algoritma \emph{rate limiter}: tiap permintaan mengambil satu \emph{token}, dan permintaan ditolak dengan status 429 jika \emph{token} habis.\\
 \emph{Stale} & Data tetap ditampilkan, tetapi diberi tanda bahwa sumbernya sedang tidak diperbarui.\\
