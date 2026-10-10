@@ -178,7 +178,7 @@ func (g *Generator) Seed(now time.Time) {
 
 // Generate creates n events right now (used by the ticker and /admin/generate).
 // A tsunami-capable event gets its warning issued a few seconds later, so the
-// aggregator has to correlate a warning that arrives AFTER its event.
+// aggregator has to correlate a warning that arrives after its event.
 func (g *Generator) Generate(n int, magnitude float64, tsunami *bool) []SeismicEvent {
 	out := make([]SeismicEvent, 0, n)
 	for i := 0; i < n; i++ {

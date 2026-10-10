@@ -2,7 +2,7 @@
 // service: structured logging, correlation-ID propagation, outbound-call
 // latency logging, health endpoints and env parsing.
 //
-// It is deliberately NOT a place for domain code (see README "Shared code").
+// It is not a place for domain code (see README "Shared code").
 package obs
 
 import (

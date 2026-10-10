@@ -21,14 +21,14 @@ type pendingWarning struct {
 }
 
 // BMKGSource polls seismic events and tsunami warnings (two separate endpoints)
-// and correlates them by related_event_id - the Aggregator's job per the spec.
+// and correlates them by related_event_id, which the spec assigns to the Aggregator.
 //
-// A warning may be issued AFTER its event has already been stored (the mock does
-// this on purpose): the stored hazard is then re-evaluated, its severity follows
-// the warning, and it is saved as a new version (so consumers get an "updated"
-// event). A warning whose event is not known yet waits in `pending` (bounded by
-// PendingTTL) and holds the warnings watermark back, so it is re-fetched rather
-// than lost, even across an Aggregator restart.
+// A warning can be issued after its event is already stored (the mock does this
+// on purpose). The stored hazard is then re-evaluated, takes its severity from the
+// warning and is saved as a new version, so consumers get an "updated" event.
+// A warning whose event isn't known yet waits in `pending` (bounded by PendingTTL)
+// and holds the warnings watermark back, so it is fetched again instead of lost,
+// even across an Aggregator restart.
 type BMKGSource struct {
 	Client     *sources.BMKG
 	Repo       ports.Repository

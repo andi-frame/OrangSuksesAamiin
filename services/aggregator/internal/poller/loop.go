@@ -1,7 +1,7 @@
 // Package poller runs the ingest side of the Aggregator: one independent
-// polling loop per source. This is the core of Problem 2 - polling is fully
-// decoupled from serving, so a slow or dead PVMBG can never delay a request that
-// only needs BMKG data (there is no shared, sequential call chain any more).
+// polling loop per source. This is the core of Problem 2: polling is decoupled
+// from serving, so a slow or dead PVMBG can't delay a request that only needs
+// BMKG data. There is no shared, sequential call chain.
 package poller
 
 import (
@@ -43,7 +43,7 @@ type Loop struct {
 	Log          *slog.Logger
 }
 
-// Run blocks until ctx is cancelled. The next cycle starts Interval AFTER the
+// Run blocks until ctx is cancelled. The next cycle starts Interval after the
 // previous one finished, so a slow source never gets overlapping requests.
 func (l *Loop) Run(ctx context.Context) {
 	for {

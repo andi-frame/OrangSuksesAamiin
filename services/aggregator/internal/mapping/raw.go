@@ -1,22 +1,19 @@
 // Package mapping turns raw BMKG/PVMBG JSON records into canonical HazardEvents.
 //
-// SCHEMA-EVOLUTION POLICY (Problem 1) - "tolerant reader, additive-only":
+// Schema policy for Problem 1 (tolerant reader, additive-only):
 //
-//  1. A source record is decoded into a generic map, never into a fixed struct,
-//     so a field this code has never heard of can neither be dropped silently nor
-//     make the whole message fail to parse.
-//  2. Fields that have a canonical counterpart are read explicitly and validated
-//     (required + type). A missing or wrongly-typed required field, or an
-//     unknown enum value, is NOT guessed: the record is quarantined (logged,
-//     counted, kept in /internal/quarantine) and the rest of the batch goes on.
-//  3. EVERY other top-level field - known-but-attribute-only ones as well as
-//     fields that appear later (e.g. confidence_level) - is forwarded verbatim
-//     into HazardEvent.attributes. Nothing is ignored, nothing needs a redeploy.
+//  1. A record is decoded into a generic map, not a fixed struct, so an unknown
+//     field can't be dropped silently or make the whole message fail to parse.
+//  2. Fields with a canonical counterpart are read explicitly and validated
+//     (required and typed). A missing or mistyped field, or an unknown enum
+//     value, is not guessed. The record goes to quarantine (logged, counted,
+//     listed in /internal/quarantine) and the rest of the batch continues.
+//  3. Every other top-level field, including ones that appear later such as
+//     confidence_level, is copied as-is into HazardEvent.attributes.
 //
-// Supported changes: new fields (any JSON type), disappearance of attribute-only
-// fields. Consciously unsupported (-> quarantine): rename/removal of a field
-// with a canonical counterpart, type change of such a field, new enum values,
-// changed semantics/units.
+// Supported: new fields of any JSON type, and attribute-only fields disappearing.
+// Not supported (quarantined): renaming or removing a field that has a canonical
+// counterpart, changing its type, new enum values, changed meaning or units.
 package mapping
 
 import (

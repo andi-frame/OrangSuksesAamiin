@@ -3,7 +3,7 @@
 #
 # Sequence required by the spec:
 #   system up -> gateway works with the OLD PVMBG schema -> schema change is
-#   triggered -> gateway keeps working WITHOUT restart -> unknown-field policy holds.
+#   triggered -> gateway keeps working without restart -> unknown-field policy holds.
 #
 # The mapping is verified against an INDEPENDENT oracle: the script reads the raw
 # records straight from BMKG/PVMBG, computes the expected HazardEvent itself (jq)

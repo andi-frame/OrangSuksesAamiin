@@ -277,7 +277,7 @@ func TestExtraFieldsAndOverridesSimulateSchemaChanges(t *testing.T) {
 	}
 }
 
-// The mock must honour the M1 contract in BOTH schema versions (contracts/schemas).
+// The mock must honour the M1 contract in both schema versions (contracts/schemas).
 func TestResponsesConformToContractSchemaBeforeAndAfterSwitch(t *testing.T) {
 	sc, err := schemacheck.Load("../../../../contracts/schemas/volcanic-report.json")
 	if err != nil {

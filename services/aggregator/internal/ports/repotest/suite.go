@@ -19,7 +19,7 @@ import (
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ports"
 )
 
-// Factory returns an EMPTY repository for one sub-test.
+// Factory returns an empty repository for one sub-test.
 type Factory func(t *testing.T) ports.Repository
 
 func f64(v float64) *float64 { return &v }

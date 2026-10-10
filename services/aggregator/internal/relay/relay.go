@@ -1,13 +1,13 @@
 // Package relay moves outbox entries to the message broker (Problem 5).
 //
-// The Aggregator never calls a consumer. It writes each hazard change to its
-// outbox (same transaction as the hazard); this relay publishes the entries to
-// the broker and only then marks them delivered. Consequences:
-//   - a slow/dead consumer cannot slow ingestion (consumers are not in this path);
-//   - a broker outage cannot lose events or stop ingestion: entries wait in the
-//     outbox and are sent, in order, once the broker is back;
-//   - delivery is at-least-once (a crash between Publish and MarkPublished
-//     re-sends one entry), hence consumers de-duplicate on event_id.
+// The Aggregator never calls a consumer. Each hazard change is written to the
+// outbox in the same transaction as the hazard, and the relay publishes the
+// entries to the broker and marks them delivered only after that. So:
+//   - a slow or dead consumer can't slow ingestion, it isn't in this path;
+//   - a broker outage doesn't lose events or stop ingestion, the entries wait in
+//     the outbox and go out in order once the broker is back;
+//   - delivery is at-least-once (a crash between Publish and MarkPublished sends
+//     one entry twice), so consumers de-duplicate on event_id.
 package relay
 
 import (

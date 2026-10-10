@@ -280,7 +280,7 @@ func TestBMKGLateWarningRaisesSeverityAsNewVersion(t *testing.T) {
 		t.Fatalf("before warning: %s v%d", got.Severity, got.Version)
 	}
 
-	fb.addWarning("w1", "e1", "Siaga", 6*time.Second) // issued AFTER the event was ingested
+	fb.addWarning("w1", "e1", "Siaga", 6*time.Second) // issued after the event was ingested
 	st := pollOK(t, h.bmkg)
 	if st.Updated != 1 {
 		t.Fatalf("stats after late warning: %+v", st)

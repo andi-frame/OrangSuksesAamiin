@@ -2,7 +2,7 @@
 # P4 evidence: the Canonical Store (PostgreSQL) and the broker (Kafka) are not
 # reachable from any container except those that own/use them.
 #
-# It launches throwaway containers on the SAME networks other services use and
+# It launches throwaway containers on the same networks other services use and
 # tries to connect. A service in app-net (mocks, client-facing API, auth ...)
 # must not even be able to RESOLVE the database name.
 . "$(dirname "$0")/../lib.sh"

@@ -110,12 +110,12 @@ func ifZero(t, def time.Time) time.Time {
 	return t
 }
 
-// mergeAttributes returns old overlaid with incoming: values the source sends now
-// win, but a field it stops sending stays on the record. This is the storage half
-// of the additive-only schema policy (Problem 1): a rolled-back schema, a partial
-// response or a re-poll inside the overlap window can never erase information that
-// was already captured. The cost: a field the source removes on purpose lingers on
-// that one record (new records simply do not have it) - documented as a limitation.
+// mergeAttributes overlays incoming on old. Values the source sends now win, but a
+// field it stops sending stays on the record. This is the storage side of the
+// additive-only policy: a rolled-back schema, a partial response or a re-poll in
+// the overlap window can't erase what was already captured. The downside is that a
+// field the source removes on purpose stays on that one record (listed as a
+// limitation in the report).
 func mergeAttributes(old, incoming map[string]any) map[string]any {
 	out := make(map[string]any, len(old)+len(incoming))
 	for k, v := range old {

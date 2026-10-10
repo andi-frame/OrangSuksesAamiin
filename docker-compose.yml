@@ -3,7 +3,7 @@
 # Network layout = who may talk to whom (this is also the proof for Problem 4
 # that the Canonical Store is reachable by the Aggregator only):
 #   app-net        HTTP between services (mocks, aggregator, client-facing API, auth)
-#   canonical-net  internal: PostgreSQL <-> Aggregator ONLY
+#   canonical-net  internal: PostgreSQL <-> Aggregator only
 #   broker-net     internal: Kafka <-> producer (Aggregator) and consumers
 # PostgreSQL and Kafka publish no port to the host.
 name: bnpb
@@ -90,7 +90,7 @@ services:
     # loopback only: the internal API is for operators/demo scripts; clients use the Client-Facing API (8080)
     ports: ["127.0.0.1:${AGGREGATOR_PORT:-8083}:8083"]
     networks: [app-net, canonical-net, broker-net]
-    # deliberately NO depends_on on the mocks or the store: the Aggregator must start,
+    # no depends_on on the mocks or the store: the Aggregator must start,
     # keep serving and recover on its own while any of them is absent (Problem 2/4)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8083/health"]

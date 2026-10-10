@@ -1,5 +1,7 @@
 # Laporan IF4031 M1 — bagian umum (kerangka)
 
+> **Catatan:** ini draf awal dalam Markdown. Laporan yang dikumpulkan adalah `docs/IF4031_M1_OrangSuksesAamiin.pdf` (sumber LaTeX di `docs/report/latex/`). Jika ada perbedaan, isi PDF yang berlaku.
+
 > Kerangka bagian umum sesuai ketentuan laporan. Bagian bertanda **[isi]** diisi kelompok; sisanya draf dari sisi
 > Foundation/Aggregator (Orang 1) dan diperiksa bersama. Konversi ke PDF: `IF4031_M1_<NamaKelompok>.pdf`.
 

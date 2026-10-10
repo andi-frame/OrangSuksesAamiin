@@ -160,7 +160,7 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pe) && pe.Code == "23505"
 }
 
-// Save writes the hazard and its outbox entry in ONE transaction. A version
+// Save writes the hazard and its outbox entry in one transaction. A version
 // mismatch (0 rows updated, or a duplicate key on insert) writes nothing.
 func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out ports.OutboxEntry) error {
 	if h.Version != expected+1 {

@@ -1,0 +1,16 @@
+# Pengukuran terpisah dari make demo-p5: group consumer baru pada topic yang sudah berisi riwayat
+# Dijalankan pada 2026-10-10T15:01:23Z terhadap stack yang sudah berjalan beberapa jam.
+
+$ docker compose run -d --no-deps --name hist-check -e CONSUMER_NAME=histcheck -e KAFKA_GROUP=history-check-2 consumer-notifier
+(started)
+
+$ docker logs hist-check | grep -c consumer_event      # event yang diproses group baru
+2210
+$ curl localhost:8091/stats                              # consumer-dashboard (group dashboard-updater)
+{"processed":2210,"deduplicated":0,"last_event_id":"pvmbg-VR-66efe7-1007:1","last_hazard_id":"pvmbg-VR-66efe7-1007","last_kind":"created","consumer":"dashboard","group":"dashboard-updater"}
+
+$ curl localhost:8092/stats                              # consumer-notifier (group notifier)
+{"processed":2046,"deduplicated":0,"last_event_id":"pvmbg-VR-66efe7-1007:1","last_hazard_id":"pvmbg-VR-66efe7-1007","last_kind":"created","consumer":"notifier","group":"notifier"}
+
+$ docker logs hist-check | head -1                       # event paling awal yang diterima group baru
+{"ts":"2026-10-10T15:01:24.459436498Z","level":"INFO","msg":"consumer_event","service":"consumer-hazard","consumer":"histcheck","group":"history-check-2","event_id":"bmkg-EQ-771279-0003:1","kind":"created","hazard_id":"bmkg-EQ-771279-0003","cid":"dd2eb9a51b1d1

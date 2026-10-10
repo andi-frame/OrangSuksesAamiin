@@ -69,7 +69,8 @@
   columns=fullflexible, keepspaces=true,
   xleftmargin=2pt, xrightmargin=2pt,
   aboveskip=0.6em, belowskip=0.4em,
-  upquote=true
+  upquote=true,
+  literate={—}{{\textemdash}}1
 }
 % \code: tanpa spasi, boleh putus baris di / _ - . ; \cmd: mempertahankan spasi (perintah terminal).
 \newcommand{\code}[1]{\path{#1}}
@@ -77,13 +78,13 @@
 \newcommand{\todo}[1]{\textcolor{todored}{\textbf{[#1]}}}
 
 % ---- kotak
-\newtcolorbox{ringkas}[1][Singkatnya]{
+\newtcolorbox{ringkas}[1][Ringkasan]{
   enhanced, breakable, colback=accentlight, colframe=accent, boxrule=0.5pt,
   left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
-\newtcolorbox{jawaban}[1][Jawaban butir ``Di laporan'']{
+\newtcolorbox{jawaban}[1][Inti jawaban]{
   enhanced, breakable, colback=okbg, colframe=okgreen, boxrule=0.5pt,
   left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
-\newtcolorbox{catatan}[1][Catatan jujur]{
+\newtcolorbox{catatan}[1][Catatan]{
   enhanced, breakable, colback=warnbg, colframe=warnorange, boxrule=0.5pt,
   left=6pt,right=6pt,top=4pt,bottom=4pt, fonttitle=\sffamily\bfseries\small, title={#1}}
 
