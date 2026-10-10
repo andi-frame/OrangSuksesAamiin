@@ -57,7 +57,7 @@ func (s *Server) postToken(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := s.Tokens.Issue(r.Context(), req.ClientID, req.ClientSecret)
 	if errors.Is(err, token.ErrInvalidClient) {
-		obs.WriteError(w, http.StatusForbidden, "forbidden", "invalid client credentials")
+		obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid client credentials")
 		return
 	}
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *Server) postRefresh(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := s.Tokens.Refresh(r.Context(), req.RefreshToken)
 	if errors.Is(err, token.ErrInvalidRefresh) {
-		obs.WriteError(w, http.StatusForbidden, "forbidden", "invalid or expired refresh token")
+		obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired refresh token")
 		return
 	}
 	if err != nil {

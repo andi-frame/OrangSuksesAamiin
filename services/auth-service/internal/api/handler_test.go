@@ -62,7 +62,7 @@ func TestPostTokenWrongSecret(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/token", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
+	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status=%d", rec.Code)
 	}
 }

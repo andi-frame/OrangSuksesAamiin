@@ -95,29 +95,29 @@ func firstItem(t *testing.T, body map[string]any) map[string]any {
 	return items[0].(map[string]any)
 }
 
-func TestMissingTokenIs401AndBadTokenIs403(t *testing.T) {
+func TestBadOrMissingTokenIs401AndUnknownRoleIs403(t *testing.T) {
 	ts := newServer(t, false)
 	if code, _ := get(t, ts, "/v1/hazards", ""); code != http.StatusUnauthorized {
 		t.Fatalf("no token: got %d want 401", code)
 	}
-	if code, _ := get(t, ts, "/v1/hazards", "not.a.jwt"); code != http.StatusForbidden {
-		t.Fatalf("garbage token: got %d want 403", code)
+	if code, _ := get(t, ts, "/v1/hazards", "not.a.jwt"); code != http.StatusUnauthorized {
+		t.Fatalf("garbage token: got %d want 401", code)
 	}
 	expired, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"role": "pusat", "exp": time.Now().Add(-time.Minute).Unix(),
 	}).SignedString(secret)
-	if code, _ := get(t, ts, "/v1/hazards", expired); code != http.StatusForbidden {
-		t.Fatalf("expired token: got %d want 403", code)
+	if code, _ := get(t, ts, "/v1/hazards", expired); code != http.StatusUnauthorized {
+		t.Fatalf("expired token: got %d want 401", code)
 	}
 	forged, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"role": "pusat", "exp": time.Now().Add(time.Minute).Unix(),
 	}).SignedString([]byte("some-other-secret"))
-	if code, _ := get(t, ts, "/v1/hazards", forged); code != http.StatusForbidden {
-		t.Fatalf("token signed with another key: got %d want 403", code)
+	if code, _ := get(t, ts, "/v1/hazards", forged); code != http.StatusUnauthorized {
+		t.Fatalf("token signed with another key: got %d want 401", code)
 	}
 	noExp, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"role": "pusat"}).SignedString(secret)
-	if code, _ := get(t, ts, "/v1/hazards", noExp); code != http.StatusForbidden {
-		t.Fatalf("validly signed token without exp must not be immortal: got %d want 403", code)
+	if code, _ := get(t, ts, "/v1/hazards", noExp); code != http.StatusUnauthorized {
+		t.Fatalf("validly signed token without exp must not be immortal: got %d want 401", code)
 	}
 	unknownRole, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"role": "superadmin", "exp": time.Now().Add(time.Minute).Unix(),
@@ -129,8 +129,8 @@ func TestMissingTokenIs401AndBadTokenIs403(t *testing.T) {
 		"role": "pusat", "exp": time.Now().Add(time.Minute).Unix(),
 	})
 	unsigned, _ := noneAlg.SignedString(jwt.UnsafeAllowNoneSignatureType)
-	if code, _ := get(t, ts, "/v1/hazards", unsigned); code != http.StatusForbidden {
-		t.Fatalf("alg=none token: got %d want 403", code)
+	if code, _ := get(t, ts, "/v1/hazards", unsigned); code != http.StatusUnauthorized {
+		t.Fatalf("alg=none token: got %d want 401", code)
 	}
 }
 
