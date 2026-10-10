@@ -1,9 +1,6 @@
 \appendix
 \chapter{Penelusuran Klaim ke Bukti}
 
-Soal meminta setiap klaim dapat ditelusuri ke bukti atau ke kode. Lampiran ini merangkum jalurnya. Semua demo memeriksa
-dirinya sendiri dan menyimpan transkrip ke \code{docs/evidence/}.
-
 \section{Ketentuan implementasi lintas problem}
 
 \begin{table}[!htbp]
@@ -27,7 +24,8 @@ Kegagalan benar-benar dipicu saat demo & \cmd{make demo-p2-aggregator}, \cmd{mak
 
 \section{Matriks kriteria, perintah, dan bukti}
 
-\begin{longtable}{@{}L{2.0cm}L{3.9cm}L{4.1cm}L{1.9cm}@{}}
+{\small
+\begin{longtable}{@{}L{3.3cm}L{4.2cm}L{5.7cm}L{1.5cm}@{}}
 \toprule
 \textbf{Problem} & \textbf{Perintah} & \textbf{Berkas bukti} & \textbf{Status}\\
 \midrule
@@ -45,6 +43,7 @@ P5 (fan-out, consumer mati, menyusul) & \cmd{make demo-p5} & \code{docs/evidence
 P5 (consumer baru tanpa mengubah producer) & \cmd{make demo-p5} (langkah E) & \code{docs/evidence/p5/latest.log} & \lulus\\
 \bottomrule
 \end{longtable}
+}
 
 \section{Perintah pemeriksaan penuh}
 
