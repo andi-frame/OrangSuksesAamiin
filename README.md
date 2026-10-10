@@ -1,6 +1,6 @@
-# BNPB Disaster Coordination Gateway — IF4031 Tugas Besar, Milestone 1
+# ARGUS: Aggregated Real-time Geohazard Unified System — IF4031 Tugas Besar, Milestone 1
 
-Gateway BNPB yang menyatukan data dua instansi otonom (BMKG: gempa dan tsunami; PVMBG: gunung api) ke format kanonik
+ARGUS adalah gateway BNPB yang menyatukan data dua instansi otonom (BMKG: gempa dan tsunami; PVMBG: gunung api) ke format kanonik
 `HazardEvent`, menyimpannya di Canonical Store, menyebarkan setiap perubahan lewat message broker, dan menyajikannya ke
 tiga jenis client dengan hak akses berbeda. BMKG dan PVMBG adalah **mock** yang dibangun sesuai kontrak spesifikasi.
 

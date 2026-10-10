@@ -5,7 +5,7 @@
 
 ## 1. Sampul
 
-Nama kelompok **[isi]** · nama sistem **BNPB Disaster Coordination Gateway** · IF4031 Arsitektur Aplikasi Terdistribusi,
+Nama kelompok **[isi]** · nama sistem **ARGUS (Aggregated Real-time Geohazard Unified System)** · IF4031 Arsitektur Aplikasi Terdistribusi,
 Milestone 1 · anggota (nama, NIM) **[isi]**.
 
 ## 2. Tabel kontribusi
@@ -100,5 +100,5 @@ Ringkasan ada di `README.md` (langkah dari kondisi awal, daftar variabel, cara m
 ## 8. Penggunaan LLM dan formulir AI
 
 Penggunaan LLM (Claude Code) untuk perancangan, implementasi, dan penulisan dokumen **dideklarasikan di sini** dan pada
-kode yang dihasilkan (lihat `CLAUDE.md`); seluruh kode dipahami kelompok. Lampirkan **Form Penggunaan AI.pdf**.
+kode yang dihasilkan; seluruh kode dipahami kelompok. Lampirkan **Form Penggunaan AI.pdf**.
 Bagian yang dibantu LLM: **[isi, per anggota dan per bagian]**.
