@@ -44,6 +44,6 @@
 \draw[dotflow] (auth.south east) -- (capi.north west) node[lab, pos=0.5] {kunci JWT\\sama};
 \draw[flow] (capi.west) -- (capi.west -| agg.east) node[lab, pos=0.5] {\texttt{X-Service-Key}};
 \end{tikzpicture}}
-\caption{Arsitektur sistem. Garis tegas: panggilan jaringan; garis titik: rahasia penanda tangan token yang dipegang bersama. Kotak putus-putus: jaringan Docker yang tidak bisa dijangkau dari luar (\texttt{internal}).}
+\caption{Arsitektur sistem. Garis tegas: panggilan jaringan; garis titik: rahasia penandatangan token yang dipakai bersama. Kotak putus-putus: jaringan Docker yang tidak bisa dijangkau dari luar (\texttt{internal}).}
 \label{fig:arsitektur}
 \end{figure}

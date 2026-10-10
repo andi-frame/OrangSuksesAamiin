@@ -7,15 +7,15 @@
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{4.6cm}L{3.8cm}Y@{}}
 \toprule
-\textbf{Ketentuan di soal} & \textbf{Cara memeriksa} & \textbf{Kode atau bukti}\\
+\textbf{Ketentuan pada spesifikasi} & \textbf{Cara memeriksa} & \textbf{Kode atau bukti}\\
 \midrule
-Komunikasi lewat jaringan; tidak berbagi library business-logic & \code{pkg/obs} hanya utilitas teknis; tiap service punya \code{go.mod} sendiri & \code{pkg/obs}, \code{services/*/go.mod}\\
-Satu storage satu pemilik; Canonical Store hanya diakses Aggregator & \cmd{make demo-isolation} & \code{docs/evidence/p4/isolation.log}\\
-Satu container per service; satu perintah orkestrasi & \cmd{make reset} atau \cmd{docker compose up --build} & \code{services/*/Dockerfile}, \code{docker-compose.yml}\\
-Kredensial lembaga tidak berlaku lintas instansi & \cmd{make demo-mock-auth} & \code{docs/evidence/p3/mock-auth.log}\\
-Tidak ada kredensial di kode atau commit; \code{.env.example} tersedia & \cmd{make secrets} & \code{.env.example}, \code{.gitignore}, \code{.gitleaks.toml}\\
-\code{/health}, log terstruktur ber-\code{cid}, latensi panggilan keluar & Langkah 8 demo Problem~1; \code{cid-trace.log} Problem~2 & \code{pkg/obs}\\
-Polling dari BNPB, interval dapat diatur, sedikitnya satu event per 10~detik, seed 20 record & Tes mock; demo Problem~1 & \code{services/*-mock/internal/*/generator.go}\\
+Komunikasi lewat jaringan, tanpa berbagi library business-logic & \code{pkg/obs} hanya utilitas teknis; tiap \emph{service} punya \code{go.mod} sendiri & \code{pkg/obs}, \code{services/*/go.mod}\\
+Satu \emph{storage} satu pemilik, dan Canonical Store hanya diakses Aggregator & \cmd{make demo-isolation} & \code{docs/evidence/p4/isolation.log}\\
+Satu \emph{container} per \emph{service} dan satu perintah orkestrasi & \cmd{make reset} atau \cmd{docker compose up --build} & \code{services/*/Dockerfile}, \code{docker-compose.yml}\\
+Kredensial satu lembaga tidak berlaku di lembaga lain & \cmd{make demo-mock-auth} & \code{docs/evidence/p3/mock-auth.log}\\
+Tidak ada kredensial di kode atau \emph{commit}, dan \code{.env.example} tersedia & \cmd{make secrets} & \code{.env.example}, \code{.gitignore}, \code{.gitleaks.toml}\\
+\code{/health}, \emph{log} terstruktur dengan \code{cid}, dan latensi panggilan keluar & Langkah 8 demo Problem~1 dan \code{cid-trace.log} pada Problem~2 & \code{pkg/obs}\\
+\emph{Polling} dari BNPB, interval dapat diatur, sedikitnya satu \emph{event} per 10~detik, dan seed 20 \emph{record} & Tes pada \emph{mock} dan demo Problem~1 & \code{services/*-mock/internal/*/generator.go}\\
 Kegagalan benar-benar dipicu saat demo & \cmd{make demo-p2-aggregator}, \cmd{make demo-p2} & \cmd{POST /admin/outage}, \cmd{POST /admin/delay}\\
 \bottomrule
 \end{tabularx}
@@ -32,20 +32,20 @@ Kegagalan benar-benar dipicu saat demo & \cmd{make demo-p2-aggregator}, \cmd{mak
 \endhead
 P1 & \cmd{make demo-p1} & \code{docs/evidence/p1/latest.log} & \lulus\\
 P2 (ingest) & \cmd{make demo-p2-aggregator} & \code{docs/evidence/p2/aggregator-latest.log} & \lulus\\
-P2 (layanan, load test) & \cmd{make demo-p2} & \code{docs/evidence/p2/latest.log}, \code{k6-summary.json}, \code{k6-overload-summary.json}, \code{cid-trace.log} & \lulus\\
-P3 (kredensial mock) & \cmd{make demo-mock-auth} & \code{docs/evidence/p3/mock-auth.log} & \lulus\\
+P2 (layanan dan \emph{load test}) & \cmd{make demo-p2} & \code{docs/evidence/p2/latest.log}, \code{k6-summary.json}, \code{k6-overload-summary.json}, \code{cid-trace.log} & \lulus\\
+P3 (kredensial \emph{mock}) & \cmd{make demo-mock-auth} & \code{docs/evidence/p3/mock-auth.log} & \lulus\\
 P3 (klien downstream) & \cmd{make demo-p3} & \code{docs/evidence/p3/latest.log} & \lulus\\
-P3 (tanpa kredensial ter-commit) & \cmd{make secrets} & keluaran \code{scripts/check-secrets.sh} & \lulus\\
-P4 (isolasi storage) & \cmd{make demo-isolation} & \code{docs/evidence/p4/isolation.log} & \lulus\\
-P4 (JSONB, record berdampingan) & \cmd{make demo-p4} (langkah B--D) & \code{docs/evidence/p4/latest.log} & \lulus\\
-P4 (hentikan, bangun ulang, jalankan ulang) & \cmd{make demo-p4} (langkah A) & \code{docs/evidence/p4/latest.log} & \lulus\\
-P5 (fan-out, consumer mati, menyusul) & \cmd{make demo-p5} & \code{docs/evidence/p5/latest.log} & \lulus\\
-P5 (consumer baru tanpa mengubah producer) & \cmd{make demo-p5} (langkah E) & \code{docs/evidence/p5/latest.log} & \lulus\\
+P3 (tidak ada kredensial ter-\emph{commit}) & \cmd{make secrets} & keluaran \code{scripts/check-secrets.sh} & \lulus\\
+P4 (isolasi \emph{storage}) & \cmd{make demo-isolation} & \code{docs/evidence/p4/isolation.log} & \lulus\\
+P4 (JSONB, \emph{record} berdampingan) & \cmd{make demo-p4} (langkah B--D) & \code{docs/evidence/p4/latest.log} & \lulus\\
+P4 (stop, \emph{rebuild}, dan jalankan ulang satu \emph{container}) & \cmd{make demo-p4} (langkah A) & \code{docs/evidence/p4/latest.log} & \lulus\\
+P5 (fan-out, \emph{consumer} mati, lalu menyusul) & \cmd{make demo-p5} & \code{docs/evidence/p5/latest.log} & \lulus\\
+P5 (\emph{consumer} baru tanpa mengubah \emph{producer}) & \cmd{make demo-p5} (langkah E) & \code{docs/evidence/p5/latest.log} & \lulus\\
 \bottomrule
 \end{longtable}
 }
 
-\section{Perintah pemeriksaan penuh}
+\section{Perintah untuk pemeriksaan penuh}
 
 \begin{lstlisting}
 make lint && make test-race                                      # kualitas kode dan tes (dengan race detector)

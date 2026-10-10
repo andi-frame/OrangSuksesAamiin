@@ -1,21 +1,22 @@
 \chapter{Problem 1 -- Arsitektur dan Interoperabilitas Data}
 
 \begin{ringkas}
-PVMBG bisa menambah field baru kapan saja tanpa memberi tahu siapa pun. Gateway kami \textbf{tidak menganggap
-skema sumber tetap}. Field yang dikenal diperiksa ketat, field lain \textbf{diteruskan apa adanya ke \code{attributes}},
-dan hanya perubahan yang mengubah \emph{arti} kontrak (field wajib hilang, tipe berubah, nilai enum baru) yang
-\textbf{dikarantina}, bukan ditebak. Semua ini dibuktikan saat sistem berjalan, tanpa restart.
+PVMBG dapat menambah \emph{field} baru kapan saja tanpa memberi tahu siapa pun, sehingga \emph{gateway} tidak boleh menganggap skema
+sumber tetap. \emph{Field} yang dikenal divalidasi ketat, sedangkan \emph{field} lainnya diteruskan apa adanya ke \code{attributes}.
+Hanya perubahan yang mengubah \emph{arti} kontrak (\emph{field} wajib hilang, tipe berubah, nilai enum baru) yang dikarantina
+dan tidak ditebak. Seluruh perilaku ini dibuktikan saat sistem berjalan, tanpa \emph{restart}.
 \end{ringkas}
 
 \section{Rancangan solusi dan mekanisme}
 
-\textbf{Mekanisme: \emph{tolerant reader} dengan kebijakan \emph{additive-only}.} Aggregator tidak pernah membaca data
-sumber ke struktur (\emph{struct}) yang tetap. Setiap record dibaca ke peta generik (\code{map[string]any}), lalu:
+Mekanisme yang dipakai adalah \emph{tolerant reader} dengan kebijakan \emph{additive-only}. Aggregator tidak pernah
+membaca data sumber ke \emph{struct} yang tetap. Setiap \emph{record} dibaca ke peta generik (\code{map[string]any}), lalu
+diproses dengan tiga aturan:
 
 \begin{enumerate}
- \item \textbf{Field yang punya padanan kanonik} dibaca secara eksplisit dan divalidasi (harus ada dan bertipe benar), misalnya \code{magnitude}, \code{epicenter_lat}, \code{occurred_at}, \code{alert_level}, \code{volcano_id}.
- \item \textbf{Setiap field lain} diteruskan apa adanya ke \code{attributes}. Ini mencakup field kontrak yang memang hanya menjadi atribut (\code{depth_km}, \code{eruption_count_24h}) dan field yang muncul belakangan (\code{confidence_level}, atau apa pun).
- \item \textbf{Record yang melanggar kontrak dengan cara yang tidak didukung} tidak ditebak. Record itu dikarantina: dicatat di log (\code{mapping_rejected}), dihitung, dan dapat dilihat di \cmd{GET /internal/quarantine}. Sisa batch tetap diproses dan penanda kemajuan polling (\emph{watermark}) tetap maju.
+ \item \emph{Field} yang punya padanan kanonik dibaca secara eksplisit dan divalidasi (harus ada dan bertipe benar), misalnya \code{magnitude}, \code{epicenter_lat}, \code{occurred_at}, \code{alert_level}, dan \code{volcano_id}.
+ \item Semua \emph{field} lain diteruskan apa adanya ke \code{attributes}. Ini mencakup \emph{field} kontrak yang memang hanya menjadi atribut (\code{depth_km}, \code{eruption_count_24h}) dan \emph{field} yang muncul belakangan (\code{confidence_level} atau \emph{field} apa pun).
+ \item \emph{Record} yang melanggar kontrak dengan cara yang tidak didukung tidak ditebak, tetapi dikarantina. \emph{Record} tersebut dicatat di \emph{log} (\code{mapping_rejected}), dihitung, dan dapat dilihat lewat \cmd{GET /internal/quarantine}. Sisa batch tetap diproses dan penanda kemajuan \emph{polling} (\emph{watermark}) tetap maju.
 \end{enumerate}
 
 \begin{figure}[!htbp]
@@ -30,7 +31,7 @@ sumber ke struktur (\emph{struct}) yang tetap. Setiap record dibaca ke peta gene
 \node[box] (dec1) at (3.2,0) {dibaca ke\\peta generik};
 \node[dec] (chk) at (6.6,0) {field kanonik\\valid?};
 \node[st] (ev) at (10.2,0.9) {HazardEvent\\(field kanonik)};
-\node[box, draw=todored, fill=white] (q) at (10.2,-1.0) {karantina\\log $+$ penghitung};
+\node[box, draw=todored, fill=white] (q) at (10.2,-1.0) {karantina\\log $+$ counter};
 \node[box] (rest) at (6.6,-2.1) {sisa field};
 \node[st] (attr) at (10.2,-2.9) {\code{attributes}};
 \node[st, minimum width=3.3cm] (store) at (13.9,0) {Canonical Store};
@@ -41,22 +42,22 @@ sumber ke struktur (\emph{struct}) yang tetap. Setiap record dibaca ke peta gene
 \draw[ar] (rest)--(attr);
 \draw[ar] (ev)--(store); \draw[ar] (attr.east) -| (store.south);
 \end{tikzpicture}}
-\caption{Alur pemetaan. Sisa field selalu ikut tersimpan; record yang melanggar kontrak berhenti di karantina.}
+\caption{Alur pemetaan. Sisa \emph{field} selalu ikut tersimpan, sedangkan \emph{record} yang melanggar kontrak berhenti di karantina.}
 \end{figure}
 
-\textbf{Kebijakan field tak dikenal (dideklarasikan): diteruskan ke \code{attributes}.} Kebijakan ini diterapkan di satu
-tempat saja (fungsi \code{splitExtras}), sehingga konsisten untuk semua tipe JSON dan kedua sumber. Demo memeriksanya
-dengan pembanding independen: isi \code{attributes} harus \emph{persis sama} dengan himpunan field sumber yang tidak
-punya padanan kanonik, tidak ada yang hilang dan tidak ada yang dikarang.
+Kebijakan untuk \emph{field} yang tidak dikenal adalah \textbf{meneruskannya ke \code{attributes}}. Kebijakan ini diterapkan di
+satu tempat saja (fungsi \code{splitExtras}), sehingga berlaku sama untuk semua tipe JSON dan kedua sumber. Demo
+memeriksanya dengan pembanding independen: isi \code{attributes} harus \emph{persis sama} dengan himpunan \emph{field} sumber
+yang tidak punya padanan kanonik. Tidak boleh ada yang hilang dan tidak boleh ada yang dikarang.
 
-\textbf{Pembaruan record yang sama digabung secara aditif.} Bila record yang sama datang lagi, nilai yang dikirim sumber
-sekarang menang, tetapi field yang berhenti dikirim tetap tersimpan. Tanpa aturan ini, mengembalikan skema sumber ke
-semula akan menimpa record terbaru dengan versi yang lebih miskin dan membuang field yang sudah sempat ditangkap. Bug
-ini sempat muncul saat pengujian dan kini dijaga oleh \code{TestSchemaRollbackDoesNotEraseCapturedFields}.
+Pembaruan terhadap \emph{record} yang sama digabung secara aditif. Jika \emph{record} yang sama datang lagi, nilai yang dikirim sumber
+saat ini menang, tetapi \emph{field} yang berhenti dikirim tetap tersimpan. Tanpa aturan ini, mengembalikan skema sumber ke
+bentuk semula akan menimpa \emph{record} terbaru dengan versi yang lebih sedikit isinya dan membuang \emph{field} yang sudah sempat
+tertangkap. Bug ini sempat muncul saat pengujian dan sekarang dijaga oleh \code{TestSchemaRollbackDoesNotEraseCapturedFields}.
 
 \subsection{Aturan pemetaan}
 
-Kontrak soal menetapkan bagaimana tiap field sumber menjadi field HazardEvent. Tabel berikut merangkumnya.
+Spesifikasi menetapkan cara tiap \emph{field} sumber dipetakan ke \emph{field} HazardEvent. Tabel berikut merangkumnya.
 
 \begin{table}[!htbp]
 \centering\small
@@ -70,26 +71,29 @@ Kontrak soal menetapkan bagaimana tiap field sumber menjadi field HazardEvent. T
 \code{area_name} & \code{region_name} & nama dari tabel referensi statis BNPB\\
 \code{latitude}, \code{longitude} & \code{epicenter_lat}, \code{epicenter_lon} & dari tabel referensi statis\\
 \code{occurred_at} & \code{occurred_at} & \code{reported_at}\\
-\code{severity} & lihat aturan di bawah & \code{alert_level}: Normal, Waspada, Siaga, Awas menjadi NORMAL, WASPADA, SIAGA, AWAS\\
-\code{attributes} & \code{magnitude}, \code{depth_km}, \code{potential_tsunami}, field TsunamiWarning, dan field tak dikenal & \code{eruption_count_24h}, \code{ash_column_height_m}, \code{confidence_level} bila ada, dan field tak dikenal\\
+\code{severity} & lihat aturan di bawah & \code{alert_level}: Normal, Waspada, Siaga, dan Awas menjadi NORMAL, WASPADA, SIAGA, dan AWAS\\
+\code{attributes} & \code{magnitude}, \code{depth_km}, \code{potential_tsunami}, \emph{field} TsunamiWarning, dan \emph{field} yang tidak dikenal & \code{eruption_count_24h}, \code{ash_column_height_m}, \code{confidence_level} jika ada, dan \emph{field} yang tidak dikenal\\
 \bottomrule
 \end{tabularx}
-\caption{Pemetaan ke HazardEvent sesuai kontrak soal.}
+\caption{Pemetaan ke HazardEvent sesuai kontrak pada spesifikasi.}
 \end{table}
 
-\textbf{Severity seismik.} AWAS bila ada warning dengan \cmd{threat_level = Awas}. Selain itu mengikuti
-\code{threat_level} warning terkait. Tanpa warning: NORMAL untuk magnitudo di bawah 5,0; WASPADA untuk 5,0 sampai
-kurang dari 6,5; SIAGA untuk 6,5 ke atas. Bila ada beberapa warning, yang tertinggi menang.
+\textbf{Severity seismik.} Severity bernilai AWAS jika ada warning dengan \cmd{threat_level = Awas}. Jika tidak, severity
+mengikuti \code{threat_level} dari warning terkait. Tanpa warning, severity NORMAL untuk magnitudo di bawah 5,0, WASPADA
+untuk 5,0 sampai kurang dari 6,5, dan SIAGA untuk 6,5 ke atas. Jika ada beberapa warning, warning dengan level tertinggi
+yang dipakai.
 
-\textbf{Warning tsunami datang belakangan.} Warning diambil dari endpoint terpisah dan sering terbit setelah gempanya
-tersimpan. Aggregator mengaitkannya lewat \code{related_event_id}, menghitung ulang severity, dan menyimpannya sebagai
-\emph{versi baru} (\code{version} naik dan event \code{updated} diterbitkan). Warning yang gempanya belum terlihat
-menunggu (dibatasi TTL) dan menahan watermark warning supaya diambil ulang, bukan hilang. Karena \code{hazard_id}
-deterministik dan penyimpanan membandingkan isi, polling ulang pada jendela \emph{overlap} tidak menaikkan versi.
+\textbf{Warning tsunami yang datang belakangan.} Warning diambil dari \emph{endpoint} terpisah dan sering terbit setelah
+gempanya tersimpan. Aggregator mengaitkannya lewat \code{related_event_id}, menghitung ulang severity, lalu menyimpannya
+sebagai \emph{versi baru} (\code{version} naik dan \emph{event} \code{updated} dipublikasikan). Warning yang gempanya belum
+terlihat akan menunggu (dibatasi TTL) dan menahan \emph{watermark} warning agar diambil ulang, bukan hilang. Karena
+\code{hazard_id} bersifat deterministik dan penyimpanan membandingkan isi \emph{record}, \emph{polling} ulang pada jendela
+\emph{overlap} tidak menaikkan versi.
 
 \subsection{Jenis perubahan skema yang didukung dan tidak}
 
-Karena sumber boleh berubah kapan saja, kami menyatakan dengan tegas perubahan mana yang ditangani otomatis dan mana yang sengaja tidak.
+Karena sumber dapat berubah kapan saja, kami menetapkan secara eksplisit perubahan mana yang ditangani otomatis dan mana
+yang sengaja tidak.
 
 \begin{table}[!htbp]
 \centering\small
@@ -97,25 +101,25 @@ Karena sumber boleh berubah kapan saja, kami menyatakan dengan tegas perubahan m
 \toprule
 \textbf{Perubahan pada sumber} & \textbf{Perilaku Aggregator} & \textbf{Didukung?}\\
 \midrule
-Field baru bertipe apa pun (angka, teks, objek bersarang, list, \code{null}) & masuk \code{attributes}; HazardEvent tetap valid & Ya\\
-Field baru pada TsunamiWarning & masuk \code{attributes} dengan awalan \code{warning_} agar tidak bertabrakan nama & Ya\\
-Field yang hanya berstatus atribut menghilang & atribut itu sekadar tidak ada & Ya\\
-Field baru lalu hilang lagi (skema dikembalikan) & record lama mempertahankan nilainya; record baru tidak memilikinya & Ya\\
-\code{volcano_id} tidak ada di tabel referensi & \code{area_name} berisi id mentah, koordinat \code{null}, ada peringatan di log & Ya (turun mutu terkendali)\\
+\emph{Field} baru bertipe apa pun (angka, teks, objek bersarang, list, \code{null}) & masuk ke \code{attributes}; HazardEvent tetap valid & Ya\\
+\emph{Field} baru pada TsunamiWarning & masuk ke \code{attributes} dengan awalan \code{warning_} agar namanya tidak bertabrakan & Ya\\
+\emph{Field} yang hanya berstatus atribut menghilang & atribut itu tidak ada pada \emph{record} baru & Ya\\
+\emph{Field} baru lalu hilang lagi (skema dikembalikan) & \emph{record} lama tetap menyimpan nilainya, \emph{record} baru tidak memilikinya & Ya\\
+\code{volcano_id} tidak ada di tabel referensi & \code{area_name} berisi id mentah, koordinat \code{null}, dan ada peringatan di \emph{log} & Ya (\emph{graceful degradation})\\
 \midrule
-Field wajib hilang atau berganti nama & karantina & \textbf{Tidak, sengaja}\\
-Tipe field wajib berubah (misal \code{magnitude} jadi teks) & karantina, tidak dipaksa & \textbf{Tidak, sengaja}\\
-Nilai enum baru (misal \cmd{alert_level = Darurat}) & karantina & \textbf{Tidak, sengaja}\\
-Perubahan arti atau satuan (meter jadi kaki) & tidak terdeteksi & Tidak, di luar jangkauan\\
-Bentuk endpoint berubah (bukan array JSON, path berubah) & dianggap kegagalan sumber (circuit breaker) & Tidak\\
+\emph{Field} wajib hilang atau berganti nama & karantina & \textbf{Tidak, sengaja}\\
+Tipe \emph{field} wajib berubah (misalnya \code{magnitude} menjadi teks) & karantina, tidak dipaksa & \textbf{Tidak, sengaja}\\
+Nilai enum baru (misalnya \cmd{alert_level = Darurat}) & karantina & \textbf{Tidak, sengaja}\\
+Perubahan arti atau satuan (meter menjadi kaki) & tidak terdeteksi & Tidak, di luar jangkauan\\
+Bentuk \emph{endpoint} berubah (bukan array JSON, path berubah) & dianggap kegagalan sumber (\emph{circuit breaker}) & Tidak\\
 \bottomrule
 \end{tabularx}
-\caption{Jenis perubahan skema sumber dan perilakunya.}
+\caption{Jenis perubahan skema sumber dan perilaku Aggregator.}
 \end{table}
 
 \section{Alasan keputusan dan trade-off}\label{sec:p1-alasan}
 
-Ada beberapa cara untuk menghadapi skema sumber yang berubah. Tabel berikut membandingkannya dengan pilihan kami.
+Ada beberapa cara menghadapi skema sumber yang berubah. Tabel berikut membandingkannya dengan pilihan kami.
 
 \begin{table}[!htbp]
 \centering\small
@@ -123,52 +127,52 @@ Ada beberapa cara untuk menghadapi skema sumber yang berubah. Tabel berikut memb
 \toprule
 \textbf{Alternatif} & \textbf{Pertimbangan}\\
 \midrule
-Struct tetap & Sederhana dan bertipe, tetapi field baru hilang diam-diam, atau pesan gagal dibaca seluruhnya. Persis masalah di soal.\\
-Schema registry & Validasi terpusat. Tetapi menuntut sumber ikut mendaftarkan skema, sedangkan PVMBG mengubah skema \emph{tanpa memberi tahu siapa pun}. Registry tidak akan pernah mutakhir tepat waktu.\\
-Protobuf atau Avro (schema evolution) & Evolusi terformalisasi, tetapi sumber mengirim JSON biasa. Lapisan konversi tetap harus tahu skema baru.\\
-Pemetaan dinamis lewat berkas konfigurasi & Tanpa redeploy kode, tetapi seseorang tetap harus mengubah konfigurasi saat field baru muncul. Itu masih intervensi manual.\\
-\textbf{Tolerant reader + additive-only (dipilih)} & Bekerja \emph{sepihak} dari sisi BNPB: tanpa koordinasi, tanpa redeploy, perilakunya deterministik dan mudah dibuktikan.\\
+Struct tetap & Sederhana dan bertipe, tetapi \emph{field} baru hilang begitu saja atau seluruh pesan gagal dibaca.\\
+\emph{Schema registry} & Validasi terpusat, tetapi sumber harus ikut mendaftarkan skema. PVMBG justru mengubah skema \emph{tanpa memberi tahu siapa pun}, sehingga registry tidak akan pernah mutakhir tepat waktu.\\
+Protobuf atau Avro (schema evolution) & Evolusi skema terformalisasi, tetapi sumber mengirim JSON biasa. Lapisan konversi tetap harus mengetahui skema baru.\\
+Pemetaan dinamis lewat berkas konfigurasi & Tidak perlu \emph{redeploy} kode, tetapi seseorang tetap harus mengubah konfigurasi saat \emph{field} baru muncul. Itu masih intervensi manual.\\
+\textbf{\emph{Tolerant reader} dengan additive-only (dipilih)} & Bekerja \emph{sepihak} dari sisi BNPB: tanpa koordinasi, tanpa \emph{redeploy}, perilakunya deterministik dan mudah dibuktikan.\\
 \bottomrule
 \end{tabularx}
 \caption{Alternatif mekanisme untuk evolusi skema.}
 \end{table}
 
-\textbf{Mengapa ini.} Sumber bersifat otonom dan tidak berkoordinasi, jadi mekanisme harus bekerja tanpa kerja sama
-mereka. Perubahan aditif adalah jenis perubahan yang paling umum dan paling aman ditangani otomatis. Perubahan yang
-mengubah arti kontrak (ganti nama, ganti tipe, enum baru) sengaja dihentikan di pintu: menebaknya berisiko salah
+Sumber bersifat otonom dan tidak berkoordinasi, sehingga mekanisme yang dipilih harus berjalan tanpa kerja sama mereka.
+Perubahan aditif adalah jenis perubahan yang paling umum dan paling aman untuk ditangani otomatis. Perubahan yang
+mengubah arti kontrak (ganti nama, ganti tipe, enum baru) sengaja ditolak sejak awal, karena menebaknya berisiko salah
 menafsirkan data kebencanaan. Di sisi penyimpanan, \code{attributes} adalah dokumen JSONB, sehingga kebijakan ini tidak
 berubah menjadi migrasi tabel (Problem~4).
 
 \section{Batasan yang disadari}
 
 \begin{itemize}
- \item \textbf{Tipe nilai di \code{attributes} tidak divalidasi.} Ini disengaja (tanpa skema). Perubahan tipe pada field atribut lolos apa adanya.
- \item \textbf{Field tak dikenal ikut diteruskan}, termasuk yang mungkin sensitif. Ini aman karena seluruh \code{attributes} berklasifikasi Mentah dan Media tidak pernah menerimanya (ditegakkan Client-Facing API, Problem~3).
- \item \textbf{Field yang dihapus sumber tetap menempel pada record lama} akibat penggabungan aditif. Hanya record itu; record baru tidak memilikinya. Ini harga agar informasi tidak pernah dibuang.
- \item \textbf{Ganti nama tidak dikenali sebagai ganti nama:} field lama hilang (karantina bila wajib) dan field baru muncul sebagai atribut.
- \item \textbf{Perubahan arti dan satuan tidak terdeteksi.} Tidak ada pemantauan drift selain log dan penghitung karantina.
- \item \textbf{Karantina hanya di memori} (200 entri terakhir, penghitung sejak start). Ia alat diagnosis, bukan penyimpanan resmi, dan belum ada fitur memutar ulang record yang dikarantina setelah kode diperbaiki.
- \item Record yang ditolak diingat 15 menit agar polling ulang pada jendela \emph{overlap} tidak mencatatnya berulang.
- \item Pencocokan enum tidak peka huruf besar-kecil (\code{SIAGA} sama dengan \code{Siaga}); nilai lain ditolak.
+ \item Tipe nilai di \code{attributes} tidak divalidasi. Ini disengaja karena atribut memang tanpa skema, sehingga perubahan tipe pada \emph{field} atribut lolos apa adanya.
+ \item \emph{Field} yang tidak dikenal ikut diteruskan, termasuk yang mungkin sensitif. Hal ini aman karena seluruh \code{attributes} berklasifikasi Mentah dan tidak pernah sampai ke Media (ditegakkan oleh Client-Facing API, Problem~3).
+ \item \emph{Field} yang dihapus sumber tetap menempel pada \emph{record} lama karena penggabungan aditif. Hanya \emph{record} lama yang terpengaruh, \emph{record} baru tidak memilikinya. Konsekuensi ini kami terima agar informasi tidak pernah terbuang.
+ \item Penggantian nama \emph{field} tidak dikenali sebagai penggantian nama. \emph{Field} lama dianggap hilang (dikarantina jika wajib) dan \emph{field} baru muncul sebagai atribut.
+ \item Perubahan arti dan satuan tidak terdeteksi. Tidak ada pemantauan \emph{drift} selain \emph{log} dan counter karantina.
+ \item Karantina hanya disimpan di memori (200 entri terakhir, counter dihitung sejak start). Fungsinya sebagai alat diagnosis, bukan penyimpanan resmi, dan belum ada fitur untuk memutar ulang \emph{record} yang dikarantina setelah kode diperbaiki.
+ \item \emph{Record} yang ditolak diingat selama 15 menit agar \emph{polling} ulang pada jendela \emph{overlap} tidak mencatatnya berulang kali.
+ \item Pencocokan enum tidak membedakan huruf besar dan kecil (\code{SIAGA} sama dengan \code{Siaga}), dan nilai lain ditolak.
 \end{itemize}
 
 \section{Bukti penyelesaian}
 
-Bukti berasal dari \cmd{make demo-p1} (transkrip: \code{docs/evidence/p1/latest.log}). Demo memeriksa dirinya sendiri
+Bukti berasal dari \cmd{make demo-p1} (transkrip: \code{docs/evidence/p1/latest.log}). Demo memeriksa hasilnya sendiri
 dan berakhir dengan \cmd{P1 PASS}.
 
 \begin{table}[!htbp]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{4.6cm}Y@{}}
 \toprule
-\textbf{Kriteria soal} & \textbf{Bukti}\\
+\textbf{Kriteria pada spesifikasi} & \textbf{Bukti}\\
 \midrule
-Skema awal menghasilkan HazardEvent sesuai aturan, kedua sumber & Langkah 2: pembanding independen membaca data mentah dari mock, menghitung sendiri HazardEvent yang diharapkan, lalu mencocokkannya dengan isi Canonical Store. Hasil: 26 event BMKG dan 27 laporan PVMBG, semua lulus; keempat cabang severity terwakili (AWAS 2, NORMAL 12, SIAGA 3, WASPADA 9).\\
-Skema berubah saat berjalan, tanpa restart & Langkah 4 memanggil \cmd{POST /admin/schema-version}. Langkah 5: waktu \code{StartedAt} bmkg-mock, pvmbg-mock, dan aggregator tidak berubah.\\
-Tetap valid setelah perubahan, tanpa crash atau intervensi kode & Langkah 5: \code{confidence_level} dan field baru \code{lava_dome_volume_m3} muncul di \code{attributes}; pembanding lulus untuk 32 laporan; kedua sumber tetap \code{up}.\\
-Record sebelum dan sesudah berdampingan & Langkah 6: 28 hazard vulkanik lama tidak berubah (versi dan atribut sama); di store ada 5 hazard \emph{dengan} dan 28 \emph{tanpa} \code{confidence_level}, keduanya terbaca.\\
-Kebijakan konsisten & Langkah 5 (diteruskan) dan langkah 7 (perubahan tak didukung masuk karantina, batch tidak terblokir); \code{TestUnknownFieldPolicyIsConsistent}.\\
-Log ber-correlation ID dan latensi & Langkah 8: satu \code{cid} melintasi \code{outbound_call} (dengan \code{latency_ms}), \code{hazard_stored}, \code{poll_ok}, dan \code{outbox_published}.\\
+Skema awal menghasilkan HazardEvent sesuai aturan, untuk kedua sumber & Langkah 2: pembanding independen membaca data mentah dari \emph{mock}, menghitung sendiri HazardEvent yang diharapkan, lalu mencocokkannya dengan isi Canonical Store. Hasilnya 26 \emph{event} BMKG dan 27 laporan PVMBG, semuanya lulus, dan keempat cabang severity terwakili (AWAS 2, NORMAL 12, SIAGA 3, WASPADA 9).\\
+Skema berubah saat berjalan, tanpa \emph{restart} & Langkah 4 memanggil \cmd{POST /admin/schema-version}. Pada langkah 5, waktu \code{StartedAt} bmkg-\emph{mock}, pvmbg-\emph{mock}, dan aggregator tidak berubah.\\
+Tetap valid setelah perubahan, tanpa crash atau intervensi kode & Langkah 5: \code{confidence_level} dan \emph{field} baru \code{lava_dome_volume_m3} muncul di \code{attributes}, pembanding lulus untuk 32 laporan, dan kedua sumber tetap \code{up}.\\
+\emph{Record} sebelum dan sesudah tersimpan berdampingan & Langkah 6: 28 hazard vulkanik lama tidak berubah (versi dan atribut sama). Di \emph{store} ada 5 hazard \emph{dengan} dan 28 \emph{tanpa} \code{confidence_level}, dan keduanya terbaca.\\
+Kebijakan konsisten & Langkah 5 (\emph{field} baru diteruskan) dan langkah 7 (perubahan yang tidak didukung masuk karantina tanpa memblokir batch), serta \code{TestUnknownFieldPolicyIsConsistent}.\\
+\emph{Log} ber-\emph{correlation ID} dan latensi & Langkah 8: satu \code{cid} melintasi \code{outbound_call} (dengan \code{latency_ms}), \code{hazard_stored}, \code{poll_ok}, dan \code{outbox_published}.\\
 \bottomrule
 \end{tabularx}
 \caption{Kriteria Problem~1 dan buktinya.}
@@ -207,25 +211,25 @@ correlation id: 5dacbefeb284a2f8
 {"msg":"outbox_published","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"event_id":"pvmbg-VR-58ae09-0036:1"}
 \end{lstlisting}
 
-\textbf{Tes otomatis terkait:}
+Tes otomatis yang terkait:
 \begin{itemize}
- \item \code{mapping_test.go}: tabel severity pada batas 4,99 / 5,0 / 6,49 / 6,5, warning terlambat, idempotensi, dan \emph{round-trip} JSON.
- \item \code{poller_test.go}: \code{TestPVMBGSchemaChangeWithoutRestart}, karantina tidak menahan watermark, deduplikasi.
- \item Tes server mock PVMBG (skema awal dan baru) serta tes kontrak JSON Schema di ketiga service.
+ \item \code{mapping_test.go}: tabel severity pada batas 4,99, 5,0, 6,49, dan 6,5, warning yang terlambat, idempotensi, dan \emph{round-trip} JSON.
+ \item \code{poller_test.go}: \code{TestPVMBGSchemaChangeWithoutRestart}, karantina yang tidak menahan \emph{watermark}, dan deduplikasi.
+ \item Tes server \emph{mock} PVMBG (skema awal dan skema baru) serta tes kontrak JSON Schema di ketiga \emph{service}.
 \end{itemize}
 
 \section{Jawaban}
 
 \begin{jawaban}
-\textbf{Mekanisme yang dipilih:} \emph{tolerant reader} dengan kebijakan \emph{additive-only}. JSON dibaca generik, field
-kanonik divalidasi eksplisit, sisanya diteruskan ke \code{attributes}. Schema registry dan Protobuf/Avro tidak dipilih
-karena sumber tidak berkoordinasi (alasan di bagian~\ref{sec:p1-alasan}).
+\textbf{Mekanisme yang dipilih.} \emph{Tolerant reader} dengan kebijakan \emph{additive-only}. JSON dibaca secara generik,
+\emph{field} kanonik divalidasi eksplisit, dan sisanya diteruskan ke \code{attributes}. \emph{Schema registry} dan Protobuf atau Avro
+tidak dipilih karena sumber tidak berkoordinasi (alasan di bagian~\ref{sec:p1-alasan}).
 
-\textbf{Kebijakan field tak dikenal:} diteruskan ke \code{attributes} (tidak diabaikan).
+\textbf{Kebijakan \emph{field} yang tidak dikenal.} Diteruskan ke \code{attributes}, tidak diabaikan.
 
-\textbf{Didukung:} penambahan field bertipe apa pun; hilangnya field yang hanya berstatus atribut; \code{volcano_id}
-baru (turun mutu terkendali).
+\textbf{Perubahan yang didukung.} Penambahan \emph{field} bertipe apa pun, hilangnya \emph{field} yang hanya berstatus atribut, dan
+\code{volcano_id} baru (\emph{graceful degradation}).
 
-\textbf{Sengaja tidak didukung} (masuk karantina, batch tetap berlanjut): penghapusan atau penggantian nama field wajib,
-perubahan tipe field wajib, dan nilai enum baru. Perubahan arti atau satuan tidak terdeteksi.
+\textbf{Perubahan yang sengaja tidak didukung.} Penghapusan atau penggantian nama \emph{field} wajib, perubahan tipe \emph{field} wajib,
+dan nilai enum baru. Semuanya masuk karantina dan batch tetap berlanjut. Perubahan arti atau satuan tidak terdeteksi.
 \end{jawaban}
