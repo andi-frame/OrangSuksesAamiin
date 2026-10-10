@@ -38,7 +38,7 @@ bisa memanggil PVMBG, tetapi tidak bisa mencetak \emph{token} baru atau mengadmi
  \item \emph{Refresh} \emph{token} berupa 256 bit acak yang tidak pernah disimpan dalam bentuk asli. Yang disimpan hanya \emph{hash} SHA-256 di SQLite milik Auth Service (volume yang hanya dipasang pada \emph{container} itu). \emph{Token} ini sekali pakai: \cmd{POST /v1/refresh} menandai \emph{token} lama sebagai \code{revoked} dalam transaksi yang sama dengan pembacaannya, lalu menerbitkan pasangan \emph{token} baru. TTL-nya \code{AUTH_REFRESH_TTL_SEC} (24~jam).
  \item Penegakan di sisi BNPB pada setiap permintaan (\code{services/client-api}):
   \begin{enumerate}
-   \item Tanpa \cmd{Authorization: Bearer} berarti 401. \emph{Token} rusak, kedaluwarsa, salah tanda tangan, atau berperan tidak dikenal berarti 403.
+   \item Tanpa \cmd{Authorization: Bearer}, atau dengan \emph{token} yang rusak, kedaluwarsa, salah tanda tangan, tanpa \code{exp}, atau beralgoritma \code{none}, jawabannya 401 dengan \emph{header} \code{WWW-Authenticate: Bearer}. Itu kegagalan autentikasi. \emph{Token} yang sah tetapi berperan tidak dikenal mendapat 403, karena identitasnya asli tetapi tidak berhak.
    \item Media hanya menerima \emph{field} Ringkasan lewat \emph{whitelist} (\code{policy.FilterItem}). \emph{Field} baru yang kelak muncul di HazardEvent tidak otomatis bocor ke Media.
    \item Permintaan Media atas \emph{field} Mentah (\code{fields=latitude}, \code{include=mentah}, dan sejenisnya) ditolak dengan 403. Aturannya juga berbasis \emph{whitelist} (\code{policy.CheckQuery}): setiap nilai \code{fields} harus berupa \emph{field} Ringkasan, dan \code{include} hanya boleh kosong atau \code{summary}. Variasi penulisan (huruf besar, spasi, \code{fields[]}, parameter berulang, daftar dipisah koma, nama yang tidak dikenal) tidak lolos.
    \item \code{/v1/sources/status} hanya untuk Lapangan dan Pusat, sedangkan Media mendapat 403.
@@ -50,7 +50,7 @@ bisa memanggil PVMBG, tetapi tidak bisa mencetak \emph{token} baru atau mengadmi
 
 \section{Alasan keputusan dan trade-off}
 
-Ada beberapa cara mengamankan akses klien. Kami membandingkannya sebelum memilih JWT dengan refresh token.
+Ada beberapa cara mengamankan akses klien. Kami membandingkannya sebelum memilih JWT dengan \emph{refresh token}.
 
 \begin{table}[!htbp]
 \centering\small
@@ -77,11 +77,11 @@ itu JWT asimetris dicatat sebagai langkah berikutnya.
 \section{Batasan yang disadari}\label{sec:p3-batasan}
 
 \begin{itemize}
- \item Access \emph{token} lama tidak dicabut seketika saat \emph{refresh}. JWT bersifat \emph{stateless}, sehingga \emph{token} yang belum kedaluwarsa tetap berlaku sampai \code{exp} (paling lama 60~detik). Yang dicabut seketika adalah \emph{refresh token} lama (terbukti: jika dipakai ulang, hasilnya 403). Pencabutan seketika menuntut introspeksi atau daftar \code{jti} yang selalu diperbarui.
+ \item Access \emph{token} lama tidak dicabut seketika saat \emph{refresh}. JWT bersifat \emph{stateless}, sehingga \emph{token} yang belum kedaluwarsa tetap berlaku sampai \code{exp} (paling lama 60~detik). Yang dicabut seketika adalah \emph{refresh token} lama (terbukti: jika dipakai ulang, hasilnya 401). Pencabutan seketika menuntut introspeksi atau daftar \code{jti} yang selalu diperbarui.
  \item Tidak ada deteksi pemakaian ulang \emph{refresh} \emph{token}. Satu keluarga \emph{token} tidak dicabut ketika \emph{refresh} \emph{token} yang sudah terpakai muncul lagi.
  \item \code{/v1/token} tidak membatasi jumlah percobaan (tanpa \emph{lockout} atau \emph{rate limit} per klien). Perbandingan \emph{secret} memakai waktu konstan.
  \item \emph{Rate limiter} Client-Facing API bersifat global dan dipasang sebelum autentikasi, sehingga banjir permintaan tanpa \emph{token} ikut menghabiskan jatah. Pembatasan per klien setelah autentikasi menjadi perbaikan untuk M2.
- \item \emph{Token} kedaluwarsa dijawab dengan 403, bukan 401, mengikuti kontrak yang dibekukan di \code{docs/contracts.md}.
+ \item Aturan 401 untuk kegagalan autentikasi dan 403 untuk kegagalan otorisasi hanya diterapkan pada Client-Facing API dan Auth Service. \emph{Mock} BMKG, \emph{mock} PVMBG, dan API internal Aggregator tetap menjawab 401 untuk kredensial yang tidak ada dan 403 untuk kredensial yang salah atau milik instansi lain (spesifikasi mengizinkan 401 maupun 403 untuk \emph{mock}, dan kontrak \emph{mock} tidak boleh diubah).
  \item Tidak ada TLS di dalam jaringan Compose. \emph{Secret} klien bersifat statis di \emph{environment} tanpa perkakas rotasi. SQLite pada Auth Service hanya cocok untuk satu \emph{instance}, sehingga M2 membutuhkan penyimpanan bersama.
 \end{itemize}
 
@@ -97,9 +97,9 @@ Setiap kriteria pada spesifikasi dibuktikan oleh demo yang memeriksa hasilnya se
 \midrule
 Kredensial BMKG ditolak PVMBG dan sebaliknya (401/403) & \cmd{make demo-mock-auth}: kunci BMKG sebagai Bearer $\rightarrow$ 403, \emph{token} PVMBG di \code{X-BMKG-Key} $\rightarrow$ 403, \emph{token} yang dirusak $\rightarrow$ 403, tanpa kredensial $\rightarrow$ 401, dan \emph{token} admin silang $\rightarrow$ 403. Setiap \emph{container} hanya memegang rahasianya sendiri.\\
 Media hanya menerima Ringkasan, dan permintaan \emph{field} mentah ditolak server & \cmd{make demo-p3} langkah B (isi respons tanpa \code{latitude}, \code{longitude}, \code{attributes}, dan \code{source_ref_id}) dan langkah C (sepuluh bentuk permintaan Mentah $\rightarrow$ 403, permintaan yang hanya meminta Ringkasan $\rightarrow$ 200). Tes: \code{TestMediaNeverReceivesMentahOnListOrGet} dan \code{TestMediaExplicitMentahRequestIs403}.\\
-\emph{Token} Tim Lapangan kedaluwarsa secara alami, \emph{refresh} tanpa \emph{login} ulang, \emph{token} lama ditolak & \cmd{make demo-p3} langkah F: \emph{token} valid $\rightarrow$ tunggu sampai \code{exp} $\rightarrow$ 403 $\rightarrow$ \cmd{POST /v1/refresh} $\rightarrow$ 200 dengan \emph{token} baru \emph{tanpa} \code{client_secret} $\rightarrow$ \emph{refresh} \emph{token} lama dipakai ulang $\rightarrow$ 403.\\
+\emph{Token} Tim Lapangan kedaluwarsa secara alami, \emph{refresh} tanpa \emph{login} ulang, \emph{token} lama ditolak & \cmd{make demo-p3} langkah F: \emph{token} valid $\rightarrow$ tunggu sampai \code{exp} $\rightarrow$ 401 $\rightarrow$ \cmd{POST /v1/refresh} $\rightarrow$ 200 dengan \emph{token} baru \emph{tanpa} \code{client_secret} $\rightarrow$ \emph{refresh} \emph{token} lama dipakai ulang $\rightarrow$ 401.\\
 Tidak ada kredensial yang ter-hardcode atau ter-\emph{commit}, dan \code{.env.example} tersedia & \cmd{make secrets}: \code{.env} tidak pernah ter-\emph{commit}, gitleaks bersih (riwayat \emph{commit} dan \emph{working tree}), tidak ada literal kredensial di kode Go non-test, dan \code{.env.example} ada (skrip hanya memeriksa keberadaannya dan menghitung jumlah variabelnya, bukan kelengkapannya).\\
-401 dibedakan dari 403 & \cmd{make demo-p3} langkah A dan \code{TestMissingTokenIs401AndBadTokenIs403}: tanpa \emph{token} menghasilkan 401, sedangkan \emph{token} sampah, kedaluwarsa, kunci lain, tanpa \code{exp}, peran tidak dikenal, dan \code{alg=none} semuanya menghasilkan 403.\\
+401 dibedakan dari 403 & \cmd{make demo-p3} langkah A dan \code{TestBadOrMissingTokenIs401AndUnknownRoleIs403}: tanpa \emph{token}, \emph{token} sampah, kedaluwarsa, kunci lain, tanpa \code{exp}, dan \code{alg=none} menghasilkan 401, sedangkan peran yang tidak dikenal menghasilkan 403. Permintaan Media atas \emph{field} Mentah juga 403 (langkah C).\\
 \bottomrule
 \end{tabularx}
 \caption{Kriteria Problem~3 dan buktinya.}
@@ -135,7 +135,7 @@ MOCK AUTH PASS
    PASS no header -> 401
 ...
    PASS empty Bearer -> 401
-   PASS garbage JWT -> 403
+   PASS garbage JWT -> 401
 ...
    PASS media list omits all Mentah fields on first item
 ...
@@ -153,11 +153,11 @@ MOCK AUTH PASS
 ...
    expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
    PASS fresh access token works
-   sleeping 57s until JWT exp (+2s skew)...
-   PASS expired access token -> 403
+   sleeping 58s until JWT exp (+2s skew)...
+   PASS expired access token -> 401
 ...
    PASS refreshed access works without client_id/secret again
-   PASS rotated refresh token cannot be reused (403)
+   PASS rotated refresh token cannot be reused (401)
 \end{lstlisting}
 
 \section{Jawaban}

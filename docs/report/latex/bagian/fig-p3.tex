@@ -19,7 +19,7 @@
 \draw[msg] (10.4,-5.9) -- (15.0,-5.9) node[lab,pos=0.5]{\texttt{GET /internal/hazards}\\\texttt{X-Service-Key}};
 \draw[ret] (15.0,-6.7) -- (10.4,-6.7);
 \draw[ret] (10.4,-7.3) -- (0,-7.3) node[lab,pos=0.5]{200: Ringkasan (Media) atau penuh (Lapangan, Pusat)};
-\node[draw=warnorange, fill=warnbg, rounded corners=2pt, font=\sffamily\scriptsize, align=center] at (5.2,-8.3) {setelah 60 detik token kedaluwarsa:\\permintaan berikutnya mendapat 403};
+\node[draw=warnorange, fill=warnbg, rounded corners=2pt, font=\sffamily\scriptsize, align=center] at (5.2,-8.3) {setelah 60 detik token kedaluwarsa:\\permintaan berikutnya mendapat 401};
 \draw[msg] (0,-9.4) -- (5.2,-9.4) node[lab,pos=0.5]{\texttt{POST /v1/refresh}\\(refresh token)};
 \draw[ret] (5.2,-10.4) -- (0,-10.4) node[lab,pos=0.5]{pasangan token baru;\\refresh lama tidak berlaku};
 \end{tikzpicture}}
