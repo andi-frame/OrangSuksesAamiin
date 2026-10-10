@@ -2,7 +2,7 @@
 # Problem 3 - client auth, role-based field access, access TTL + refresh (Orang 2).
 #
 # Proves:
-#   - Client-Facing API: 401 without credentials, 403 bad/expired Bearer
+#   - Client-Facing API: 401 without credentials or with a bad/expired Bearer; 403 only for a valid token that may not do it
 #   - Media: summary-only responses; explicit Mentah request -> 403
 #   - Lapangan/Pusat: Mentah allowed; /v1/sources/status for lapangan (media denied)
 #   - Access token expires (~AUTH_ACCESS_TTL_SEC); refresh without re-login; old tokens rejected
@@ -51,7 +51,7 @@ show "GET with empty Bearer"
 [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H 'Authorization: Bearer ' "${CAPI_URL}${HZ}")" = "401" ] \
   && ok "empty Bearer -> 401" || fail "expected 401 for empty bearer"
 
-[ "$(capi_code 'not.a.valid.jwt' "$HZ")" = "403" ] && ok "garbage JWT -> 403" || fail "expected 403 for invalid token"
+[ "$(capi_code 'not.a.valid.jwt' "$HZ")" = "401" ] && ok "garbage JWT -> 401" || fail "expected 401 for invalid token"
 
 step "B. Media receives Ringkasan only (enforced on the server)"
 MEDIA="$(media_token)"
@@ -117,8 +117,8 @@ fi
 info "sleeping ${WAIT}s until JWT exp (+2s skew)..."
 sleep "$WAIT"
 
-[ "$(capi_code "$ACCESS" "$HZ")" = "403" ] \
-  && ok "expired access token -> 403" || fail "expired access must be rejected (403)"
+[ "$(capi_code "$ACCESS" "$HZ")" = "401" ] \
+  && ok "expired access token -> 401" || fail "expired access must be rejected (401)"
 
 show "POST ${AUTH_URL}/v1/refresh"
 NEW_PAIR="$(auth_refresh "$REFRESH")"
@@ -128,14 +128,14 @@ NEW_ACCESS="$(echo "$NEW_PAIR" | jqx -r .access_token)"
   && ok "refreshed access works without client_id/secret again" || fail "refreshed token must work"
 
 REUSE_BODY="$(printf '{"refresh_token":"%s"}' "$REFRESH")"
-[ "$(auth_code POST /v1/refresh "$REUSE_BODY")" = "403" ] \
-  && ok "rotated refresh token cannot be reused (403)" \
+[ "$(auth_code POST /v1/refresh "$REUSE_BODY")" = "401" ] \
+  && ok "rotated refresh token cannot be reused (401)" \
   || fail "old refresh token must be rejected after rotate"
 
-step "G. Auth service rejects wrong client secret (403)"
+step "G. Auth service rejects wrong client secret (401)"
 show "POST /v1/token wrong secret"
 WRONG_BODY="$(printf '{"client_id":"%s","client_secret":"wrong"}' "$AUTH_MEDIA_CLIENT_ID")"
-[ "$(auth_code POST /v1/token "$WRONG_BODY")" = "403" ] \
-  && ok "wrong client_secret -> 403" || fail "invalid client credentials must be 403"
+[ "$(auth_code POST /v1/token "$WRONG_BODY")" = "401" ] \
+  && ok "wrong client_secret -> 401" || fail "invalid client credentials must be 401"
 
 ok "P3 client auth and field policy demo complete"

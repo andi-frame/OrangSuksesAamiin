@@ -35,8 +35,8 @@ paths:
           description: |
             {items, next_cursor, freshness}. Each item includes stale boolean.
             Media items omit source_ref_id, latitude, longitude, attributes.
-        "401": {description: missing Authorization}
-        "403": {description: invalid token or forbidden field request}
+        "401": {description: missing, invalid or expired token}
+        "403": {description: forbidden field request or role not allowed}
         "429": {description: rate limit}
         "502": {description: aggregator error}
         "503": {description: upstream unavailable}
@@ -49,8 +49,8 @@ paths:
         - {name: include, in: query, schema: {type: string}}
       responses:
         "200": {description: hazard object shaped per role + stale}
-        "401": {description: missing Authorization}
-        "403": {description: invalid token or forbidden field request}
+        "401": {description: missing, invalid or expired token}
+        "403": {description: forbidden field request or role not allowed}
         "404": {description: not found}
   /v1/sources/status:
     get:
@@ -58,8 +58,8 @@ paths:
       security: [{bearerAuth: []}]
       responses:
         "200": {description: same shape as GET /internal/sources/status on Aggregator}
-        "401": {description: missing Authorization}
-        "403": {description: Media not allowed or invalid token}
+        "401": {description: missing, invalid or expired token}
+        "403": {description: role not allowed (Media)}
   /health:
     get:
       security: []
