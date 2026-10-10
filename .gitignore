@@ -24,7 +24,3 @@ docs/evidence/**/*.tmp
 docs/evidence/**/k6*.log
 loadtest/results/*.json
 progress.md
-
-
-# local assistant instructions (kept out of the remote)
-CLAUDE.md
