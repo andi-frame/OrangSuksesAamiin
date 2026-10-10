@@ -5,7 +5,7 @@
 
 ## 1. Sampul
 
-Nama kelompok **[isi]** · nama sistem **BNPB Disaster Coordination Gateway** · IF4031 Arsitektur Aplikasi Terdistribusi,
+Nama kelompok **[isi]** · nama sistem **ARGUS (Aggregated Real-time Geohazard Unified System)** · IF4031 Arsitektur Aplikasi Terdistribusi,
 Milestone 1 · anggota (nama, NIM) **[isi]**.
 
 ## 2. Tabel kontribusi
