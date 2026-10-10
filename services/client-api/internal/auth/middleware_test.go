@@ -32,7 +32,10 @@ func TestMiddlewareInvalidToken(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer not.valid.jwt")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("got %d want 403", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got %d want 401", rec.Code)
+	}
+	if rec.Header().Get("WWW-Authenticate") == "" {
+		t.Fatal("a 401 must carry a WWW-Authenticate challenge")
 	}
 }

@@ -7,6 +7,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// ErrUnknownRole means the token is genuine but carries a role this API does not know.
+// That is an authorization problem (403), not an authentication one (401).
+var ErrUnknownRole = errors.New("unknown role")
+
 func ParseBearer(secret []byte, bearer string) (role string, err error) {
 	parsed, err := jwt.Parse(bearer, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
@@ -26,6 +30,6 @@ func ParseBearer(secret []byte, bearer string) (role string, err error) {
 	case "media", "lapangan", "pusat":
 		return role, nil
 	default:
-		return "", errors.New("unknown role")
+		return "", ErrUnknownRole
 	}
 }

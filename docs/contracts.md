@@ -51,7 +51,7 @@ OpenAPI: `contracts/openapi/client-api.yaml`.
 | Port | **8080** (`CLIENT_API_PORT`) |
 | Jaringan | `app-net` saja; **tidak** akses `canonical-net` / broker |
 | Upstream | `GET {AGGREGATOR_URL}/internal/*` dengan `X-Service-Key` |
-| Auth client | `Authorization: Bearer <JWT>` dari Auth Service; tanpa header → **401**; token invalid/expired → **403** |
+| Auth client | `Authorization: Bearer <JWT>` dari Auth Service; tanpa header, token rusak, salah tanda tangan, atau kedaluwarsa → **401** (dengan `WWW-Authenticate: Bearer`); token sah tetapi peran tidak berhak, atau Media meminta field Mentah → **403** |
 | Endpoints | `GET /v1/hazards`, `GET /v1/hazards/{id}`, `GET /v1/sources/status` (lapangan + pusat saja) |
 | Field policy | **Media**: hanya Ringkasan (+ `stale`); `fields` hanya boleh berisi field Ringkasan dan `include` hanya kosong/`summary`; selain itu (Mentah, nama tak dikenal, huruf besar, `fields[]`, parameter berulang) → **403**. **Lapangan/Pusat**: HazardEvent penuh + `stale` |
 | Stale | `stale: true` per item bila `freshness[source].stale_since` (list) atau status sumber (get by id) |

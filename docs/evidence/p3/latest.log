@@ -4,7 +4,7 @@ $ GET http://localhost:8080/v1/hazards?hazard_type=SEISMIC&limit=20 (no Authoriz
    PASS no header -> 401
 $ GET with empty Bearer
    PASS empty Bearer -> 401
-   PASS garbage JWT -> 403
+   PASS garbage JWT -> 401
 
 == [2] B. Media receives Ringkasan only (enforced on the server) ==
    PASS media list omits all Mentah fields on first item
@@ -33,13 +33,13 @@ $ GET with empty Bearer
 == [6] F. Access token TTL: expired access rejected; refresh without new client login ==
    expires_in=60s (configured AUTH_ACCESS_TTL_SEC=60)
    PASS fresh access token works
-   sleeping 57s until JWT exp (+2s skew)...
-   PASS expired access token -> 403
+   sleeping 58s until JWT exp (+2s skew)...
+   PASS expired access token -> 401
 $ POST http://localhost:8084/v1/refresh
    PASS refreshed access works without client_id/secret again
-   PASS rotated refresh token cannot be reused (403)
+   PASS rotated refresh token cannot be reused (401)
 
-== [7] G. Auth service rejects wrong client secret (403) ==
+== [7] G. Auth service rejects wrong client secret (401) ==
 $ POST /v1/token wrong secret
-   PASS wrong client_secret -> 403
+   PASS wrong client_secret -> 401
    PASS P3 client auth and field policy demo complete

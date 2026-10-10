@@ -50,9 +50,10 @@ yang dibuat sendiri oleh kelompok sesuai kontrak pada spesifikasi, tanpa menguba
 
 Hasil demo tiap problem dirangkum pada tabel di bawah, dan transkrip lengkapnya ada di \code{docs/evidence/}. Bukti P1 dan
 sisi \emph{ingest} P2 direkam pada 7~Oktober~2026 pukul 19.34 UTC (dini hari 8~Oktober WIB), sedangkan bukti sisi layanan
-P2, P3, P4, dan P5 direkam pada 8~Oktober~2026. Pada 10~Oktober~2026 semua demo kami jalankan ulang dari kondisi bersih
-(\cmd{make reset}) dengan kode yang sama dan semuanya lulus, tetapi transkrip \emph{run} ulang itu tidak dilampirkan. Seluruh
-angka di laporan ini berasal dari transkrip 7 dan 8~Oktober. Satu-satunya pengukuran dari 10~Oktober adalah \emph{group}
+P2, P4, dan P5 direkam pada 8~Oktober~2026. Transkrip P3 direkam ulang pada 10~Oktober~2026, setelah jawaban untuk \emph{token}
+yang gagal diautentikasi diubah dari 403 menjadi 401 (dibahas di Problem~3). Pada hari yang sama semua demo kami jalankan
+ulang dari kondisi bersih (\cmd{make reset}) dan semuanya lulus, tetapi transkrip \emph{run} ulang itu tidak dilampirkan,
+kecuali P3. Angka di laporan ini berasal dari transkrip yang dilampirkan. Pengukuran lain dari 10~Oktober adalah \emph{group}
 \emph{consumer} baru yang membaca riwayat \emph{topic}, yang dibahas di Problem~5.
 
 \begin{table}[!htbp]
@@ -114,8 +115,8 @@ jaringan, dan penyimpanan tiap \emph{container}.
 \code{pvmbg-mock} & 8082 & app-net & tidak ada (data simulasi di memori)\\
 \code{aggregator} & 127.0.0.1:8083 & app, canonical, \emph{broker} & Canonical Store (tabel \code{hazards}, \code{outbox}, \code{poll_cursor})\\
 \code{postgres-canonical} & tidak dibuka & canonical-net & volume \code{canonical-pgdata}\\
-\code{kafka} & tidak dibuka & broker-net & volume \code{kafka-data}\\
-\code{kafka-init} & -- & broker-net & \emph{job} sekali jalan untuk membuat \emph{topic}\\
+\code{kafka} & tidak dibuka & \emph{broker}-net & volume \code{kafka-data}\\
+\code{kafka-init} & -- & \emph{broker}-net & \emph{job} sekali jalan untuk membuat \emph{topic}\\
 \code{auth-service} & 8084 & app-net, auth-net & SQLite untuk \emph{hash} \emph{refresh} \emph{token} (volume \code{auth-data})\\
 \code{client-api} & 8080 & app-net & tidak ada (\emph{stateless})\\
 \code{consumer-dashboard} & 8091 & \emph{broker}, app & memori (kumpulan \code{event_id})\\
@@ -169,8 +170,9 @@ Kualitas kode & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitlea
 
 \section{Petunjuk menjalankan}
 
-Langkah lengkap, daftar variabel konfigurasi, dan cara memicu tiap skenario ada di \code{README.md} pada repositori.
-Ringkasannya sebagai berikut.
+Seluruh kode, berkas orkestrasi, dan bukti ada di repositori \url{https://github.com/andi-frame/OrangSuksesAamiin}. Versi yang
+dinilai adalah \emph{commit} dengan tag \code{milestone-1}. Langkah lengkap, daftar variabel konfigurasi, dan cara memicu tiap
+skenario ada di \code{README.md} pada repositori tersebut. Ringkasannya sebagai berikut.
 
 \begin{lstlisting}
 cp .env.example .env            # nilai contoh; .env tidak pernah di-commit
