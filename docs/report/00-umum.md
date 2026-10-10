@@ -2,13 +2,13 @@
 
 > **Catatan:** ini draf awal dalam Markdown. Laporan yang dikumpulkan adalah `docs/IF4031_M1_OrangSuksesAamiin.pdf` (sumber LaTeX di `docs/report/latex/`). Jika ada perbedaan, isi PDF yang berlaku.
 
-> Kerangka bagian umum sesuai ketentuan laporan. Bagian bertanda **[isi]** diisi kelompok; sisanya draf dari sisi
-> Foundation/Aggregator (Orang 1) dan diperiksa bersama. Konversi ke PDF: `IF4031_M1_<NamaKelompok>.pdf`.
+> Kerangka bagian umum sesuai ketentuan laporan. Versi akhirnya ada di PDF yang dikumpulkan
+> (`IF4031_M1_OrangSuksesAamiin.pdf`).
 
 ## 1. Sampul
 
-Nama kelompok **[isi]** · nama sistem **ARGUS (Aggregated Real-time Geohazard Unified System)** · IF4031 Arsitektur Aplikasi Terdistribusi,
-Milestone 1 · anggota (nama, NIM) **[isi]**.
+Nama kelompok **OrangSuksesAamiin** · nama sistem **ARGUS (Aggregated Real-time Geohazard Unified System)** · IF4031 Arsitektur Aplikasi Terdistribusi,
+Milestone 1 · anggota: 13523128 - Andi Farhan Hidayat, 13523164 - Muhammad Rizain Firdaus, 13523152 - Muhammad Kinan Arkansyaddad.
 
 ## 2. Tabel kontribusi
 
@@ -16,7 +16,7 @@ Milestone 1 · anggota (nama, NIM) **[isi]**.
 |---|---|---|---|
 | Orang 1 | kontrak antar-komponen, arsitektur Aggregator, kebijakan skema | foundation (`pkg/obs`, compose, Makefile, CI), mock BMKG/PVMBG, Aggregator, P1, ketahanan ingest | bagian umum, P1, deskripsi mock |
 | Orang 2 | Auth JWT (3 role), Client-Facing API :8080, kebijakan field Ringkasan/Mentah, rate limit, penanda `stale`; kontrak `contracts/openapi/client-api.yaml` | `services/auth-service`, `services/client-api`, `scripts/demo/p2.sh`, `p3.sh`, `scripts/loadtest/` | `docs/report/02-p2.md`, `docs/report/03-p3.md`; baris P2/P3 di `docs/traceability.md` |
-| Orang 3 | **[isi]** | adapter Postgres/Kafka, consumer, integrasi (P4, P5) | **[isi]** |
+| Orang 3 | perbandingan penyimpanan (PostgreSQL JSONB) dan distribusi event (Kafka dengan outbox), semantik pengiriman, batasan | skrip demo P4 dan P5, pengujian pemulihan consumer | Problem 4, Problem 5 |
 
 ## 3. Deskripsi umum sistem
 
@@ -99,8 +99,7 @@ ingest (P5). Setiap alur membawa correlation ID dari siklus poll hingga consumer
 Ringkasan ada di `README.md` (langkah dari kondisi awal, daftar variabel, cara memicu tiap skenario). Singkatnya:
 `cp .env.example .env && docker compose up --build`, lalu `make demo-p1` dan seterusnya.
 
-## 8. Penggunaan LLM dan formulir AI
+## 8. Penggunaan AI
 
-Penggunaan LLM (Claude Code) untuk perancangan, implementasi, dan penulisan dokumen **dideklarasikan di sini** dan pada
-kode yang dihasilkan; seluruh kode dipahami kelompok. Lampirkan **Form Penggunaan AI.pdf**.
-Bagian yang dibantu LLM: **[isi, per anggota dan per bagian]**.
+Penggunaan AI dideklarasikan pada surat pernyataan yang ditandatangani ketiga anggota. Surat itu terlampir di halaman
+terakhir laporan PDF, dan berkas aslinya ada di `docs/report/latex/IF4031_Surat-Pernyataan-AI_OrangSuksesAamiin.pdf`.
