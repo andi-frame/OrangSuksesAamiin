@@ -85,7 +85,7 @@ ingest (P5). Setiap alur membawa correlation ID dari siklus poll hingga consumer
    warning, yang tertinggi menentukan severity.
 3. Satu instance Aggregator pada M1; konkurensi optimistis (`expectedVersion`) sudah menyiapkan M2.
 4. Tabel referensi gunung api (`services/aggregator/config/volcanoes.json`) adalah data statis milik BNPB; koordinat adalah
-   pendekatan untuk simulasi (bukan data resmi). Gunung "Prikitiw" fiktif (mengikuti latar cerita).
+   pendekatan untuk simulasi (bukan data resmi). Gunung "Prikitiw" bersifat fiktif.
 5. Waktu di seluruh sistem adalah UTC; presisi HazardEvent dipotong ke mikrodetik.
 6. Karantina rekaman yang tidak dapat dipetakan bersifat diagnostik dan tersimpan di memori.
 7. Endpoint `/admin/*` pada mock (dan `extra_fields`, `override`, `/admin/generate`, `/admin/delay`) adalah tambahan untuk

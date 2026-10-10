@@ -8,19 +8,19 @@ Problem~2 dan~3, lalu Problem~4 dan~5 beserta integrasi.
 \begin{table}[!htbp]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}L{2.9cm}YYY@{}}
+\begin{tabularx}{\textwidth}{@{}L{4.7cm}YYY@{}}
 \toprule
 \textbf{Anggota} & \textbf{Perancangan} & \textbf{Implementasi} & \textbf{Penulisan laporan}\\
 \midrule
-Orang~1 \newline Andi Farhan Hidayat &
+Orang~1 \newline 13523128~-~Andi Farhan Hidayat &
  Kontrak antar-komponen, arsitektur Aggregator, kebijakan skema &
  Fondasi (\code{pkg/obs}, Compose, Makefile, CI), mock BMKG dan PVMBG, Aggregator, Problem~1, ketahanan ingest, adapter PostgreSQL dan Kafka, outbox dan relay, consumer &
  Bagian umum, Problem~1, deskripsi mock\\
-Orang~2 \newline Muhammad Rizain Firdaus &
+Orang~2 \newline 13523164~-~Muhammad Rizain Firdaus &
  Autentikasi JWT tiga peran, kebijakan field Ringkasan/Mentah, pembatas laju, penanda \code{stale} &
  \code{auth-service}, \code{client-api}, skrip demo dan load test Problem~2 dan~3 &
  Problem~2, Problem~3\\
-Orang~3 \newline Muhammad Kinan Arkansyaddad &
+Orang~3 \newline 13523152~-~Muhammad Kinan Arkansyaddad &
  Perbandingan pilihan penyimpanan (PostgreSQL dengan JSONB) dan pilihan penyebaran event (Kafka dengan outbox), semantik pengiriman, dan batasan yang disadari &
  Skrip demo Problem~4 dan~5 (membangun ulang satu service, field baru tanpa migrasi, consumer baru) dan pengujian pemulihan consumer &
  Problem~4, Problem~5\\
@@ -31,8 +31,8 @@ Orang~3 \newline Muhammad Kinan Arkansyaddad &
 
 \section{Deskripsi umum sistem}
 
-Di cerita soal, Astolfo menerima sinyal bencana dari banyak lembaga yang tidak saling bicara. Sistem ini, ARGUS
-(\emph{Aggregated Real-time Geohazard Unified System}), adalah \emph{gateway} milik BNPB yang menyambungkannya. Ia melakukan lima hal:
+ARGUS (\emph{Aggregated Real-time Geohazard Unified System}) adalah \emph{gateway} milik BNPB yang menyatukan data
+kebencanaan dari BMKG dan PVMBG. Ia melakukan lima hal:
 
 \begin{enumerate}
  \item \textbf{Mengambil} data dari dua lembaga secara berkala (\emph{polling}): BMKG untuk gempa dan tsunami, PVMBG untuk gunung api.
@@ -154,7 +154,7 @@ Kualitas & GitHub Actions, \code{gofmt}, \cmd{go vet}, \code{-race}, gitleaks & 
  \item Respons mock berupa JSON array. Parameter \code{since} bersifat \emph{lebih besar dari} (bukan sama dengan) terhadap \code{occurred_at}, \code{issued_at}, atau \code{reported_at}. Field \code{issued_at} pada TsunamiWarning adalah tambahan yang diizinkan soal.
  \item Warning tsunami dapat terbit \emph{setelah} gempanya. Mock sengaja memberi jeda 2--8 detik. Satu gempa dapat punya beberapa warning dan yang tertinggi menentukan severity.
  \item Hanya ada satu instance tiap service pada M1. Konkurensi optimistis (\code{expectedVersion}) sudah disiapkan untuk M2.
- \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya pendekatan untuk simulasi, dan gunung ``Prikitiw'' fiktif mengikuti cerita soal.
+ \item Koordinat dan nama gunung api berasal dari tabel referensi statis milik BNPB (\code{config/volcanoes.json}). Koordinatnya pendekatan untuk simulasi, dan gunung ``Prikitiw'' bersifat fiktif.
  \item Seluruh waktu memakai UTC dan dipotong ke ketelitian mikrodetik.
  \item Karantina record yang tidak dapat dipetakan bersifat diagnostik dan disimpan di memori.
  \item Endpoint \code{/admin/*} pada mock (termasuk \code{extra_fields}, \code{override}, \code{/admin/generate}, \code{/admin/delay}) adalah tambahan untuk demo. Kontrak yang ditetapkan soal tidak diubah.
@@ -179,18 +179,6 @@ Satu-satunya prasyarat adalah Docker dengan Compose v2. Port bawaan: BMKG 8081, 
 Auth Service 8084, Aggregator 8083 (hanya \emph{loopback}), consumer 8091 dan 8092. Semua dapat diubah lewat
 \code{.env}. Setiap demo memeriksa dirinya sendiri (kode keluar tidak nol bila gagal) dan menyimpan transkripnya ke
 \code{docs/evidence/}.
-
-\section{Penggunaan LLM}
-
-\begin{catatan}[Diisi oleh kelompok]
-Soal mewajibkan deklarasi penggunaan LLM di laporan beserta lampiran \emph{Form Penggunaan AI.pdf}. Bagian ini sengaja
-dikosongkan dan diisi sendiri oleh kelompok di akhir:
-\begin{itemize}
- \item alat yang dipakai dan untuk bagian mana (perancangan, kode, laporan) --- \todo{isi}
- \item siapa anggota yang memakai dan memahami bagian tersebut --- \todo{isi}
- \item lampirkan \emph{Form Penggunaan AI.pdf} --- \todo{lampirkan}
-\end{itemize}
-\end{catatan}
 
 \section{Istilah penting}
 
