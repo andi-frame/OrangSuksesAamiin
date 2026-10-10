@@ -28,7 +28,7 @@ demo untuk membuktikan bahwa menambah \emph{consumer} tidak membutuhkan perubaha
  \item \emph{Producer} Kafka memakai \code{acks=all} dan mode idempoten (\code{franz-go}).
 \end{enumerate}
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.2cm}Y@{}}
 \toprule
@@ -64,7 +64,7 @@ diproses, pesan tidak pernah hilang jika \emph{consumer} mati di tengah jalan. D
 
 Sebelum memilih Kafka, kami membandingkan beberapa cara mendistribusikan \emph{event}.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.7cm}Y@{}}
 \toprule
@@ -111,7 +111,7 @@ menambah \emph{consumer} tanpa mengubah \emph{producer}, harga itu kami nilai la
 Bukti berasal dari \cmd{make demo-p5} (transkrip: \code{docs/evidence/p5/latest.log}) dan dari tes otomatis di
 \code{aggregator/internal/relay}.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{4.0cm}YL{1.9cm}@{}}
 \toprule

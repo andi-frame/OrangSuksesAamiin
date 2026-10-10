@@ -21,7 +21,7 @@ menjangkau Canonical Store.
 Batas antarservice ditarik dengan satu aturan: satu \emph{container} punya satu alasan untuk berubah, dan setiap data
 punya satu pemilik. Perbaikan untuk satu alasan tidak boleh memaksa \emph{container} lain di-\emph{rebuild}.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.8cm}L{4.4cm}Y@{}}
 \toprule
@@ -46,7 +46,7 @@ di-\emph{rebuild}.
 
 Setiap penyimpanan hanya dimiliki oleh satu \emph{service}. Komponen lain meminta data lewat API milik pemiliknya.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.6cm}L{3.0cm}Y@{}}
 \toprule
@@ -91,7 +91,7 @@ Klaim bahwa hanya Aggregator yang memegang database tidak dibiarkan sebagai janj
 tiga di antaranya bersifat \emph{internal} (tidak bisa diakses dari luar dan tidak bisa dipakai untuk membuka port ke
 host).
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.3cm}L{2.2cm}Y@{}}
 \toprule
@@ -112,7 +112,7 @@ host).
 
 Sistem ini bisa dipecah menjadi \emph{service} dengan beberapa cara. Pembagian yang kami pilih dibandingkan dengan alternatifnya di bawah.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.9cm}Y@{}}
 \toprule
@@ -137,7 +137,7 @@ Client-Facing API, dan \emph{consumer} tidak ikut tersentuh.
 Kebutuhan utamanya adalah \emph{field} baru dari sumber tidak boleh memaksa migrasi tabel. Tabel berikut membandingkan pilihan
 yang masuk akal.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.1cm}YY@{}}
 \toprule
@@ -176,7 +176,7 @@ Konsekuensi dari pilihan ini:
 
 Setiap kriteria pada spesifikasi dan bukti yang menjawabnya dirangkum di bawah.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{4.3cm}YL{1.9cm}@{}}
 \toprule

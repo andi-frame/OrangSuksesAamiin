@@ -19,7 +19,7 @@ diproses dengan tiga aturan:
  \item \emph{Record} yang melanggar kontrak dengan cara yang tidak didukung tidak ditebak, tetapi dikarantina. \emph{Record} tersebut dicatat di \emph{log} (\code{mapping_rejected}), dihitung, dan dapat dilihat lewat \cmd{GET /internal/quarantine}. Sisa \emph{batch} tetap diproses dan penanda kemajuan \emph{polling} (\emph{watermark}) tetap maju.
 \end{enumerate}
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
 \centering
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[font=\sffamily\footnotesize,
@@ -59,7 +59,7 @@ tertangkap. Perilaku ini dijaga oleh \code{TestSchemaRollbackDoesNotEraseCapture
 
 Cara tiap \emph{field} sumber dipetakan ke \emph{field} HazardEvent sudah ditetapkan spesifikasi, dan kami ringkas pada tabel di bawah.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{2.6cm}L{4.4cm}Y@{}}
 \toprule
@@ -95,7 +95,7 @@ terlihat akan menunggu (dibatasi TTL) dan menahan \emph{watermark} \emph{warning
 Karena sumber dapat berubah kapan saja, kami menetapkan secara eksplisit perubahan mana yang ditangani otomatis dan mana
 yang sengaja tidak.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}Y L{5.6cm} L{2.0cm}@{}}
 \toprule
@@ -121,7 +121,7 @@ Bentuk \emph{endpoint} berubah (bukan array JSON, path berubah) & dianggap kegag
 
 Skema sumber yang berubah bisa dihadapi dengan beberapa cara. Pilihan kami dan alternatifnya dibandingkan di bawah.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{3.6cm}Y@{}}
 \toprule
@@ -161,7 +161,7 @@ berubah menjadi migrasi tabel (Problem~4).
 Bukti berasal dari \cmd{make demo-p1} (transkrip: \code{docs/evidence/p1/latest.log}). Demo memeriksa hasilnya sendiri
 dan berakhir dengan \cmd{P1 PASS}.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering\small
 \begin{tabularx}{\textwidth}{@{}L{4.6cm}Y@{}}
 \toprule
