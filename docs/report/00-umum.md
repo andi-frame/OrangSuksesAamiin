@@ -100,5 +100,5 @@ Ringkasan ada di `README.md` (langkah dari kondisi awal, daftar variabel, cara m
 ## 8. Penggunaan LLM dan formulir AI
 
 Penggunaan LLM (Claude Code) untuk perancangan, implementasi, dan penulisan dokumen **dideklarasikan di sini** dan pada
-kode yang dihasilkan (lihat `CLAUDE.md`); seluruh kode dipahami kelompok. Lampirkan **Form Penggunaan AI.pdf**.
+kode yang dihasilkan; seluruh kode dipahami kelompok. Lampirkan **Form Penggunaan AI.pdf**.
 Bagian yang dibantu LLM: **[isi, per anggota dan per bagian]**.
