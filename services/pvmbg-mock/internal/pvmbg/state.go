@@ -1,6 +1,7 @@
 package pvmbg
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -8,24 +9,28 @@ import (
 // State is the operator-controlled runtime state of the mock. All of it can
 // change while the process runs (no restart), which is what the demo needs.
 type State struct {
-	mu         sync.RWMutex
-	confidence bool           // schema v2: confidence_level appears on new reports
-	extra      map[string]any // operator-injected extra fields for new reports
-	outage     bool
-	outageMode string // "error" (503) | "hang" (no answer)
-	delayMin   time.Duration
-	delayMax   time.Duration
+	mu           sync.RWMutex
+	confidence   bool           // schema v2: confidence_level appears on new reports
+	extra        map[string]any // operator-injected extra fields for new reports
+	changes      []string       // incompatible changes applied to new reports (M2)
+	truncateNext int            // the next n responses are cut off mid-element (M2)
+	outage       bool
+	outageMode   string // "error" (503) | "hang" (no answer)
+	delayMin     time.Duration
+	delayMax     time.Duration
 }
 
 // Snapshot is a consistent copy of the state, safe to serialise.
 type Snapshot struct {
-	ConfidenceLevel bool           `json:"confidence_level"`
-	ExtraFields     map[string]any `json:"extra_fields"`
-	SchemaVersion   int            `json:"schema_version"`
-	Outage          bool           `json:"outage"`
-	OutageMode      string         `json:"outage_mode"`
-	DelayMinMs      int64          `json:"delay_min_ms"`
-	DelayMaxMs      int64          `json:"delay_max_ms"`
+	ConfidenceLevel     bool           `json:"confidence_level"`
+	ExtraFields         map[string]any `json:"extra_fields"`
+	IncompatibleChanges []string       `json:"incompatible_changes"`
+	TruncateNext        int            `json:"truncate_next_responses"`
+	SchemaVersion       int            `json:"schema_version"`
+	Outage              bool           `json:"outage"`
+	OutageMode          string         `json:"outage_mode"`
+	DelayMinMs          int64          `json:"delay_min_ms"`
+	DelayMaxMs          int64          `json:"delay_max_ms"`
 }
 
 func NewState(cfg Config) *State {
@@ -39,8 +44,12 @@ func (s *State) Snapshot() Snapshot {
 	if s.confidence {
 		v = 2
 	}
+	if len(s.changes) > 0 {
+		v = 3
+	}
 	return Snapshot{
 		ConfidenceLevel: s.confidence, SchemaVersion: v, ExtraFields: s.extraCopyLocked(),
+		IncompatibleChanges: append([]string{}, s.changes...), TruncateNext: s.truncateNext,
 		Outage: s.outage, OutageMode: s.outageMode,
 		DelayMinMs: s.delayMin.Milliseconds(), DelayMaxMs: s.delayMax.Milliseconds(),
 	}
@@ -56,6 +65,38 @@ func (s *State) SetConfidence(on bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.confidence = on
+}
+
+// Changes returns the incompatible changes applied to new reports.
+func (s *State) Changes() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slices.Clone(s.changes)
+}
+
+// SetChanges replaces them (empty = the compatible schema again).
+func (s *State) SetChanges(c []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.changes = slices.Clone(c)
+}
+
+// AddTruncate makes the next n responses arrive cut off.
+func (s *State) AddTruncate(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.truncateNext += n
+}
+
+// TakeTruncate reports whether this response must be cut, consuming one.
+func (s *State) TakeTruncate() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.truncateNext == 0 {
+		return false
+	}
+	s.truncateNext--
+	return true
 }
 
 func (s *State) Outage() (bool, string) {

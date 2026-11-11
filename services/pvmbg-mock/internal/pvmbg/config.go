@@ -15,6 +15,10 @@ type Config struct {
 	Port        string
 	TokenSecret string // signing secret of PVMBG access tokens (independent of BMKG)
 	AdminToken  string // X-Admin-Token for /admin/*
+	// AdminOpen lets a request WITHOUT X-Admin-Token use /admin/* (a wrong token is
+	// still refused). On Kubernetes the Tester Agent calls the admin API without
+	// our credentials, and the mock is only reachable inside the cluster (ClusterIP).
+	AdminOpen bool
 
 	DelayMin time.Duration // initial random delay range (spec: 500 ms - 3 s); changeable at runtime
 	DelayMax time.Duration
@@ -30,6 +34,7 @@ func LoadConfig() Config {
 		Port:           obs.EnvString("PVMBG_PORT", "8082"),
 		TokenSecret:    obs.MustEnv("PVMBG_TOKEN_SECRET"),
 		AdminToken:     obs.MustEnv("PVMBG_ADMIN_TOKEN"),
+		AdminOpen:      obs.EnvBool("PVMBG_ADMIN_OPEN", false),
 		DelayMin:       obs.EnvMillis("PVMBG_DELAY_MIN_MS", 500*time.Millisecond),
 		DelayMax:       obs.EnvMillis("PVMBG_DELAY_MAX_MS", 3*time.Second),
 		ReportInterval: obs.EnvSeconds("PVMBG_REPORT_INTERVAL_SEC", 10*time.Second),

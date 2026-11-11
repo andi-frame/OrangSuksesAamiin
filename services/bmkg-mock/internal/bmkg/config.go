@@ -14,6 +14,7 @@ type Config struct {
 	Port       string
 	APIKey     string // X-BMKG-Key
 	AdminToken string // X-Admin-Token for /admin/*
+	AdminOpen  bool   // /admin/* also without a token (Kubernetes: Tester Agent, ClusterIP only)
 
 	DelayMin time.Duration // fixed response delay range (spec: 50-150 ms)
 	DelayMax time.Duration
@@ -30,6 +31,7 @@ func LoadConfig() Config {
 		Port:            obs.EnvString("BMKG_PORT", "8081"),
 		APIKey:          obs.MustEnv("BMKG_API_KEY"),
 		AdminToken:      obs.MustEnv("BMKG_ADMIN_TOKEN"),
+		AdminOpen:       obs.EnvBool("BMKG_ADMIN_OPEN", false),
 		DelayMin:        obs.EnvMillis("BMKG_DELAY_MIN_MS", 50*time.Millisecond),
 		DelayMax:        obs.EnvMillis("BMKG_DELAY_MAX_MS", 150*time.Millisecond),
 		EventInterval:   obs.EnvSeconds("BMKG_EVENT_INTERVAL_SEC", 10*time.Second),
