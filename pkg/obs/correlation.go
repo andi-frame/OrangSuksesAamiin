@@ -19,6 +19,10 @@ const HeaderCorrelationID = "X-Correlation-ID"
 // through the broker (producer -> consumers).
 const KafkaHeaderCorrelationID = "correlation_id"
 
+// HeaderCaller names the calling instance (e.g. the Aggregator pod). The
+// request log records it, so a callee's log shows which replica called it.
+const HeaderCaller = "X-Caller"
+
 type ctxKey struct{}
 
 // NewCorrelationID returns a random 16-hex-char identifier.

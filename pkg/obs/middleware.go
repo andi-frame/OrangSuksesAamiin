@@ -66,6 +66,7 @@ func Middleware(log *slog.Logger, quiet ...string) func(http.Handler) http.Handl
 				"duration_ms", float64(time.Since(start).Microseconds())/1000,
 				"bytes", sw.bytes,
 				"remote", r.RemoteAddr,
+				"caller", r.Header.Get(HeaderCaller),
 			)
 		})
 	}
