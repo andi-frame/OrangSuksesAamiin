@@ -285,6 +285,9 @@ func Run(t *testing.T, newRepo Factory) {
 		}
 	})
 
+	runFence(t, newRepo)
+	runUnprocessed(t, newRepo)
+
 	t.Run("ping", func(t *testing.T) {
 		if err := newRepo(t).Ping(ctx); err != nil {
 			t.Fatal(err)

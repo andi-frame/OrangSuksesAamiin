@@ -74,6 +74,46 @@ CREATE TABLE IF NOT EXISTS outbox (
 CREATE INDEX IF NOT EXISTS outbox_pending_idx ON outbox (seq) WHERE published_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS poll_cursor (name text PRIMARY KEY, value timestamptz NOT NULL);
+
+-- M2 P2: newest leader term per lease. Writes carrying an older term are rejected.
+CREATE TABLE IF NOT EXISTS fence (
+  name      text PRIMARY KEY,
+  term      bigint NOT NULL,
+  holder    text NOT NULL DEFAULT '',
+  raised_at timestamptz NOT NULL DEFAULT now()
+);
+-- audit trail: which leader term wrote each change, on the store's clock
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS writer_term bigint;
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS writer text NOT NULL DEFAULT '';
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS stored_at timestamptz NOT NULL DEFAULT now();
+
+-- M2 P3: dead-letter store. raw keeps the exact bytes received.
+CREATE TABLE IF NOT EXISTS unprocessed (
+  seq             bigserial PRIMARY KEY,
+  message_id      text COLLATE "C" NOT NULL UNIQUE,
+  source          text NOT NULL,
+  kind            text NOT NULL,
+  record_key      text NOT NULL DEFAULT '',
+  received_at     timestamptz NOT NULL,
+  reason          text NOT NULL,
+  retryable       boolean NOT NULL,
+  attempts        integer NOT NULL,
+  status          text NOT NULL,
+  next_attempt_at timestamptz NOT NULL,
+  resolved_at     timestamptz,
+  correlation_id  text NOT NULL DEFAULT '',
+  raw             bytea NOT NULL,
+  raw_size        bigint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS unprocessed_due_idx ON unprocessed (next_attempt_at) WHERE status = 'retrying';
+CREATE INDEX IF NOT EXISTS unprocessed_key_idx ON unprocessed (source, kind, record_key, seq) WHERE status <> 'resolved';
+
+-- M2 P2: the leader's view of each upstream, read by every instance
+CREATE TABLE IF NOT EXISTS source_status (
+  source     text PRIMARY KEY,
+  doc        jsonb NOT NULL,
+  updated_at timestamptz NOT NULL
+);
 `
 
 // Repo is a ports.Repository backed by a pgx connection pool.
@@ -121,7 +161,7 @@ func (r *Repo) migrate(ctx context.Context) error {
 
 // Reset empties every table. Test helper only.
 func (r *Repo) Reset(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `TRUNCATE hazards, outbox, poll_cursor RESTART IDENTITY`)
+	_, err := r.pool.Exec(ctx, `TRUNCATE hazards, outbox, poll_cursor, fence, unprocessed, source_status RESTART IDENTITY`)
 	return err
 }
 
@@ -183,6 +223,9 @@ func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out
 		return err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx)) //nolint:errcheck // no-op after Commit
+	if err := checkFence(ctx, tx); err != nil {
+		return err
+	}
 
 	if expected == 0 {
 		_, err = tx.Exec(ctx, `INSERT INTO hazards (`+hazardCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
@@ -212,8 +255,13 @@ func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out
 	if len(payload) == 0 {
 		payload = []byte("null")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO outbox (event_id, hazard_id, version, payload, correlation_id, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6)`, out.EventID, out.HazardID, out.Version, payload, out.CorrelationID, out.CreatedAt)
+	var term *int64
+	var writer string
+	if f, ok := ports.FenceFrom(ctx); ok {
+		term, writer = &f.Term, f.Holder
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO outbox (event_id, hazard_id, version, payload, correlation_id, created_at, writer_term, writer)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, out.EventID, out.HazardID, out.Version, payload, out.CorrelationID, out.CreatedAt, term, writer)
 	if isUniqueViolation(err) {
 		return ports.ErrVersionConflict
 	}
@@ -295,9 +343,11 @@ func (r *Repo) GetCursor(ctx context.Context, name string) (time.Time, bool, err
 }
 
 func (r *Repo) SetCursor(ctx context.Context, name string, t time.Time) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO poll_cursor (name, value) VALUES ($1, $2)
+	return r.inTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO poll_cursor (name, value) VALUES ($1, $2)
 		ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`, name, t.UTC())
-	return err
+		return err
+	})
 }
 
 func (r *Repo) PendingOutbox(ctx context.Context, limit int) ([]ports.OutboxEntry, error) {

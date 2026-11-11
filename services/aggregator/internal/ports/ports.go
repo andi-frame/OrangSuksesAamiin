@@ -67,6 +67,11 @@ type Page struct {
 }
 
 // Repository is the Aggregator's view of the Canonical Store.
+//
+// Fencing (M2 Problem 2): every write method below that changes ingested state
+// (Save, SetCursor, AddUnprocessed, UpdateUnprocessed) checks the Fence carried
+// by ctx (WithFence) in the same transaction as the write and returns ErrFenced,
+// writing nothing, when the store has already seen a newer term for that lease.
 type Repository interface {
 	Ping(ctx context.Context) error
 
@@ -91,6 +96,40 @@ type Repository interface {
 	PendingOutbox(ctx context.Context, limit int) ([]OutboxEntry, error)
 	// MarkPublished flags entries as delivered to the broker.
 	MarkPublished(ctx context.Context, eventIDs []string) error
+
+	// RaiseFence stores f.Term as the newest term of f.Name, or returns
+	// ErrFenced when a newer term is already stored. A new leader calls it before
+	// its first write: from then on every write of an older term is rejected.
+	RaiseFence(ctx context.Context, f Fence) error
+
+	// AddUnprocessed stores a dead-letter message unless one with the same
+	// MessageID exists (then nothing changes and created is false).
+	AddUnprocessed(ctx context.Context, m Unprocessed) (created bool, err error)
+	// UpdateUnprocessed overwrites Reason, Retryable, Attempts, Status,
+	// NextAttemptAt and ResolvedAt of m.MessageID (ErrNotFound if absent).
+	UpdateUnprocessed(ctx context.Context, m Unprocessed) error
+	// GetUnprocessed returns one message (any status) or ErrNotFound.
+	GetUnprocessed(ctx context.Context, messageID string) (*Unprocessed, error)
+	// ListUnprocessed returns messages in arrival order (Seq ascending).
+	ListUnprocessed(ctx context.Context, f UnprocessedFilter) (UnprocessedPage, error)
+	// RequeueUnprocessed moves parked messages back to retrying, due at now.
+	// source "" = every source; ids empty = every parked message of source.
+	RequeueUnprocessed(ctx context.Context, source string, ids []string, now time.Time) (int, error)
+	// CountUnprocessed counts retrying and parked messages per source.
+	CountUnprocessed(ctx context.Context) (UnprocessedCounts, error)
+
+	// PutSourceStatus stores the leader's view of one upstream (fenced);
+	// ListSourceStatus returns every stored view with its age measured on the
+	// store's clock, so instances that do not poll serve the same freshness.
+	PutSourceStatus(ctx context.Context, source string, doc []byte) error
+	ListSourceStatus(ctx context.Context) ([]SourceStatus, error)
+}
+
+// SourceStatus is one stored upstream status document.
+type SourceStatus struct {
+	Source string
+	Doc    []byte        // JSON written by the leader
+	Age    time.Duration // since it was written, on the store's clock
 }
 
 // Message is what a Publisher sends to the broker.
