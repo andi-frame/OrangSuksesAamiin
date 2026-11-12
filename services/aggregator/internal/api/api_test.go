@@ -18,7 +18,22 @@ import (
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/resilience"
 )
 
-const key = "svc-key"
+const (
+	key      = "svc-key"
+	opsKey   = "ops-token"
+	auditKey = "audit-token"
+)
+
+// fixed serves the trackers of this process.
+type fixed []*resilience.Tracker
+
+func (f fixed) Statuses(context.Context) []resilience.Status {
+	out := make([]resilience.Status, 0, len(f))
+	for _, t := range f {
+		out = append(out, t.Snapshot())
+	}
+	return out
+}
 
 type fixture struct {
 	ts    *httptest.Server
@@ -50,7 +65,7 @@ func newFixture(t *testing.T) *fixture {
 	bt, pt := resilience.NewTracker("BMKG", bb), resilience.NewTracker("PVMBG", pb)
 	bt.Success(time.Millisecond)
 	pt.Success(time.Millisecond)
-	srv := &Server{Repo: repo, Trackers: []*resilience.Tracker{bt, pt}, Quarantine: ingest.NewQuarantine(log, 10), ServiceKey: key, Log: log}
+	srv := &Server{Repo: repo, Status: fixed{bt, pt}, ServiceKey: key, OpsToken: opsKey, AuditToken: auditKey, Log: log}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &fixture{ts: ts, repo: repo, pvmbg: pt, pvBrk: pb}
@@ -76,7 +91,7 @@ func ok() map[string]string { return map[string]string{HeaderServiceKey: key} }
 
 func TestServiceKeyRequired(t *testing.T) {
 	f := newFixture(t)
-	for _, p := range []string{"/internal/hazards", "/internal/hazards/bmkg-1", "/internal/sources/status", "/internal/quarantine"} {
+	for _, p := range []string{"/internal/hazards", "/internal/hazards/bmkg-1", "/internal/sources/status", "/internal/leader"} {
 		if r, _ := f.get(t, p, nil); r.StatusCode != http.StatusUnauthorized {
 			t.Errorf("%s without key: %d", p, r.StatusCode)
 		}

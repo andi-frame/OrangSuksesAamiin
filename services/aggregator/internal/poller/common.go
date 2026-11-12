@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ingest"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/dlq"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ports"
 )
 
@@ -54,10 +54,16 @@ func parseTime(v any) (time.Time, bool) {
 	return t.UTC(), true
 }
 
-// reject quarantines a record and counts it in the cycle stats - once: a record
-// re-delivered by the overlap window is not counted (or logged) again.
-func reject(ctx context.Context, q *ingest.Quarantine, st *Stats, source, recordID, field, reason string, raw any) {
-	if q.Add(ctx, source, recordID, field, reason, raw) {
-		st.Quarantined++
+// deadLetter keeps a message that could not be processed and counts it in the
+// cycle stats - once: a message re-delivered by the overlap window has the same
+// id and is neither stored nor counted (nor logged) again.
+func deadLetter(ctx context.Context, q *dlq.Queue, st *Stats, msg dlq.Message, f *dlq.Failure) error {
+	_, created, err := q.Add(ctx, msg, f)
+	if err != nil {
+		return err
 	}
+	if created {
+		st.Unprocessed++
+	}
+	return nil
 }

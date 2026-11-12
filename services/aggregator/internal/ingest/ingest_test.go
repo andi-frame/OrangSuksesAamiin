@@ -124,48 +124,6 @@ func TestVersionConflictIsRetried(t *testing.T) {
 	}
 }
 
-func TestQuarantineBoundsAndCounts(t *testing.T) {
-	q := NewQuarantine(log(), 3)
-	for i := 0; i < 5; i++ {
-		q.Add(context.Background(), "PVMBG", string(rune('a'+i)), "alert_level", "bad", map[string]any{"i": i})
-	}
-	if q.Total()["PVMBG"] != 5 {
-		t.Fatalf("total: %v", q.Total())
-	}
-	rec := q.Recent()
-	if len(rec) != 3 || rec[0].RecordID != "e" {
-		t.Fatalf("ring buffer should keep the 3 newest, newest first: %+v", rec)
-	}
-}
-
-func TestQuarantineDeduplicatesRefetchedRecords(t *testing.T) {
-	q := NewQuarantine(log(), 10)
-	ctx := context.Background()
-	if !q.Add(ctx, "PVMBG", "r1", "alert_level", "unknown enum", nil) {
-		t.Fatal("first rejection must be reported as new")
-	}
-	// the overlap window delivers the same record again on the next cycles
-	for i := 0; i < 3; i++ {
-		if q.Add(ctx, "PVMBG", "r1", "alert_level", "unknown enum", nil) {
-			t.Fatal("a re-fetched record must not be counted again")
-		}
-	}
-	if q.Total()["PVMBG"] != 1 || len(q.Recent()) != 1 {
-		t.Fatalf("total=%v recent=%d", q.Total(), len(q.Recent()))
-	}
-	// a different reason for the same record, or another record, IS new
-	if !q.Add(ctx, "PVMBG", "r1", "volcano_id", "missing", nil) || !q.Add(ctx, "PVMBG", "r2", "alert_level", "unknown enum", nil) {
-		t.Fatal("distinct rejections must be recorded")
-	}
-	// records without an id are identified by their content
-	if !q.Add(ctx, "BMKG", "", "", "not an object", "junk-a") || !q.Add(ctx, "BMKG", "", "", "not an object", "junk-b") {
-		t.Fatal("different id-less records are different")
-	}
-	if q.Add(ctx, "BMKG", "", "", "not an object", "junk-a") {
-		t.Fatal("same id-less record must be de-duplicated")
-	}
-}
-
 // A source that stops sending a field (schema rolled back, partial response, ...)
 // must not erase what was already captured for that record: attributes are merged
 // additively on update. Otherwise a rollback would silently destroy confidence_level

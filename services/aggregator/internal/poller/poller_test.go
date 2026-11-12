@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters/memory"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/dlq"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/domain"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ingest"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/mapping"
@@ -174,7 +176,7 @@ func (f *fakePVMBG) setDelay(d time.Duration) { f.mu.Lock(); f.delay = d; f.mu.U
 type harness struct {
 	repo  *memory.Repo
 	ing   *ingest.Ingestor
-	quar  *ingest.Quarantine
+	dlq   *dlq.Queue
 	bmkg  *BMKGSource
 	pvmbg *PVMBGSource
 }
@@ -188,21 +190,31 @@ func newHarness(t *testing.T, fb *fakeBMKG, fp *fakePVMBG) *harness {
 	log := testLog()
 	repo := memory.New()
 	ing := ingest.New(repo, log)
-	quar := ingest.NewQuarantine(log, 50)
-	h := &harness{repo: repo, ing: ing, quar: quar}
+	q := &dlq.Queue{Repo: repo, Log: log}
+	h := &harness{repo: repo, ing: ing, dlq: q}
 	if fb != nil {
 		h.bmkg = &BMKGSource{
 			Client: &sources.BMKG{HTTP: obs.NewHTTPClient(log, "bmkg", 2*time.Second), BaseURL: fb.URL, APIKey: bmkgKey},
-			Repo:   repo, Ingestor: ing, Quarantine: quar, Overlap: 5 * time.Second, PendingTTL: time.Minute, Log: log,
+			Repo:   repo, Ingestor: ing, DLQ: q, Overlap: 5 * time.Second, PendingTTL: time.Minute, Log: log,
 		}
 	}
 	if fp != nil {
 		h.pvmbg = &PVMBGSource{
 			Client: &sources.PVMBG{HTTP: obs.NewHTTPClient(log, "pvmbg", 2*time.Second), BaseURL: fp.URL, Token: pvmbgToken},
-			Repo:   repo, Ingestor: ing, Quarantine: quar, Volcanoes: volcanoes, Overlap: 5 * time.Second, Log: log,
+			Repo:   repo, Ingestor: ing, DLQ: q, Volcanoes: volcanoes, Overlap: 5 * time.Second, Log: log,
 		}
 	}
 	return h
+}
+
+// deadLetters returns the open dead-letter messages of a source.
+func (h *harness) deadLetters(t *testing.T, source string) []ports.Unprocessed {
+	t.Helper()
+	p, err := h.repo.ListUnprocessed(context.Background(), ports.UnprocessedFilter{Source: source, Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p.Items
 }
 
 func (h *harness) hazard(t *testing.T, id string) domain.HazardEvent {
@@ -241,7 +253,7 @@ func TestBMKGMapsAllSeverityBranches(t *testing.T) {
 	h := newHarness(t, fb, nil)
 
 	st := pollOK(t, h.bmkg)
-	if st.Created != 4 || st.Quarantined != 0 {
+	if st.Created != 4 || st.Unprocessed != 0 {
 		t.Fatalf("stats: %+v", st)
 	}
 	want := map[string]domain.Severity{
@@ -329,7 +341,7 @@ func TestBMKGWarningBeforeEventWaitsInPending(t *testing.T) {
 	}
 }
 
-func TestBMKGOrphanWarningExpires(t *testing.T) {
+func TestBMKGOrphanWarningExpiresIntoRetryingDeadLetter(t *testing.T) {
 	fb := newFakeBMKG(t)
 	fb.addWarning("w-orphan", "ghost", "Awas", 2*time.Second)
 	h := newHarness(t, fb, nil)
@@ -337,12 +349,29 @@ func TestBMKGOrphanWarningExpires(t *testing.T) {
 	pollOK(t, h.bmkg)
 	time.Sleep(60 * time.Millisecond)
 	pollOK(t, h.bmkg)
-	if got := h.quar.Total()["BMKG"]; got != 1 {
-		t.Fatalf("orphan warning should be quarantined once, got %d", got)
+	dl := h.deadLetters(t, "BMKG")
+	if len(dl) != 1 || dl[0].Status != ports.StatusRetrying || !dl[0].Retryable || dl[0].Kind != KindBMKGWarning ||
+		!strings.HasPrefix(dl[0].Reason, "dependency_missing") {
+		t.Fatalf("orphan warning must wait as a retryable dead letter: %+v", dl)
+	}
+
+	// the event finally arrives; the retry resolves the warning without a new message
+	fb.addEvent("ghost", 6.1, true, 1*time.Second)
+	pollOK(t, h.bmkg)
+	w := &dlq.Worker{Queue: &dlq.Queue{Repo: h.repo, Log: testLog(), Now: func() time.Time { return time.Now().Add(time.Hour) }},
+		Log: testLog(), Handlers: map[string]dlq.Handler{KindBMKGWarning: h.bmkg.ReprocessWarning}}
+	if res, err := w.RunOnce(context.Background()); err != nil || res.Resolved != 1 {
+		t.Fatalf("retry: %+v %v", res, err)
+	}
+	if got := h.hazard(t, "bmkg-ghost"); got.Severity != domain.SeverityAwas {
+		t.Fatalf("warning not applied: %s", got.Severity)
+	}
+	if len(h.deadLetters(t, "BMKG")) != 0 {
+		t.Fatal("a recovered message must not be listed any more")
 	}
 }
 
-func TestBMKGQuarantinesBadRecordAndContinues(t *testing.T) {
+func TestBMKGParksBadRecordAndContinues(t *testing.T) {
 	fb := newFakeBMKG(t)
 	fb.addEvent("good", 5.2, false, 1*time.Second)
 	fb.mu.Lock()
@@ -353,21 +382,23 @@ func TestBMKGQuarantinesBadRecordAndContinues(t *testing.T) {
 	fb.mu.Unlock()
 	h := newHarness(t, fb, nil)
 	st := pollOK(t, h.bmkg)
-	if st.Created != 1 || st.Quarantined != 1 {
+	if st.Created != 1 || st.Unprocessed != 1 {
 		t.Fatalf("stats: %+v", st)
 	}
-	// the overlap window re-delivers the bad record: it must not be counted twice
-	for i := 0; i < 3; i++ {
-		if again := pollOK(t, h.bmkg); again.Quarantined != 0 {
+	// the overlap window re-delivers the bad record: it must not be stored or counted twice
+	for range 3 {
+		if again := pollOK(t, h.bmkg); again.Unprocessed != 0 {
 			t.Fatalf("re-polled bad record counted again: %+v", again)
 		}
 	}
-	if h.quar.Total()["BMKG"] != 1 {
-		t.Fatalf("quarantine total = %v, want 1", h.quar.Total())
+	dl := h.deadLetters(t, "BMKG")
+	if len(dl) != 1 || dl[0].RecordKey != "bad" || dl[0].Status != ports.StatusParked || dl[0].Retryable ||
+		!strings.Contains(dl[0].Reason, "schema_incompatible: field 'magnitude'") {
+		t.Fatalf("dead letter: %+v", dl)
 	}
-	rec := h.quar.Recent()
-	if len(rec) != 1 || rec[0].RecordID != "bad" || rec[0].Field != "magnitude" {
-		t.Fatalf("quarantine: %+v", rec)
+	var raw map[string]any
+	if err := json.Unmarshal(dl[0].Raw, &raw); err != nil || raw["magnitude"] != "big" {
+		t.Fatalf("the exact message must be kept: %s", dl[0].Raw)
 	}
 }
 
@@ -444,7 +475,7 @@ func TestPVMBGSchemaChangeWithoutRestart(t *testing.T) {
 	fp.add("r-new-1", "merapi", "Awas", 3*time.Second, map[string]any{"confidence_level": 0.87})
 	fp.add("r-new-2", "merapi", "Awas", 4*time.Second, map[string]any{"confidence_level": 0.6, "brand_new_field": map[string]any{"x": []int{1}}})
 	st := pollOK(t, h.pvmbg)
-	if st.Created != 2 || st.Quarantined != 0 {
+	if st.Created != 2 || st.Unprocessed != 0 {
 		t.Fatalf("after schema change: %+v", st)
 	}
 
@@ -472,7 +503,7 @@ func TestPVMBGBadRecordDoesNotBlockWatermark(t *testing.T) {
 	fp.add("ok-2", "merapi", "Awas", 3*time.Second, nil)
 	h := newHarness(t, nil, fp)
 	st := pollOK(t, h.pvmbg)
-	if st.Created != 2 || st.Quarantined != 1 {
+	if st.Created != 2 || st.Unprocessed != 1 {
 		t.Fatalf("stats: %+v", st)
 	}
 	if c, _, _ := h.repo.GetCursor(context.Background(), CursorPVMBG); !c.Equal(t0.Add(3 * time.Second)) {

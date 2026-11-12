@@ -26,7 +26,9 @@ type Status struct {
 	Polls               int64      `json:"polls"`
 	Failures            int64      `json:"failures"`
 	SkippedByBreaker    int64      `json:"skipped_by_breaker"`
-	Quarantined         int64      `json:"quarantined"`
+	Unprocessed         int64      `json:"unprocessed"`
+	PolledBy            string     `json:"polled_by,omitempty"`    // the leader instance that wrote this view
+	StatusAgeSec        *float64   `json:"status_age_s,omitempty"` // filled by readers: age on the store's clock
 }
 
 // Tracker accumulates the health of one source.
@@ -71,10 +73,21 @@ func (t *Tracker) Skipped() {
 	t.s.SkippedByBreaker++
 }
 
-func (t *Tracker) AddQuarantined(n int) {
+func (t *Tracker) AddUnprocessed(n int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.s.Quarantined += int64(n)
+	t.s.Unprocessed += int64(n)
+}
+
+// Restore continues from the view a previous leader stored: a new leader that
+// starts while the source is down still knows since when the data is stale.
+func (t *Tracker) Restore(prev Status) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.s.LastAttemptAt != nil || prev.Source != t.name {
+		return
+	}
+	t.s.LastSuccessAt = prev.LastSuccessAt
 }
 
 // Snapshot returns the derived status.

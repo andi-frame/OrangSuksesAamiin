@@ -5,8 +5,10 @@ WORKDIR /src
 COPY pkg/obs ./pkg/obs
 COPY services/aggregator ./services/aggregator
 WORKDIR /src/services/aggregator
+# VERSION (image tag) is reported on /health, so a rolling update is visible request by request
+ARG VERSION=dev
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags="-s -w" -o /out/aggregator ./cmd/aggregator
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/aggregator ./cmd/aggregator
 
 FROM alpine:3.20
 RUN adduser -D -u 10001 app
