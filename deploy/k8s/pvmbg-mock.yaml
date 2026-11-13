@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pvmbg-mock-config
+data:
+  PVMBG_PORT: "8082"
+  PVMBG_DELAY_MIN_MS: "500"
+  PVMBG_DELAY_MAX_MS: "3000"
+  PVMBG_REPORT_INTERVAL_SEC: "10"
+  PVMBG_SEED_COUNT: "24"
+  PVMBG_HANG_MAX_SEC: "60"
+  # the Tester Agent calls /admin/* (e.g. POST /admin/schema-version {"version":2}) without our admin
+  # token; the Service is ClusterIP only, so only in-cluster callers reach it
+  PVMBG_ADMIN_OPEN: "true"
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pvmbg-mock
+  labels: {app: pvmbg-mock, role: mock}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pvmbg-mock}}
+  template:
+    metadata:
+      labels: {app: pvmbg-mock, role: mock}
+    spec:
+      containers:
+        - name: pvmbg-mock
+          image: argus/pvmbg-mock
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8082}]
+          envFrom:
+            - configMapRef: {name: pvmbg-mock-config}
+            - secretRef: {name: pvmbg-mock-credentials}
+          resources:
+            requests: {memory: 64Mi, cpu: 50m}
+            limits: {memory: 128Mi}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pvmbg-mock
+  labels: {app: pvmbg-mock, role: mock}
+spec:
+  selector: {app: pvmbg-mock}
+  ports: [{name: http, port: 8082, targetPort: http}]

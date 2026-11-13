@@ -1,0 +1,11 @@
+{
+  "PVMBG": {
+    "rename": {
+      "level": "alert_level",
+      "location.volcano_code": "volcano_id"
+    },
+    "coerce": {
+      "reported_at": "unix_seconds_to_rfc3339"
+    }
+  }
+}

@@ -1,0 +1,54 @@
+# Canonical Store: owned by the Aggregator alone. Its credentials live only in canonical-db-credentials
+# (this pod) and aggregator-credentials (CANONICAL_DB_URL); networkpolicy.yaml lets only Aggregator pods in.
+# Data sits on the node's own disk (default StorageClass = local-path on k3s), so losing the node loses it:
+# that is exactly what M2 Problem 1 tests.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-canonical
+  labels: {app: postgres-canonical, role: store}
+spec:
+  clusterIP: None
+  selector: {app: postgres-canonical}
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-canonical
+  labels: {app: postgres-canonical, role: store}
+spec:
+  serviceName: postgres-canonical
+  replicas: 1
+  selector: {matchLabels: {app: postgres-canonical}}
+  template:
+    metadata:
+      labels: {app: postgres-canonical, role: store}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{name: postgres, containerPort: 5432}]
+          env:
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          envFrom:
+            - secretRef: {name: canonical-db-credentials}
+          resources:
+            requests: {memory: 512Mi, cpu: 100m}
+            limits: {memory: 1Gi}
+          readinessProbe:
+            exec: {command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']}
+            periodSeconds: 5
+          livenessProbe:
+            exec: {command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']}
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app: postgres-canonical, role: store}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 2Gi}}

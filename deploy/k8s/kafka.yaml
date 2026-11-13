@@ -1,0 +1,99 @@
+# Message broker (KRaft, single broker as in M1). Reachable only from pods labelled
+# bnpb.io/kafka-client=true (networkpolicy.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels: {app: kafka, role: broker}
+spec:
+  selector: {app: kafka}
+  ports: [{name: kafka, port: 9092, targetPort: kafka}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  labels: {app: kafka, role: broker}
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector: {matchLabels: {app: kafka}}
+  template:
+    metadata:
+      labels: {app: kafka, role: broker}
+    spec:
+      securityContext: {fsGroup: 1000}
+      containers:
+        - name: kafka
+          image: apache/kafka:3.9.0
+          ports:
+            - {name: kafka, containerPort: 9092}
+            - {name: controller, containerPort: 9093}
+          env:
+            - {name: KAFKA_NODE_ID, value: "1"}
+            - {name: KAFKA_PROCESS_ROLES, value: "broker,controller"}
+            - {name: KAFKA_LISTENERS, value: "INTERNAL://:9092,CONTROLLER://:9093"}
+            - {name: KAFKA_ADVERTISED_LISTENERS, value: "INTERNAL://kafka:9092"}
+            - {name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"}
+            - {name: KAFKA_INTER_BROKER_LISTENER_NAME, value: INTERNAL}
+            - {name: KAFKA_CONTROLLER_LISTENER_NAMES, value: CONTROLLER}
+            - {name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: "1@localhost:9093"}
+            - {name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1"}
+            - {name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1"}
+            - {name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1"}
+            - {name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
+            - {name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "false"}
+            - {name: KAFKA_LOG_RETENTION_HOURS, value: "168"}
+            - {name: KAFKA_LOG_DIRS, value: /var/lib/kafka/data/logs}
+            - {name: KAFKA_HEAP_OPTS, value: "-Xms256m -Xmx512m"}
+          resources:
+            requests: {memory: 512Mi, cpu: 100m}
+            limits: {memory: 1Gi}
+          readinessProbe:
+            tcpSocket: {port: kafka}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: kafka}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts: [{name: data, mountPath: /var/lib/kafka/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app: kafka, role: broker}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 2Gi}}
+---
+# One-shot: create the topic explicitly (auto-create is off). Idempotent; re-running the job is harmless.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  labels: {app: kafka-init, role: other}
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: {app: kafka-init, role: other, bnpb.io/kafka-client: "true"}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-topic
+          image: apache/kafka:3.9.0
+          command: [/bin/sh, /scripts/create-topic.sh]
+          env:
+            - {name: KAFKA_BOOTSTRAP, value: "kafka:9092"}
+            - {name: KAFKA_TOPIC, value: hazard.events}
+            - {name: KAFKA_PARTITIONS, value: "3"}
+            - {name: KAFKA_RETENTION_MS, value: "604800000"}
+            - {name: KAFKA_HEAP_OPTS, value: "-Xmx96m"}
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          volumeMounts: [{name: scripts, mountPath: /scripts}]
+      volumes:
+        - name: scripts
+          configMap: {name: kafka-init-script}

@@ -1,0 +1,157 @@
+# Aggregator (M2 Problem 2): >= 3 instances on different nodes behind one Service.
+#   - every instance serves reads; the Service only routes to Ready instances (readiness = can reach its store);
+#   - exactly one instance ingests: leader election on the Lease "aggregator-ingest" (RBAC below), with the
+#     leadership term as a fencing token checked by the store;
+#   - rolling updates never drop a request: a new pod must be Ready before an old one stops (maxUnavailable 0),
+#     and an old pod keeps serving for preStop + graceful shutdown while the Service forgets it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aggregator
+  labels: {app: aggregator, role: aggregator}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aggregator-leader-election
+  labels: {app: aggregator, role: aggregator}
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aggregator-leader-election
+  labels: {app: aggregator, role: aggregator}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: aggregator-leader-election}
+subjects: [{kind: ServiceAccount, name: aggregator}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aggregator-config
+data:
+  AGGREGATOR_PORT: "8083"
+  BMKG_URL: http://bmkg-mock:8081
+  PVMBG_URL: http://pvmbg-mock:8082
+  POLL_INTERVAL_SEC: "3"
+  POLL_OVERLAP_SEC: "5"
+  SOURCE_TIMEOUT_SEC: "5"
+  BREAKER_FAILURE_THRESHOLD: "3"
+  BREAKER_OPEN_SEC: "10"
+  PENDING_WARNING_TTL_SEC: "120"
+  REPOSITORY_BACKEND: postgres
+  PUBLISHER_BACKEND: kafka
+  KAFKA_BROKERS: kafka:9092
+  KAFKA_TOPIC: hazard.events
+  RELAY_INTERVAL_MS: "500"
+  RELAY_BATCH: "100"
+  RELAY_MAX_BACKOFF_SEC: "10"
+  # leader election (see services/aggregator/internal/leader)
+  LEADER_ELECTION: kubernetes
+  LEASE_NAME: aggregator-ingest
+  LEASE_DURATION_SEC: "15"
+  LEASE_RENEW_DEADLINE_SEC: "10"
+  LEASE_RETRY_PERIOD_SEC: "2"
+  SOURCE_STATUS_MAX_AGE_SEC: "30"
+  # dead letters and message limits (M2 Problem 3)
+  SCHEMA_RULES_PATH: /app/rules/schema-rules.json
+  MESSAGE_MAX_BYTES: "1048576"
+  MESSAGE_MAX_DEPTH: "32"
+  DLQ_MAX_ATTEMPTS: "8"
+  DLQ_BASE_BACKOFF_SEC: "2"
+  DLQ_MAX_BACKOFF_SEC: "120"
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aggregator
+  labels: {app: aggregator, role: aggregator}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  selector: {matchLabels: {app: aggregator}}
+  template:
+    metadata:
+      labels: {app: aggregator, role: aggregator, bnpb.io/kafka-client: "true", bnpb.io/canonical-client: "true"}
+    spec:
+      serviceAccountName: aggregator
+      terminationGracePeriodSeconds: 40
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector: {matchLabels: {app: aggregator}}
+          matchLabelKeys: [pod-template-hash]
+      # a pod on a dead node is replaced after 20 s instead of the default 5 min
+      tolerations:
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+      containers:
+        - name: aggregator
+          image: argus/aggregator
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8083}]
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+          envFrom:
+            - configMapRef: {name: aggregator-config}
+            - secretRef: {name: aggregator-credentials}
+          resources:
+            requests: {memory: 256Mi, cpu: 200m}
+            limits: {memory: 512Mi}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          # the HTTP server starts once store and broker answer (up to 90 s at first deploy);
+          # liveness only begins after that
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            # keep serving while the endpoint removal reaches every kube-proxy, then SIGTERM
+            preStop: {exec: {command: [sleep, "10"]}}
+          volumeMounts: [{name: schema-rules, mountPath: /app/rules, readOnly: true}]
+      volumes:
+        - name: schema-rules
+          configMap: {name: aggregator-schema-rules}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aggregator
+  labels: {app: aggregator, role: aggregator}
+spec:
+  type: NodePort
+  selector: {app: aggregator}
+  ports:
+    # NodePort: operators and the auditor reach /internal/ops and /internal/audit from outside the cluster
+    - {name: http, port: 8083, targetPort: http, nodePort: 30083}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aggregator
+  labels: {app: aggregator, role: aggregator}
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: aggregator}}
