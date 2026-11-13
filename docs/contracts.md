@@ -96,8 +96,10 @@ Pada update record yang sama, `attributes` **digabung aditif** (field yang berhe
 
 `contracts/openapi/aggregator-internal.yaml`. Ringkas:
 `GET /internal/hazards?hazard_type=&source=&severity=&since=&limit=&cursor=` (terbaru dulu, keyset pagination,
-`limit` maks 500), `GET /internal/hazards/{id}`, `GET /internal/sources/status`, `GET /internal/quarantine`,
+`limit` maks 500), `GET /internal/hazards/{id}`, `GET /internal/sources/status`, `GET /internal/leader` (M2),
 `/health`, `/ready`. Selalu mengembalikan HazardEvent **lengkap**; pembatasan field per klien adalah tugas Client-Facing API.
+M2 menambah `/internal/ops/*` (BNPB Internal Ops) dan `/internal/audit/*` (Lampiran A); lihat §9. `GET /internal/quarantine`
+(M1) dihapus: pesan gagal kini hanya boleh dilihat Internal Ops.
 
 ## 6. Kafka
 
@@ -126,3 +128,54 @@ JSON satu baris. Field tetap: `ts`, `level`, `service`, `msg`, `cid` (correlatio
 
 Daftar lengkap dan nilai contoh: `.env.example`. Kredensial **tidak** punya nilai default di kode; service berhenti dengan
 pesan jelas bila variabelnya kosong. Orang 2 dan 3 menambahkan variabel milik mereka ke `.env.example` dan `docker-compose.yml`.
+
+## 9. Milestone 2 (Orang 1: platform, P2, P3 sisi ingest)
+
+### 9.1 Kubernetes
+
+| Item | Nilai |
+|---|---|
+| Namespace | `sistem-informasi-kebencanaan-bnpb` (semua komponen aplikasi) |
+| Manifest | `deploy/kustomization.yaml` + `deploy/k8s/*.yaml`; satu perintah: `make k8s-up` (`scripts/k8s/up.sh`) |
+| Label wajib | `role` ∈ `aggregator`, `store`, `broker`, `consumer`, `api`, `mock`, `sensor`, `other` (Tester Agent mencari sasaran lewat label ini) + `app` |
+| Sumber daya | sesuai Lampiran B (aggregator 256Mi/512Mi, store dan broker 512Mi/1Gi, consumer/api/other 128Mi/256Mi, mock 64Mi/128Mi) |
+| Secret | satu per komponen, dibuat `scripts/k8s/secrets.sh` dari `.env`: `bmkg-mock-credentials`, `pvmbg-mock-credentials`, `canonical-db-credentials`, `aggregator-credentials`, `auth-service-credentials`, `client-api-credentials`, `satellite-feed-credentials` (`SATELLITE_FEED_TOKEN`, `SATELLITE_FEED_URL`; dipakai komponen P4 lewat `secretRef`). Komponen baru menambah Secret-nya sendiri di skrip ini |
+| ConfigMap | `<komponen>-config` (non-rahasia), `aggregator-schema-rules` (dari `deploy/k8s/schema-rules.json`, nama ber-hash → ubah = rolling update) |
+| Isolasi storage | NetworkPolicy: `postgres-canonical` hanya menerima pod `app=aggregator,bnpb.io/canonical-client=true`; `kafka` hanya pod `bnpb.io/kafka-client=true`. **Komponen baru yang perlu Kafka wajib memberi label itu** |
+| Data store | PVC `ReadWriteOnce` pada StorageClass bawaan (k3s: `local-path` = disk node), bukan penyimpanan jaringan |
+| Titik masuk | NodePort `30080` (client-api), `30084` (auth), `30083` (aggregator: ops/audit/internal) |
+| Tester Agent | dipasang `up.sh` dari URL manifest yang dipin, tanpa modifikasi; tidak ada NetworkPolicy/RBAC/taint yang membatasinya |
+
+### 9.2 Leader election dan fencing (P2)
+
+- Lease `coordination.k8s.io/v1` bernama `aggregator-ingest` (RBAC: SA `aggregator`, verb get/create/update). Pemegang =
+  nama pod. **Term** = `leaseTransitions`, naik setiap pergantian pemegang.
+- Hanya leader yang polling, menjalankan relay outbox, dan retry dead letter. Semua instance melayani baca.
+- **Kontrak fencing untuk setiap implementasi `ports.Repository` (termasuk store ter-shard Orang 3):** setiap tulis yang
+  mengubah state ingest (`Save`, `SetCursor`, `AddUnprocessed`, `UpdateUnprocessed`, `PutSourceStatus`) membaca
+  `ports.FenceFrom(ctx)` dan, **dalam transaksi yang sama dengan tulisnya, di unit penyimpanan yang ditulis**, menolak
+  (`ports.ErrFenced`, tanpa menulis apa pun) term yang lebih kecil dari term terbesar yang pernah dilihat unit itu, serta
+  menaikkan term tersimpan bila term tulis lebih besar. `RaiseFence` dipanggil leader baru sebelum tulis pertamanya dan
+  **harus menaikkan fence di semua unit** (store ter-shard: setiap shard dan replikanya). Diuji oleh `repotest` (`runFence`).
+- Status sumber dibagi lewat store (`PutSourceStatus`/`ListSourceStatus`, umur diukur dengan jam store), bukan memori
+  instance; `/internal/hazards` dari instance mana pun memberi `freshness` yang sama.
+- `/ready` = `Repo.Ping`. Store ter-shard sebaiknya mengartikannya "masih bisa melayani (mungkin sebagian)", agar instance
+  tidak dikeluarkan dari Service hanya karena satu shard hilang.
+
+### 9.3 Dead-letter store (P3)
+
+- Tabel `unprocessed` di Canonical Store (`ports.Unprocessed`): `message_id` deterministik (sha256 source+kind+bytes),
+  `raw` = **byte persis** yang diterima (pesan > `MESSAGE_MAX_BYTES` disimpan 1 MiB pertama + `raw_size` asli), `reason`,
+  `retryable`, `attempts`, `status` ∈ `retrying` | `parked` | `resolved`, `kind`, `record_key`.
+- Kebijakan skema: lihat komentar paket `services/aggregator/internal/mapping/raw.go`. Penyesuaian sistem = aturan di
+  `deploy/k8s/schema-rules.json` (`rename`, `coerce`); contoh untuk PVMBG v3: `deploy/schema-rules/pvmbg-v3.json`.
+- Kredensial: `AGGREGATOR_OPS_TOKEN` (Internal Ops, `/internal/ops/*`), `AUDIT_TOKEN` (auditor, `/internal/audit/*`).
+  `X-Service-Key` milik Client-Facing API **tidak** membuka keduanya.
+- Orang 3: endpoint Audit API lain (`events`, `checksum`, `location`) dipasang di `internal/api` memakai middleware
+  `s.bearer("audit", s.AuditToken, ...)` yang sama agar format error dan aturan 401/403 seragam.
+
+### 9.4 PVMBG mock (tambahan, kontrak lama tidak berubah)
+
+`POST /admin/schema-version`: `{"version":3}` / `{"mode":"incompatible"}` / `{"incompatible":["rename","type_change","drop_required"]}`;
+`{"version":1}` kembali ke skema asli. `POST /admin/malformed {"kind":"truncated|deep|invalid_utf8|oversize"}`.
+Rincian: `contracts/openapi/pvmbg.yaml`.
