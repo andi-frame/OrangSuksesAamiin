@@ -1,14 +1,18 @@
-# The repository is scanned for committed credentials. Only .env.example is
-# allow-listed: it must contain EXAMPLE values (including a sample PVMBG token
-# minted from an example secret), otherwise the variables could not be documented.
+# The repository is scanned for committed credentials. Allow-listed paths:
+#  - .env.example: it must contain EXAMPLE values (including a sample PVMBG token minted from an example
+#    secret), otherwise the variables could not be documented;
+#  - .env: the local, git-ignored file that holds the REAL credentials (e.g. the group's satellite token).
+#    The working-tree scan would always flag it; that it is never committed is checked separately
+#    (check-secrets.sh step 1 and the git-history scan).
 title = "bnpb gitleaks config"
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "example values documented in .env.example; test fixtures use obvious dummy values"
+description = "example values documented in .env.example; the git-ignored local .env; test fixtures use obvious dummy values"
 paths = [
   '''^\.env\.example$''',
+  '''(^|/)\.env$''',
   '''_test\.go$''',
 ]

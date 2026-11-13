@@ -67,6 +67,12 @@ services:
     environment:
       AGGREGATOR_PORT: "8083"
       AGGREGATOR_SERVICE_KEY: ${AGGREGATOR_SERVICE_KEY:?copy .env.example to .env}
+      # M2: BNPB Internal Ops (dead letters) and the auditor (Audit API) have their own credentials
+      AGGREGATOR_OPS_TOKEN: ${AGGREGATOR_OPS_TOKEN:?copy .env.example to .env}
+      AUDIT_TOKEN: ${AUDIT_TOKEN:?copy .env.example to .env}
+      # one instance in compose: no election (Kubernetes runs >= 3 with LEADER_ELECTION=kubernetes)
+      LEADER_ELECTION: none
+      SCHEMA_RULES_PATH: /app/rules/schema-rules.json
       # the two upstream credentials are independent; neither works on the other agency
       BMKG_URL: http://bmkg-mock:8081
       BMKG_API_KEY: ${BMKG_API_KEY:?copy .env.example to .env}
@@ -78,6 +84,11 @@ services:
       BREAKER_FAILURE_THRESHOLD: ${BREAKER_FAILURE_THRESHOLD:-3}
       BREAKER_OPEN_SEC: ${BREAKER_OPEN_SEC:-10}
       PENDING_WARNING_TTL_SEC: ${PENDING_WARNING_TTL_SEC:-120}
+      MESSAGE_MAX_BYTES: ${MESSAGE_MAX_BYTES:-1048576}
+      MESSAGE_MAX_DEPTH: ${MESSAGE_MAX_DEPTH:-32}
+      DLQ_MAX_ATTEMPTS: ${DLQ_MAX_ATTEMPTS:-8}
+      DLQ_BASE_BACKOFF_SEC: ${DLQ_BASE_BACKOFF_SEC:-2}
+      DLQ_MAX_BACKOFF_SEC: ${DLQ_MAX_BACKOFF_SEC:-120}
       REPOSITORY_BACKEND: ${REPOSITORY_BACKEND:-postgres}
       PUBLISHER_BACKEND: ${PUBLISHER_BACKEND:-kafka}
       RELAY_INTERVAL_MS: ${RELAY_INTERVAL_MS:-500}
@@ -87,6 +98,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes: ["./deploy/k8s/schema-rules.json:/app/rules/schema-rules.json:ro"]
     # loopback only: the internal API is for operators/demo scripts; clients use the Client-Facing API (8080)
     ports: ["127.0.0.1:${AGGREGATOR_PORT:-8083}:8083"]
     networks: [app-net, canonical-net, broker-net]
