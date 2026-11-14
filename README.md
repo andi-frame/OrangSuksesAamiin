@@ -1,4 +1,4 @@
-# ARGUS: Aggregated Real-time Geohazard Unified System — IF4031 Tugas Besar, Milestone 1
+# ARGUS: Aggregated Real-time Geohazard Unified System — IF4031 Tugas Besar, Milestone 1 dan 2
 
 ARGUS adalah gateway BNPB yang menyatukan data dua instansi otonom (BMKG: gempa dan tsunami; PVMBG: gunung api) ke format kanonik
 `HazardEvent`, menyimpannya di Canonical Store, menyebarkan setiap perubahan lewat message broker, dan menyajikannya ke
@@ -12,6 +12,83 @@ PVMBG mock :8082 ◄─poll─┤ AGGREGATOR ─outbox─► Kafka ────�
 Client ─► Client-Facing API :8080 ─► API internal Aggregator :8083     Auth Service
 ```
 Diagram lengkap dan penjelasannya ada di laporan (`docs/IF4031_M1_OrangSuksesAamiin.pdf`). Kontrak antarkomponen: `docs/contracts.md`.
+
+## M2 — Menjalankan di Kubernetes (demo M2)
+
+Milestone 2 menjalankan sistem yang sama di Kubernetes (k3s, ≥ 2 node dengan kernel terpisah). `docker compose` (bagian 1–7
+di bawah) tetap berfungsi untuk pengembangan satu mesin.
+
+### M2.1 Deklarasi topologi
+
+| Node | Peran | Jenis | vCPU / RAM node | OS / kernel | Host fisik | CPU / RAM host |
+|---|---|---|---|---|---|---|
+| node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
+| node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
+
+Kedua node berjalan di satu host fisik, dengan kernel terpisah (boot id berbeda; `docs/evidence/m2/topology.log`) dan
+saling terhubung lewat VirtualBox NAT Network `10.77.0.0/24`. Cluster ini dibuat dengan `bash scripts/k8s/vbox-cluster.sh up`.
+
+Kolom node, kernel, CPU, dan RAM tiap node dihasilkan dari cluster dengan `bash scripts/k8s/topology.sh` (memeriksa juga
+bahwa setiap node punya kernel sendiri). Cara menyiapkan VM dan k3s: [`docs/k8s-cluster.md`](docs/k8s-cluster.md).
+
+### M2.2 Satu perintah
+
+```bash
+cp .env.example .env                      # isi token dari asisten: AUDIT_TOKEN, SATELLITE_FEED_TOKEN
+export KUBE_CONTEXT=<konteks-cluster>     # default: konteks kubectl saat ini
+export K8S_SSH_NODES="ubuntu@<ip-a> ubuntu@<ip-b>"   # atau IMAGE_REGISTRY=<registry>; kind: otomatis
+make k8s-up                               # build image -> Secret per komponen -> kubectl apply -k deploy/ -> Tester Agent -> tunggu siap
+make k8s-status                           # pod per node, leader, endpoint Aggregator
+make k8s-down                             # hapus semuanya, termasuk data
+# Windows + MSYS make membuang variabel lingkungan: pilih cluster dengan `kubectl config use-context <konteks>`
+# atau jalankan skripnya langsung, mis. `KUBE_CONTEXT=<konteks> bash scripts/k8s/up.sh`
+```
+
+Titik masuk (IP node mana pun): Client-Facing API `:30080`, Auth `:30084`, Aggregator `:30083`
+(`/internal/*` dengan `X-Service-Key`, `/internal/ops/*` dengan `AGGREGATOR_OPS_TOKEN`, `/internal/audit/*` dengan `AUDIT_TOKEN`).
+Semua komponen di namespace `sistem-informasi-kebencanaan-bnpb`, setiap pod berlabel `role`, `resources` sesuai Lampiran B,
+kredensial di Secret per komponen (`scripts/k8s/secrets.sh`), konfigurasi di ConfigMap. Tester Agent dipasang dari
+manifest yang dipin, tanpa modifikasi.
+
+### M2.3 Variabel konfigurasi baru
+
+| Variabel | Default | Arti |
+|---|---|---|
+| `AGGREGATOR_OPS_TOKEN` | – (wajib) | token BNPB Internal Ops: melihat dan memproses ulang pesan gagal |
+| `AUDIT_TOKEN` | – (wajib) | token Audit API (Lampiran A), dari asisten |
+| `SATELLITE_FEED_URL`, `SATELLITE_FEED_TOKEN` | URL asisten, – (wajib) | Feed Satelit (P4); Secret `satellite-feed-credentials` |
+| `LEADER_ELECTION` | `none` (compose) / `kubernetes` | satu instance Aggregator yang ingest, dipilih lewat Lease `aggregator-ingest` |
+| `LEASE_DURATION_SEC`, `LEASE_RENEW_DEADLINE_SEC`, `LEASE_RETRY_PERIOD_SEC` | 15, 10, 2 | batas waktu leader (laporan P2 §4) |
+| `SOURCE_STATUS_MAX_AGE_SEC` | 30 | status sumber yang lebih tua = tidak ada yang polling (ditandai stale) |
+| `MESSAGE_MAX_BYTES`, `MESSAGE_MAX_DEPTH` | 1048576, 32 | batas satu pesan; lebih dari itu disimpan sebagai *malformed* |
+| `DLQ_MAX_ATTEMPTS`, `DLQ_BASE_BACKOFF_SEC`, `DLQ_MAX_BACKOFF_SEC` | 8, 2, 120 | retry pesan *retrying* |
+| `SCHEMA_RULES_PATH` | `/app/rules/schema-rules.json` | aturan penyesuaian skema (ConfigMap dari `deploy/k8s/schema-rules.json`) |
+| `IMAGE_TAG`, `IMAGE_REGISTRY`, `K8S_IMAGE_MODE`, `K8S_SSH_NODES` | git sha, –, kind/ssh | cara image sampai ke node (`scripts/k8s/common.sh`) |
+| `PVMBG_ADMIN_OPEN`, `BMKG_ADMIN_OPEN` | `false` (compose) / `true` (k8s) | `/admin/*` mock tanpa token, karena Tester Agent memanggilnya tanpa kredensial (Service mock hanya ClusterIP) |
+
+### M2.4 Skenario pengujian
+
+| Problem | Perintah | Membuktikan |
+|---|---|---|
+| Platform | `make demo-m2-isolation` | hanya Aggregator yang bisa membuka koneksi ke Canonical Store, hanya klien Kafka ke broker; Secret per komponen |
+| **P2** | `make demo-m2-p2` (`NEW_TAG=<tag>` untuk ganti versi) | ≥ 3 instance, satu leader, upstream dipoll satu instance, failover ≤ 60 s tanpa celah/duplikat, audit fencing, rolling update di bawah beban tanpa gagal |
+| P2 jam bergeser | `bash scripts/k8s/practice.sh clock-skew` | skenario Tester Agent + pemeriksaan "satu penulis" (`scripts/demo/m2-single-writer.sh`) |
+| P2 node freeze | `FREEZE_NODE=node-b FREEZE_CMD='…' THAW_CMD='…' bash scripts/demo/m2-freeze.sh` | leader yang dibekukan lalu bangun tidak menyimpan apa pun |
+| **P3** (kriteria 1–5) | `make demo-m2-p3` | perubahan kompatibel diterima, pesan rusak tidak membuat crash, hanya Internal Ops melihat pesan gagal, perubahan tidak kompatibel di-*parked*, pulih setelah penyesuaian tanpa duplikat |
+| Tester Agent | `bash scripts/k8s/practice.sh [<skenario>]` | daftar / jalankan skenario latihan, log disimpan di `docs/evidence/m2/` |
+
+Memicu manual di cluster (lewat `kubectl port-forward svc/pvmbg-mock 18082:8082`):
+
+```bash
+curl -X POST -d '{"mode":"incompatible"}' localhost:18082/admin/schema-version     # rename + type change + field wajib hilang
+curl -X POST -d '{"version":1}' localhost:18082/admin/schema-version               # kembali ke skema asli
+curl -X POST -d '{"kind":"truncated"}' localhost:18082/admin/malformed             # juga: deep, invalid_utf8, oversize
+curl -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" "localhost:18083/internal/ops/unprocessed?status=all"
+curl -X POST -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" -d '{"source":"PVMBG"}' localhost:18083/internal/ops/unprocessed/reprocess
+```
+
+Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/schema-rules/pvmbg-v3.json`), jalankan
+`make k8s-up` (ConfigMap berganti nama → rolling update), lalu *reprocess* setelah rollout selesai.
 
 ## 1. Prasyarat
 
