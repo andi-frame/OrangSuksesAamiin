@@ -1,0 +1,9 @@
+Latihan "schema": 1 langkah
+  - t+5s call_mock_admin role= nodes=
+Permintaan 6f6beddeb6c8 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+[pod/tester-agent-6tppt/agent] {"seq":1,"ts":"2026-11-14T14:34:20Z","action":"[L] skenario \"schema\" (practice) mulai; 1 langkah","prev":"","mac":"006d40483eb4a7391df095cf12788b8772802596cd2e3d81c64a92ee9d91ba6c"}
+[pod/tester-agent-6tppt/agent] {"seq":2,"ts":"2026-11-14T14:34:25Z","action":"[L] langkah 1 mulai: call_mock_admin POST /admin/schema-version","prev":"39c629d931d05b442bba7d78f4b9da344f7061dab02fd906c49e49bf31c01eb6","mac":"d9918e87423c475339fbe71946946d34ba89ae06c77528e1094cf9ca801377c6"}
+[pod/tester-agent-6tppt/agent] {"seq":3,"ts":"2026-11-14T14:34:25Z","action":"[L] mock POST /admin/schema-version -\u003e HTTP 200","prev":"6ad63100a7be6e126764c9b55a3fa85fad3abf248a2635d0dd0151d3e174293c","mac":"455703b9d52ddaa80bc23838ef7ea2d9ac8626bb77f956ecd5d78568d429006f"}
+[pod/tester-agent-6tppt/agent] {"seq":4,"ts":"2026-11-14T14:34:25Z","action":"[L] langkah 1 selesai","prev":"f57e368fac83eb4af5e688d8b9140c6913c8919c7cfbaeaa4d84619b0821ad67","mac":"c95538fa227b672bfd52d20462406bba8c62a805f90ea87eb3c115c5157108f5"}
+[pod/tester-agent-6tppt/agent] {"seq":5,"ts":"2026-11-14T14:34:25Z","action":"[L] skenario selesai","prev":"cf751c707496e9f077407caf4d70ea1b11a84fe29bffb635532965b6d7e0f064","mac":"a65fcfd0086deab9df54aff7f1094a8426b502bf1b4b39e8245f901712c1e439"}
+[pod/tester-agent-6tppt/agent] {"seq":6,"ts":"2026-11-14T14:34:25Z","action":"[L] pemulihan akhir selesai; keadaan bersih","prev":"34dbb309753e6e251dccba946f26a8a0b65edd9d42e94c675321eb4a32be28ea","mac":"aafa3de1633175bc69add7da3f96da459b701f11013f67dbf03a48eb4cac25aa"}

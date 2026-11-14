@@ -1,0 +1,5 @@
+NODE     CONTROL-PLANE   IP           KERNEL              OS                   CPU   MEMORY      BOOT-ID
+node-a   true            10.77.0.11   6.8.0-147-generic   Ubuntu 24.04.5 LTS   2     3044048Ki   63e8fdaa-fbeb-4c64-8666-fb73815084bd
+node-b   <none>          10.77.0.12   6.8.0-147-generic   Ubuntu 24.04.5 LTS   2     3044048Ki   8455cda0-cf0a-49f5-ae31-1da71096080f
+
+2 distinct kernels on 2 nodes

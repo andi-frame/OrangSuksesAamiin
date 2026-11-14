@@ -1,0 +1,70 @@
+Latihan "kill-leader": 1 langkah
+  - t+5s stop_pod role=aggregator nodes=any
+Permintaan 4520f773e6f1 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+[pod/tester-agent-6tppt/agent] {"seq":7,"ts":"2026-11-14T14:34:27Z","action":"[L] skenario \"kill-leader\" (practice) mulai; 1 langkah","prev":"36291de953cf0233fb07fc4f333b101e9fe26381d8c7bd68fc0fd6821d4f4ac7","mac":"233e8d8499ae1ad3f8bb4c5a6b9a321f38db11f7a14be2e2a880fc7fe32fcbd5"}
+[pod/tester-agent-6tppt/agent] {"seq":8,"ts":"2026-11-14T14:34:32Z","action":"[L] langkah 1 mulai: stop_pod role=aggregator nodes=any","prev":"de8bbbcab02aa95a9b584cb8205fc461f0d977b3e821208aefd04b8f2ad60493","mac":"25866af6911fe952c1254a98382cc823936d78fc763cb1aefd7cf515e5e2f62b"}
+[pod/tester-agent-6tppt/agent] {"seq":9,"ts":"2026-11-14T14:34:32Z","action":"[L] pod aggregator-67b4f59465-75b7x (role=aggregator) pada node node-b dihentikan","prev":"3b7f8f9bf8ad30e8aab35ac1ffd1800b97b4059fb98552c61293b22170a173e2","mac":"cd0c1bdf657dc00327c66b8c46bb681c8e9f0fff29ae8c88c40a2327d5f9b0d9"}
+[pod/tester-agent-6tppt/agent] {"seq":10,"ts":"2026-11-14T14:34:32Z","action":"[L] pod aggregator-67b4f59465-dtdrj (role=aggregator) pada node node-b dihentikan","prev":"7e071b2a1a88b699e1b5ce949642d1f47613576df7f92e4e1decc948db05706a","mac":"8e3f10665e3305be0c135d3cd70259a6ad07cd036f754018fa634304429dddc2"}
+[pod/tester-agent-6tppt/agent] {"seq":11,"ts":"2026-11-14T14:34:32Z","action":"[L] langkah 1 selesai","prev":"46bdac0843046f5eb033e832fc8b3c8a04492f8ddb9c04a99390f358b16b27cc","mac":"678e31ec0a268867d17cfc828a914ca196f041bf2b996fee9e257bb3311889e2"}
+[pod/tester-agent-6tppt/agent] {"seq":12,"ts":"2026-11-14T14:34:32Z","action":"[L] skenario selesai","prev":"511e69551812b08dc4c4c623bc2779c0a5d10855d3b4570fda28bdd1f72c1d84","mac":"145224291d305960a56f91769a224f1a1989aa857ab3d240c3d23f3d8f218305"}
+[pod/tester-agent-6tppt/agent] {"seq":13,"ts":"2026-11-14T14:34:32Z","action":"[L] pemulihan akhir selesai; keadaan bersih","prev":"c4671f0d662d3867c9db3263a198da7fe33bae7df0b523eda41e15971abe41ab","mac":"40dc37b626c3db395ce58ef3363ede22c907c593edf6c7390dc7175112e80297"}
+
+[1m[36m== [1] Lease and fencing state ==[0m
+HOLDER                        TERM   ACQUIRED
+aggregator-67b4f59465-4z527   14     2026-11-14T14:33:57.233629Z
+       lease       | fenced_term |           holder            |          raised_at          
+-------------------+-------------+-----------------------------+-----------------------------
+ aggregator-ingest |          14 | aggregator-67b4f59465-4z527 | 2026-11-14 14:33:57.3352+00
+(1 row)
+
+
+[1m[36m== [2] Upstream request logs: one caller at a time (last 10m, upstream clock) ==[0m
+   bmkg-mock
+     aggregator-56f879844-g8vmw          6 requests  2026-11-14T14:25:27.610547659Z .. 2026-11-14T14:25:34.479864888Z
+     aggregator-56f879844-swmwm          8 requests  2026-11-14T14:26:09.76422773Z .. 2026-11-14T14:26:20.00785622Z
+     aggregator-69d6fdbdd6-bnnrh        16 requests  2026-11-14T14:26:22.283601237Z .. 2026-11-14T14:26:45.097476357Z
+     aggregator-69d6fdbdd6-pcjld        32 requests  2026-11-14T14:26:48.397068246Z .. 2026-11-14T14:27:37.778288671Z
+     aggregator-69d6fdbdd6-vcqhv        76 requests  2026-11-14T14:27:39.410871737Z .. 2026-11-14T14:29:45.637523216Z
+     aggregator-69d6fdbdd6-hsrk7        26 requests  2026-11-14T14:29:46.801566148Z .. 2026-11-14T14:30:25.376896826Z
+     aggregator-69d6fdbdd6-spssn        52 requests  2026-11-14T14:30:29.357811278Z .. 2026-11-14T14:31:51.395387254Z
+     aggregator-5645679cc5-49ngm        64 requests  2026-11-14T14:31:52.099605788Z .. 2026-11-14T14:33:33.557124752Z
+     aggregator-5645679cc5-xvfv7        14 requests  2026-11-14T14:33:35.002800795Z .. 2026-11-14T14:33:54.43907225Z
+     aggregator-67b4f59465-4z527        54 requests  2026-11-14T14:33:57.730392102Z .. 2026-11-14T14:35:24.11009627Z
+   pvmbg-mock
+     aggregator-56f879844-g8vmw          2 requests  2026-11-14T14:25:27.899937317Z .. 2026-11-14T14:25:33.592628923Z
+     aggregator-56f879844-swmwm          2 requests  2026-11-14T14:26:12.439598184Z .. 2026-11-14T14:26:18.305768407Z
+     aggregator-69d6fdbdd6-bnnrh         6 requests  2026-11-14T14:26:22.749671939Z .. 2026-11-14T14:26:47.80334753Z
+     aggregator-69d6fdbdd6-pcjld        11 requests  2026-11-14T14:26:48.949705455Z .. 2026-11-14T14:27:36.275972142Z
+     aggregator-69d6fdbdd6-vcqhv        25 requests  2026-11-14T14:27:41.592125536Z .. 2026-11-14T14:29:45.702531555Z
+     aggregator-69d6fdbdd6-hsrk7        10 requests  2026-11-14T14:29:49.636785127Z .. 2026-11-14T14:30:28.523064991Z
+     aggregator-69d6fdbdd6-spssn        17 requests  2026-11-14T14:30:30.204468365Z .. 2026-11-14T14:31:49.178384164Z
+     aggregator-5645679cc5-49ngm        22 requests  2026-11-14T14:31:54.4634946Z .. 2026-11-14T14:33:34.556169452Z
+     aggregator-5645679cc5-xvfv7         5 requests  2026-11-14T14:33:36.526536243Z .. 2026-11-14T14:33:55.05765027Z
+     aggregator-67b4f59465-4z527        17 requests  2026-11-14T14:33:59.718655705Z .. 2026-11-14T14:35:24.037608596Z
+   [32mPASS[0m no two instances ever polled an upstream in the same period
+
+[1m[36m== [3] Store: write periods per leadership term (store clock) ==[0m
+ term |           writer            | writes |          first_write          |          last_write           
+------+-----------------------------+--------+-------------------------------+-------------------------------
+    1 | aggregator-66b75f6bf-25tqz  |     72 | 2026-11-14 14:13:25.280512+00 | 2026-11-14 14:13:28.442395+00
+    2 | aggregator-66b75f6bf-25tqz  |     38 | 2026-11-14 14:13:34.929526+00 | 2026-11-14 14:16:30.343154+00
+    3 | aggregator-66b75f6bf-5ds2q  |     18 | 2026-11-14 14:16:34.758848+00 | 2026-11-14 14:17:39.632816+00
+    5 | aggregator-56f879844-g8vmw  |     78 | 2026-11-14 14:20:59.338945+00 | 2026-11-14 14:25:34.583227+00
+    6 | aggregator-56f879844-swmwm  |      5 | 2026-11-14 14:26:09.961821+00 | 2026-11-14 14:26:18.391179+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      5 | 2026-11-14 14:26:22.415374+00 | 2026-11-14 14:26:41.950142+00
+    8 | aggregator-69d6fdbdd6-pcjld |     17 | 2026-11-14 14:26:48.558005+00 | 2026-11-14 14:27:37.890924+00
+    9 | aggregator-69d6fdbdd6-vcqhv |     28 | 2026-11-14 14:27:41.644172+00 | 2026-11-14 14:29:42.219861+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |     13 | 2026-11-14 14:29:46.928091+00 | 2026-11-14 14:30:22.286759+00
+   11 | aggregator-69d6fdbdd6-spssn |     21 | 2026-11-14 14:30:29.594963+00 | 2026-11-14 14:31:49.225098+00
+   12 | aggregator-5645679cc5-49ngm |     24 | 2026-11-14 14:31:52.343904+00 | 2026-11-14 14:33:33.643692+00
+   13 | aggregator-5645679cc5-xvfv7 |      4 | 2026-11-14 14:33:36.55807+00  | 2026-11-14 14:33:54.52382+00
+   14 | aggregator-67b4f59465-4z527 |     21 | 2026-11-14 14:33:59.757567+00 | 2026-11-14 14:35:24.224203+00
+(13 rows)
+
+   [32mPASS[0m no two instances ever stored results in the same period
+   [32mPASS[0m no duplicate HazardEvent
+
+[1m[36m== [4] Aggregator logs: leadership changes and refused writes (last 10m) ==[0m
+   2026-11-14T14:33:57.259555679Z aggregator-67b4f59465-4z527 lease_taken_over 14 
+   2026-11-14T14:33:57.260944041Z aggregator-67b4f59465-4z527 leader_acquired 14 
+   2026-11-14T14:33:57.310708108Z aggregator-67b4f59465-4z527 fence_raised 14 

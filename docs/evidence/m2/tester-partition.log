@@ -1,0 +1,47 @@
+Latihan "partition": 1 langkah
+  - t+5s block_internode role= nodes=all
+Permintaan b25d81aaf270 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+[tester-agent-6tppt] {"seq":29,"ts":"2026-11-14T14:45:21Z","action":"[L] skenario \"partition\" (practice) mulai; 1 langkah","prev":"6c184475f8a8cb35eace997c886f7c306b68548e7a857c72f968f537a1b569ff","mac":"2fc7cd14f5343711a82dce191f36b6330b2eb8ac898c94883ffa82c95c7d625e"}
+[tester-agent-6tppt] {"seq":30,"ts":"2026-11-14T14:45:26Z","action":"[L] langkah 1 mulai: block_internode selama 30s","prev":"a0a29a4c57468fb960cf2bfdc2bf2f9c0394b0abeffffa67ee688e535837ca9c","mac":"05ef3020ff45727b6888b03f33428e0c2d53871585b3a19a2e08d3b9ea4ce036"}
+[tester-agent-6tppt] {"seq":31,"ts":"2026-11-14T14:45:56Z","action":"[L] langkah 1 selesai","prev":"8a134d33e1c01eed217e1e8133b1f6f6c32835d04be515ad422cf11e85824e6a","mac":"c3b48cf9210e2b59554a68c8a8c4c1068018f22c5d03ceaf57bfed17cff7bf7c"}
+[tester-agent-6tppt] {"seq":32,"ts":"2026-11-14T14:45:56Z","action":"[L] skenario selesai","prev":"af5925deb7f92b8ca7aa11313aff2f314e0cefbddde2ecc00b15c8d03b580b98","mac":"3ae27dfb575391b5cf11af259aebf32c98c917ff619beb053e269de7bce175fa"}
+[tester-agent-6tppt] {"seq":33,"ts":"2026-11-14T14:45:56Z","action":"[L] pemulihan akhir selesai; keadaan bersih","prev":"dcf37d083de42517af6079b90a9f83c469a3a2af9675e0d55c439a52419b3e25","mac":"c488da07fdcbe74a172eef5283454ffc11b42a030e04b63737c95fd1bc37b6de"}
+
+[1m[36m== [1] Lease and fencing state ==[0m
+HOLDER                        TERM   ACQUIRED
+aggregator-67b4f59465-4z527   14     2026-11-14T14:33:57.233629Z
+       lease       | fenced_term |           holder            |          raised_at          
+-------------------+-------------+-----------------------------+-----------------------------
+ aggregator-ingest |          14 | aggregator-67b4f59465-4z527 | 2026-11-14 14:33:57.3352+00
+(1 row)
+
+
+[1m[36m== [2] Upstream request logs: one caller at a time (last 10m, upstream clock) ==[0m
+   bmkg-mock
+     aggregator-67b4f59465-4z527       362 requests  2026-11-14T14:36:44.243724081Z .. 2026-11-14T14:46:40.98612473Z
+   pvmbg-mock
+     aggregator-67b4f59465-4z527       122 requests  2026-11-14T14:36:48.021773243Z .. 2026-11-14T14:46:41.795212486Z
+   [32mPASS[0m no two instances ever polled an upstream in the same period
+
+[1m[36m== [3] Store: write periods per leadership term (store clock) ==[0m
+ term |           writer            | writes |          first_write          |          last_write           
+------+-----------------------------+--------+-------------------------------+-------------------------------
+    1 | aggregator-66b75f6bf-25tqz  |     72 | 2026-11-14 14:13:25.280512+00 | 2026-11-14 14:13:28.442395+00
+    2 | aggregator-66b75f6bf-25tqz  |     38 | 2026-11-14 14:13:34.929526+00 | 2026-11-14 14:16:30.343154+00
+    3 | aggregator-66b75f6bf-5ds2q  |     18 | 2026-11-14 14:16:34.758848+00 | 2026-11-14 14:17:39.632816+00
+    5 | aggregator-56f879844-g8vmw  |     78 | 2026-11-14 14:20:59.338945+00 | 2026-11-14 14:25:34.583227+00
+    6 | aggregator-56f879844-swmwm  |      5 | 2026-11-14 14:26:09.961821+00 | 2026-11-14 14:26:18.391179+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      5 | 2026-11-14 14:26:22.415374+00 | 2026-11-14 14:26:41.950142+00
+    8 | aggregator-69d6fdbdd6-pcjld |     17 | 2026-11-14 14:26:48.558005+00 | 2026-11-14 14:27:37.890924+00
+    9 | aggregator-69d6fdbdd6-vcqhv |     28 | 2026-11-14 14:27:41.644172+00 | 2026-11-14 14:29:42.219861+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |     13 | 2026-11-14 14:29:46.928091+00 | 2026-11-14 14:30:22.286759+00
+   11 | aggregator-69d6fdbdd6-spssn |     21 | 2026-11-14 14:30:29.594963+00 | 2026-11-14 14:31:49.225098+00
+   12 | aggregator-5645679cc5-49ngm |     24 | 2026-11-14 14:31:52.343904+00 | 2026-11-14 14:33:33.643692+00
+   13 | aggregator-5645679cc5-xvfv7 |      4 | 2026-11-14 14:33:36.55807+00  | 2026-11-14 14:33:54.52382+00
+   14 | aggregator-67b4f59465-4z527 |    167 | 2026-11-14 14:33:59.757567+00 | 2026-11-14 14:46:44.417825+00
+(13 rows)
+
+   [32mPASS[0m no two instances ever stored results in the same period
+   [32mPASS[0m no duplicate HazardEvent
+
+[1m[36m== [4] Aggregator logs: leadership changes and refused writes (last 10m) ==[0m
