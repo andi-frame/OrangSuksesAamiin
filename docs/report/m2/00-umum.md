@@ -6,39 +6,47 @@
 
 ```mermaid
 flowchart TB
-  subgraph A["node-a (VM) — control plane + worker"]
-    API[kube-apiserver + etcd<br/>Lease aggregator-ingest]
-    AG1[aggregator]
-    PG[(postgres-canonical<br/>local-path PV)]
-    TA1[tester-agent]
+  subgraph H["Laptop Acer Nitro AN515-58 (Windows 11, VirtualBox, NAT Network 10.77.0.0/24)"]
+    subgraph A["node-a 10.77.0.11 (VM): control plane + worker"]
+      API[k3s server: kube-apiserver<br/>Lease aggregator-ingest]
+      AG1["aggregator (leader saat bukti diambil)"]
+      CA[client-api ×2]
+      KF[(kafka<br/>local-path PV)]
+      BM[bmkg-mock]
+      CON[consumer-dashboard / notifier]
+      TA1[tester-agent]
+    end
+    subgraph B["node-b 10.77.0.12 (VM): worker"]
+      AG2[aggregator ×2]
+      AU[auth-service]
+      PG[(postgres-canonical<br/>local-path PV)]
+      PV[pvmbg-mock]
+      TA2[tester-agent]
+    end
   end
-  subgraph B["node-b (VM) — worker"]
-    AG2[aggregator]
-    CA1[client-api]
-    KF[(kafka<br/>local-path PV)]
-    TA2[tester-agent]
-  end
-  subgraph C["node-c (VM) — worker"]
-    AG3[aggregator]
-    CA2[client-api]
-    MOCK[bmkg-mock / pvmbg-mock]
-    CON[consumer-dashboard / notifier]
-    TA3[tester-agent]
-  end
-  CLIENT([Media / Tim Lapangan / Pusat]) -->|NodePort 30080| CA1 & CA2
-  CA1 & CA2 -->|Service aggregator:8083| AG1 & AG2 & AG3
-  AG1 & AG2 & AG3 -->|baca, tulis ber-fencing| PG
-  AG1 & AG2 & AG3 -.->|Lease: get/renew| API
-  AG2 -->|"poll (hanya leader)"| MOCK
-  AG2 -->|outbox relay (hanya leader)| KF
+  CLIENT([Media / Tim Lapangan / Pusat]) -->|"NodePort 30080 (diteruskan dari host)"| CA
+  CLIENT -->|"NodePort 30084: login, token"| AU
+  CA -->|Service aggregator:8083| AG1 & AG2
+  AG1 & AG2 -->|baca, tulis ber-fencing| PG
+  AG1 & AG2 -.->|Lease: get/renew| API
+  AG1 -->|"poll (hanya leader)"| BM & PV
+  AG1 -->|"outbox relay (hanya leader)"| KF
   KF --> CON
-  SAT([Feed Satelit asisten]) -.->|SSE, P4| A
+  SAT([Feed Satelit asisten]) -.->|"SSE, P4 (Orang 3)"| H
 ```
 
-Penempatan nyata bergantung pada scheduler; yang dijamin manifest: Aggregator tersebar maksimal satu selisih per node
-(`topologySpreadConstraints`), data `role=store` dan `role=broker` di disk node tempat pod berjalan, satu Tester Agent per
-node. `make k8s-status` menunjukkan penempatan aktual. Jalur data antar-node: Service (kube-proxy) dan DNS cluster; Canonical
-Store dan Kafka hanya menerima koneksi dari pod yang diizinkan NetworkPolicy.
+Penempatan di atas adalah penempatan aktual di cluster demo saat bukti diambil (14 Nov 2026,
+`kubectl get pods -o wide`). Leader bisa berpindah ke instance Aggregator mana pun. Penempatan bergantung pada scheduler.
+Yang dijamin manifest:
+
+- Aggregator tersebar dengan selisih maksimal satu per node (`topologySpreadConstraints`).
+- Data `role=store` dan `role=broker` tersimpan di disk node tempat pod berjalan (local-path PV, jadi pod itu terikat ke
+  node tersebut).
+- Ada satu Tester Agent per node.
+
+`make k8s-status` menunjukkan penempatan terkini. Jalur data antar-node lewat Service (kube-proxy) dan DNS cluster.
+Canonical Store dan Kafka hanya menerima koneksi dari pod yang diizinkan NetworkPolicy. Canonical Store kini satu instance
+di node-b. Penyebaran replikanya ke beberapa node menjadi bagian P1 (Orang 3).
 
 ## Perubahan dari M1
 
