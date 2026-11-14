@@ -34,11 +34,30 @@ type Repo struct {
 	hazards map[string][]byte
 	cursors map[string]time.Time
 	outbox  []*outboxRow
+	fences  map[string]int64
+	dlq     map[string]*ports.Unprocessed
+	dlqSeq  int64
+	status  map[string]statusRow
 	failing error // test hook: makes every call fail
 }
 
 func New() *Repo {
-	return &Repo{hazards: map[string][]byte{}, cursors: map[string]time.Time{}}
+	return &Repo{hazards: map[string][]byte{}, cursors: map[string]time.Time{},
+		fences: map[string]int64{}, dlq: map[string]*ports.Unprocessed{}, status: map[string]statusRow{}}
+}
+
+// checkFenceLocked enforces the fence carried by ctx: an older term than the
+// newest one seen is rejected, a newer one becomes the newest.
+func (r *Repo) checkFenceLocked(ctx context.Context) error {
+	f, ok := ports.FenceFrom(ctx)
+	if !ok {
+		return nil
+	}
+	if f.Term < r.fences[f.Name] {
+		return ports.ErrFenced
+	}
+	r.fences[f.Name] = f.Term
+	return nil
 }
 
 // Fail makes every subsequent call return err (nil to recover). Test hook.
@@ -75,11 +94,14 @@ func (r *Repo) getLocked(id string) (*domain.HazardEvent, error) {
 	return &h, nil
 }
 
-func (r *Repo) Save(_ context.Context, h domain.HazardEvent, expected int, out ports.OutboxEntry) error {
+func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out ports.OutboxEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.failing != nil {
 		return r.failing
+	}
+	if err := r.checkFenceLocked(ctx); err != nil {
+		return err
 	}
 	cur := 0
 	if old, err := r.getLocked(h.HazardID); err == nil {
@@ -163,11 +185,14 @@ func (r *Repo) GetCursor(_ context.Context, name string) (time.Time, bool, error
 	return t, ok, nil
 }
 
-func (r *Repo) SetCursor(_ context.Context, name string, t time.Time) error {
+func (r *Repo) SetCursor(ctx context.Context, name string, t time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.failing != nil {
 		return r.failing
+	}
+	if err := r.checkFenceLocked(ctx); err != nil {
+		return err
 	}
 	r.cursors[name] = t.UTC()
 	return nil

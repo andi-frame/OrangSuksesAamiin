@@ -11,7 +11,8 @@ GO := GOWORK=off $(RUN) go
 COMPOSE ?= $(RUN) docker compose
 
 .PHONY: help env up down wipe reset ps logs wait test test-race vet fmt lint secrets pvmbg-token \
-        demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence test-postgres
+        demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence test-postgres \
+        k8s-up k8s-down k8s-images k8s-status demo-m2-p2 demo-m2-p3 demo-m2-isolation
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -94,6 +95,32 @@ demo-p4: ## P4 independent services + flexible storage
 demo-p5: ## P5 pub/sub fan-out
 	@mkdir -p docs/evidence/p5
 	@bash -o pipefail -c 'bash scripts/demo/p5.sh 2>&1 | tee docs/evidence/p5/latest.log'
+
+# ---------------------------------------------------------- M2: Kubernetes ---
+# Context: the current kubectl context (KUBE_CONTEXT=... to choose). See README §M2 and scripts/k8s/common.sh.
+k8s-up: env ## M2: build images and deploy EVERYTHING (+ Tester Agent) to the cluster, wait until ready
+	@$(RUN) bash scripts/k8s/up.sh
+
+k8s-down: ## M2: delete the whole system from the cluster, data included
+	@$(RUN) bash scripts/k8s/down.sh
+
+k8s-images: ## M2: only build and load the images (IMAGE_TAG=... to choose the tag)
+	@$(RUN) bash scripts/k8s/images.sh
+
+k8s-status: ## M2: pods per node, leader, source status
+	@$(RUN) bash scripts/k8s/status.sh
+
+demo-m2-p2: ## M2 P2: 3 aggregators, one poller, failover <= 60 s, fencing, zero-failure rolling update
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-p2.sh 2>&1 | tee docs/evidence/m2/p2-latest.log'
+
+demo-m2-p3: ## M2 P3: incompatible schema parked, malformed messages, Ops-only inspection, recovery in order
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-p3.sh 2>&1 | tee docs/evidence/m2/p3-latest.log'
+
+demo-m2-isolation: ## M2: the platform (NetworkPolicy) keeps every pod but the Aggregator off the Canonical Store
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-isolation.sh 2>&1 | tee docs/evidence/m2/isolation-latest.log'
 
 demo-isolation: ## prove the Canonical Store / broker are unreachable from other containers
 	@mkdir -p docs/evidence/p4

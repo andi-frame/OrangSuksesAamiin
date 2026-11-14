@@ -1,0 +1,101 @@
+
+[1m[36m== [1] Declared policy (services/aggregator/internal/mapping/raw.go) ==[0m
+   accepted automatically: new fields of any type -> attributes; attribute fields changing type or disappearing
+   not accepted (parked, never guessed): rename / removal / move / type change of a canonical field, new enum values
+   unreadable bytes (cut off, invalid UTF-8, too deep, too large) -> parked as malformed; cut off = retryable
+[33m$ GET /internal/ops/schema-rules[0m
+   {"rules":[]}
+[33m$ POST pvmbg-mock /admin/schema-version {"confidence_level":true, "extra_fields":{"lava_dome_volume_m3":125000}}[0m
+   {"hazard_id":"pvmbg-VR-f4f801-0131","severity":"SIAGA","area_name":"Gunung Merapi","attributes":{"ash_column_height_m":1314.1,"confidence_level":0.63,"eruption_count_24h":5,"lava_dome_volume_m3":125000}}
+   [32mPASS[0m compatible change accepted automatically (new fields in attributes)
+
+[1m[36m== [2] Broken messages: nothing crashes, the rest keeps flowing ==[0m
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"deep","depth":200000}[0m
+   {"bytes":400140,"kind":"deep","report_id":"VR-f4f801-0133"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"invalid_utf8"}[0m
+   {"bytes":149,"kind":"invalid_utf8","report_id":"VR-f4f801-0134"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"oversize","size_bytes":3145728}[0m
+   {"bytes":3145861,"kind":"oversize","report_id":"VR-f4f801-0135"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"truncated"}[0m
+   {"kind":"truncated","truncated_responses":1}
+   [32mPASS[0m a valid report sent together with the broken ones was stored (VR-f4f801-0137)
+[33m$ GET /internal/ops/unprocessed?source=PVMBG&status=all (Internal Ops)[0m
+   parked	retryable=false	attempts=1	400140B	malformed: too_deep
+   parked	retryable=false	attempts=1	149B	malformed: invalid_utf8
+   parked	retryable=false	attempts=1	3145861B	malformed: too_large: 3145861 bytes, limit 1048576 (first 1048576 bytes kept)
+   retrying	retryable=true	attempts=2	115B	malformed: truncated in transit (115 bytes received); the source is polled again from the 
+   [32mPASS[0m cut-off message: retrying -> resolved once PVMBG delivered it whole (no intervention)
+   POD                           RESTARTS
+   aggregator-5645679cc5-49ngm   0
+   aggregator-5645679cc5-9225c   0
+   aggregator-5645679cc5-xvfv7   0
+   [32mPASS[0m no Aggregator crashed or restarted
+   [32mPASS[0m parked messages are not retried automatically (attempts unchanged); retryable ones are
+
+[1m[36m== [3] Who may look at failed messages ==[0m
+   /internal/ops/unprocessed as Client-Facing API (X-Service-Key): HTTP 401
+   /internal/ops/unprocessed as Client-Facing API key as Bearer: HTTP 403
+   /internal/ops/unprocessed as auditor token: HTTP 403
+   /internal/ops/unprocessed as BNPB Internal Ops token: HTTP 200
+[33m$ GET /internal/audit/unprocessed (auditor: metadata only, Lampiran A)[0m
+   {"items":[{"message_id":"msg-9dafcd8b58a1dc471369","source":"PVMBG","received_at":"2026-11-14T14:32:31.394932Z","reason":"malformed: too_deep","retryable":false,"attempts":1,"status":"parked"},{"message_id":"msg-6a3721494cd7ca7a1deb","source":"PVMBG","received_at":"2026-11-14T14:32:31.438544Z","reason":"malformed: invalid_utf8","retryable":false,"attempts":1,"status":"parked"}],"next_cursor":"dXwy
+   [32mPASS[0m only Internal Ops sees the messages and their bytes
+
+[1m[36m== [4] Incompatible change: rename, type change, required field missing ==[0m
+[33m$ POST pvmbg-mock /admin/schema-version {"mode":"incompatible"}[0m
+   {"schema_version":3,"incompatible_changes":["rename","type_change","drop_required"]}
+   generated VR-f4f801-0141
+   generated VR-f4f801-0142
+   generated VR-f4f801-0143
+   reason: schema_incompatible: field 'volcano_id': required field is missing
+   raw:    {"ash_column_height_m":517.3,"eruption_count_24h":3,"level":"Waspada","location":{"volcano_code":"merapi"},"report_id":"VR-f4f801-0141","reported_at":1794666783}
+   [32mPASS[0m 3 incompatible reports parked with their exact bytes, none guessed
+
+[1m[36m== [5] Adjust the system: declare the new schema (deploy/schema-rules/pvmbg-v3.json), roll out, requeue ==[0m
+   {
+     "PVMBG": {
+       "rename": {
+         "level": "alert_level",
+         "location.volcano_code": "volcano_id"
+       },
+       "coerce": {
+         "reported_at": "unix_seconds_to_rfc3339"
+       }
+     }
+   }
+[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb patch deploy/aggregator: mount aggregator-schema-rules-pvmbg-v3 (rolling update)[0m
+Waiting for deployment "aggregator" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
+deployment "aggregator" successfully rolled out
+   leader aggregator-67b4f59465-4z527 loaded:
+   {"rules":["PVMBG coerce reported_at unix_seconds_to_rfc3339","PVMBG rename level -\u003e alert_level","PVMBG rename location.volcano_code -\u003e volcano_id"]}
+[33m$ POST /internal/ops/unprocessed/reprocess {"source":"PVMBG"}[0m
+   {"note":"the leader retries them in arrival order within a few seconds; see ?status=resolved and ?status=parked","requeued":6}
+   {"hazard_id":"pvmbg-VR-f4f801-0141","severity":"WASPADA","area_name":"Gunung Merapi","occurred_at":"2026-11-14T14:33:03Z","version":1}
+   {"hazard_id":"pvmbg-VR-f4f801-0142","severity":"SIAGA","area_name":"Gunung Lewotobi Laki-laki","occurred_at":"2026-11-14T14:33:03Z","version":1}
+   {"hazard_id":"pvmbg-VR-f4f801-0143","severity":"SIAGA","area_name":"Gunung Sinabung","occurred_at":"2026-11-14T14:33:03Z","version":1}
+   [32mPASS[0m all incompatible reports recovered after the adjustment, no duplicate (hazard_id is deterministic)
+[33m$ GET /internal/ops/unprocessed?source=PVMBG (still open)[0m
+   parked	malformed: too_deep
+   parked	malformed: invalid_utf8
+   parked	malformed: too_large: 3145861 bytes, limit 1048576 (first 1048576 bytes kept)
+   still parked: only the malformed messages (their bytes cannot be read by any schema rule)
+  status  | retryable | count 
+----------+-----------+-------
+ parked   | f         |     3
+ resolved | f         |     3
+ resolved | t         |     1
+(3 rows)
+
+
+[32m[1mM2 P3 PASS[0m

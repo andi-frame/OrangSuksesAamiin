@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bmkg-mock-config
+data:
+  BMKG_PORT: "8081"
+  BMKG_DELAY_MIN_MS: "50"
+  BMKG_DELAY_MAX_MS: "150"
+  BMKG_EVENT_INTERVAL_SEC: "10"
+  BMKG_WARNING_DELAY_MIN_SEC: "2"
+  BMKG_WARNING_DELAY_MAX_SEC: "8"
+  BMKG_SEED_COUNT: "24"
+  # the Tester Agent calls /admin/* without our admin token; the Service is ClusterIP only
+  BMKG_ADMIN_OPEN: "true"
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bmkg-mock
+  labels: {app: bmkg-mock, role: mock}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: bmkg-mock}}
+  template:
+    metadata:
+      labels: {app: bmkg-mock, role: mock}
+    spec:
+      containers:
+        - name: bmkg-mock
+          image: argus/bmkg-mock
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8081}]
+          envFrom:
+            - configMapRef: {name: bmkg-mock-config}
+            - secretRef: {name: bmkg-mock-credentials}
+          resources:
+            requests: {memory: 64Mi, cpu: 50m}
+            limits: {memory: 128Mi}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+---
+# No role label on this Service (the pods keep role=mock): the Tester Agent sends mock admin calls such as
+# POST /admin/schema-version to the FIRST Service labelled role=mock, and that endpoint belongs to PVMBG.
+apiVersion: v1
+kind: Service
+metadata:
+  name: bmkg-mock
+  labels: {app: bmkg-mock}
+spec:
+  selector: {app: bmkg-mock}
+  ports: [{name: http, port: 8081, targetPort: http}]

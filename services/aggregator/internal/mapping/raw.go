@@ -1,19 +1,22 @@
 // Package mapping turns raw BMKG/PVMBG JSON records into canonical HazardEvents.
 //
-// Schema policy for Problem 1 (tolerant reader, additive-only):
+// Schema policy (M1 Problem 1, kept in M2 Problem 3; tolerant reader, additive-only):
 //
 //  1. A record is decoded into a generic map, not a fixed struct, so an unknown
 //     field can't be dropped silently or make the whole message fail to parse.
 //  2. Fields with a canonical counterpart are read explicitly and validated
 //     (required and typed). A missing or mistyped field, or an unknown enum
-//     value, is not guessed. The record goes to quarantine (logged, counted,
-//     listed in /internal/quarantine) and the rest of the batch continues.
+//     value, is not guessed. The message is parked in the dead-letter store
+//     (internal/dlq) with its exact bytes and the rest of the batch continues.
 //  3. Every other top-level field, including ones that appear later such as
 //     confidence_level, is copied as-is into HazardEvent.attributes.
 //
-// Supported: new fields of any JSON type, and attribute-only fields disappearing.
-// Not supported (quarantined): renaming or removing a field that has a canonical
-// counterpart, changing its type, new enum values, changed meaning or units.
+// Accepted automatically: new fields of any JSON type; attribute-only fields
+// disappearing or changing type; field order and formatting.
+// Not accepted (parked, schema_incompatible): renaming, removing or moving a
+// field that has a canonical counterpart, changing its type, new enum values,
+// changed meaning or units. Once a person has decided what the change means,
+// it is declared in SchemaRules (rules.go) and the parked messages are requeued.
 package mapping
 
 import (
@@ -22,7 +25,7 @@ import (
 	"time"
 )
 
-// MappingError marks a record that cannot be mapped (-> quarantine). It is
+// MappingError marks a record that cannot be mapped (-> dead-letter store). It is
 // distinct from a source failure (network, 5xx), which is the breaker's concern.
 type MappingError struct {
 	Field  string

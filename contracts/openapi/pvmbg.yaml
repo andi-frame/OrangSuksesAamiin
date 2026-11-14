@@ -30,7 +30,10 @@ paths:
         "200": {description: "{status, service, time, reports, outage, schema_version}"}
   /admin/schema-version:
     post:
-      summary: Switch confidence_level on/off and/or set extra fields on NEW reports, while running. No restart.
+      summary: |
+        Change the schema of NEW reports while running (no restart): confidence_level (compatible, M1) and, since M2,
+        incompatible changes - rename (alert_level -> level), type_change (reported_at -> Unix seconds, number),
+        drop_required (volcano_id removed; the code moves to location.volcano_code). Reports created earlier keep their shape.
       security: [{adminToken: []}]
       requestBody:
         content:
@@ -39,10 +42,37 @@ paths:
               type: object
               properties:
                 confidence_level: {type: boolean}
-                version: {type: integer, enum: [1, 2], description: "alias: 1 = original schema, 2 = with confidence_level"}
+                version: {type: integer, enum: [1, 2, 3], description: "1 = original schema, 2 = with confidence_level, 3 (M2) = every incompatible change"}
+                mode: {type: string, enum: [original, compatible, incompatible], description: "(M2) alias of version 1 / 2 / 3"}
+                incompatible:
+                  type: array
+                  items: {type: string, enum: [rename, type_change, drop_required]}
+                  description: "(M2) the incompatible changes to apply; [] = none"
                 extra_fields: {type: object, description: "(addition) arbitrary fields added to every new report; {} clears"}
       responses:
-        "200": {description: current state}
+        "200": {description: "current state (schema_version, incompatible_changes, ...)"}
+        "400": {description: unknown version / mode / change}
+  /admin/malformed:
+    post:
+      summary: |
+        (M2 addition) make PVMBG send broken messages: truncated = the next `count` responses are cut off inside their
+        last element; deep / invalid_utf8 / oversize = a stored report whose bytes are broken (sent while it is in the
+        requested since-window).
+      security: [{adminToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: {type: string, enum: [truncated, deep, invalid_utf8, oversize]}
+                count: {type: integer, default: 1, maximum: 100, description: truncated only}
+                depth: {type: integer, default: 100000, maximum: 2000000, description: deep only}
+                size_bytes: {type: integer, default: 2097152, maximum: 16777216, description: oversize only}
+      responses:
+        "200": {description: "{kind, report_id, bytes} or {kind, truncated_responses}"}
+        "400": {description: unknown kind}
   /admin/outage:
     post:
       summary: Turn the outage on/off instantly

@@ -1,6 +1,12 @@
 // Package api is the Aggregator's internal read API. The Canonical Store is
 // private to the Aggregator: every other component (notably the Client-Facing
 // API) obtains hazards only through these endpoints, guarded by a service key.
+//
+// Three principals, three independent credentials:
+//   - X-Service-Key: the Client-Facing API (hazards, source status, leader);
+//   - Bearer <ops token>: BNPB Internal Ops (/internal/ops/*: dead letters with
+//     their raw bytes, reprocessing). The service key does not open these;
+//   - Bearer <audit token>: the auditor (/internal/audit/*, Lampiran A).
 package api
 
 import (
@@ -15,7 +21,7 @@ import (
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/domain"
-	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ingest"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/leader"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ports"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/resilience"
 )
@@ -23,25 +29,51 @@ import (
 // HeaderServiceKey carries the internal service credential.
 const HeaderServiceKey = "X-Service-Key"
 
+// StatusSource provides the current view of every upstream.
+type StatusSource interface {
+	Statuses(ctx context.Context) []resilience.Status
+}
+
 type Server struct {
 	Repo       ports.Repository
-	Trackers   []*resilience.Tracker
-	Quarantine *ingest.Quarantine
+	Status     StatusSource
+	Leader     func() leader.Status // nil when leader election is off
+	Rules      []string             // active schema rules (summary), shown to Ops
 	ServiceKey string
+	OpsToken   string
+	AuditToken string
 	Log        *slog.Logger
+	Now        func() time.Time
+	Version    string // build version, reported on /health
+}
+
+func (s *Server) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
 // Handler wires the routes. /health and /ready are unauthenticated (probes).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", obs.LivenessHandler("aggregator", nil))
+	mux.HandleFunc("GET /health", obs.LivenessHandler("aggregator", func() map[string]any {
+		return map[string]any{"version": s.Version}
+	}))
 	mux.HandleFunc("GET /ready", obs.ReadinessHandler("aggregator", map[string]obs.Check{
 		"canonical_store": func(ctx context.Context) error { return s.Repo.Ping(ctx) },
 	}))
 	mux.Handle("GET /internal/hazards", s.auth(http.HandlerFunc(s.list)))
 	mux.Handle("GET /internal/hazards/{id}", s.auth(http.HandlerFunc(s.get)))
 	mux.Handle("GET /internal/sources/status", s.auth(http.HandlerFunc(s.status)))
-	mux.Handle("GET /internal/quarantine", s.auth(http.HandlerFunc(s.quarantine)))
+	mux.Handle("GET /internal/leader", s.auth(http.HandlerFunc(s.leader)))
+
+	mux.Handle("GET /internal/ops/unprocessed", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsList)))
+	mux.Handle("GET /internal/ops/unprocessed/{id}", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsGet)))
+	mux.Handle("POST /internal/ops/unprocessed/reprocess", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsReprocess)))
+	mux.Handle("GET /internal/ops/schema-rules", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsRules)))
+
+	mux.Handle("GET /internal/audit/unprocessed", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditUnprocessed)))
 	return obs.Middleware(s.Log, "/health", "/ready")(mux)
 }
 
@@ -61,6 +93,32 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	})
 }
 
+// bearer guards an endpoint with "Authorization: Bearer <token>": missing or
+// wrong token = 401 (Lampiran A), the token of another principal = 403.
+func (s *Server) bearer(principal, token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		scheme, got, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(got) == "" {
+			obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "missing Authorization: Bearer <"+principal+"-token>")
+			return
+		}
+		got = strings.TrimSpace(got)
+		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		for _, other := range []string{s.OpsToken, s.AuditToken, s.ServiceKey} {
+			if other != "" && subtle.ConstantTimeCompare([]byte(got), []byte(other)) == 1 {
+				s.Log.WarnContext(r.Context(), "auth_rejected", "reason", "wrong_principal", "required", principal)
+				obs.WriteError(w, http.StatusForbidden, "forbidden", "this credential may not access "+principal+" endpoints")
+				return
+			}
+		}
+		s.Log.WarnContext(r.Context(), "auth_rejected", "reason", "invalid_token", "required", principal)
+		obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "token tidak valid")
+	})
+}
+
 // Freshness is the per-source data freshness attached to list responses, so the
 // caller can mark data as stale (Problem 2) without a second round trip.
 type Freshness struct {
@@ -69,17 +127,9 @@ type Freshness struct {
 	StaleSince    *time.Time `json:"stale_since"`
 }
 
-func (s *Server) statuses() []resilience.Status {
-	out := make([]resilience.Status, 0, len(s.Trackers))
-	for _, t := range s.Trackers {
-		out = append(out, t.Snapshot())
-	}
-	return out
-}
-
-func (s *Server) freshness() map[string]Freshness {
+func (s *Server) freshness(ctx context.Context) map[string]Freshness {
 	out := map[string]Freshness{}
-	for _, st := range s.statuses() {
+	for _, st := range s.Status.Statuses(ctx) {
 		out[st.Source] = Freshness{State: st.State, LastSuccessAt: st.LastSuccessAt, StaleSince: st.StaleSince}
 	}
 	return out
@@ -145,7 +195,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		items = []domain.HazardEvent{}
 	}
 	obs.WriteJSON(w, http.StatusOK, map[string]any{
-		"items": items, "next_cursor": page.NextCursor, "freshness": s.freshness(),
+		"items": items, "next_cursor": page.NextCursor, "freshness": s.freshness(r.Context()),
 	})
 }
 
@@ -163,9 +213,17 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
-	obs.WriteJSON(w, http.StatusOK, map[string]any{"sources": s.statuses(), "quarantine_total": s.Quarantine.Total()})
+	body := map[string]any{"sources": s.Status.Statuses(r.Context())}
+	if c, err := s.Repo.CountUnprocessed(r.Context()); err == nil {
+		body["unprocessed"] = c // counts only: the messages themselves are for Internal Ops
+	}
+	obs.WriteJSON(w, http.StatusOK, body)
 }
 
-func (s *Server) quarantine(w http.ResponseWriter, r *http.Request) {
-	obs.WriteJSON(w, http.StatusOK, map[string]any{"total": s.Quarantine.Total(), "recent": s.Quarantine.Recent()})
+func (s *Server) leader(w http.ResponseWriter, r *http.Request) {
+	if s.Leader == nil {
+		obs.WriteJSON(w, http.StatusOK, map[string]any{"election": "none", "leader": true})
+		return
+	}
+	obs.WriteJSON(w, http.StatusOK, map[string]any{"election": "kubernetes", "instance": s.Leader()})
 }

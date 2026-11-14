@@ -1,0 +1,106 @@
+
+[1m[36m== [1] Leadership on the node to freeze (node-b) ==[0m
+   leader aggregator-67b4f59465-swqb7 (term 33) on node node-b
+
+[1m[36m== [2] Freeze node node-b for 40s ==[0m
+[33m$ "/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" controlvm node-b pause[0m
+   node-b frozen for 48 s
+   lease while node-b is frozen: holder=aggregator-67b4f59465-pbpwt term=34
+   [32mPASS[0m aggregator-67b4f59465-pbpwt took over with term 34 > 33
+
+[1m[36m== [3] Wake node-b up ==[0m
+[33m$ "/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" controlvm node-b resume[0m
+   letting the woken instance run for 30 s
+
+[1m[36m== [4] What the woken leader did ==[0m
+   2026-11-14T15:05:02.677667763Z hazard_stored BMKG
+   2026-11-14T15:05:02.712211073Z poll_ok BMKG
+   2026-11-14T15:05:04.825643721Z poll_ok PVMBG
+   2026-11-14T15:05:05.909088734Z poll_ok BMKG
+   2026-11-14T15:05:09.048654477Z hazard_stored PVMBG
+   2026-11-14T15:05:09.0634068Z poll_ok BMKG
+   2026-11-14T15:05:09.069246487Z poll_ok PVMBG
+   2026-11-14T15:05:12.45017731Z hazard_stored BMKG
+   2026-11-14T15:05:12.470966565Z poll_ok BMKG
+   2026-11-14T15:05:15.220866023Z poll_ok PVMBG
+   2026-11-14T15:05:15.680307926Z poll_ok BMKG
+   2026-11-14T15:05:18.879659585Z poll_ok BMKG
+   2026-11-14T15:05:20.105216864Z hazard_stored PVMBG
+   2026-11-14T15:05:20.120401909Z poll_ok PVMBG
+   2026-11-14T15:05:21.960415303Z leader_lost lease_taken
+   rows stored by term 33 after the freeze began (store clock): 0
+   [32mPASS[0m the woken instance stored nothing: its term 33 was fenced by term 34
+
+[1m[36m== [1] Lease and fencing state ==[0m
+HOLDER                        TERM   ACQUIRED
+aggregator-67b4f59465-pbpwt   34     2026-11-14T15:06:08.301410Z
+       lease       | fenced_term |           holder            |           raised_at           
+-------------------+-------------+-----------------------------+-------------------------------
+ aggregator-ingest |          34 | aggregator-67b4f59465-pbpwt | 2026-11-14 15:05:21.973069+00
+(1 row)
+
+
+[1m[36m== [2] Upstream request logs: one caller at a time (last 15m, upstream clock) ==[0m
+   bmkg-mock
+     aggregator-67b4f59465-9qngf        68 requests  2026-11-14T14:57:39.163361492Z .. 2026-11-14T15:01:05.104178694Z
+     aggregator-67b4f59465-pwttl        12 requests  2026-11-14T15:01:07.599383209Z .. 2026-11-14T15:01:24.471447298Z
+     aggregator-67b4f59465-k69gr        12 requests  2026-11-14T15:01:26.681678694Z .. 2026-11-14T15:01:43.908413441Z
+     aggregator-67b4f59465-swqb7         6 requests  2026-11-14T15:01:45.766351936Z .. 2026-11-14T15:01:52.588463958Z
+     aggregator-67b4f59465-58748        72 requests  2026-11-14T15:02:44.458142021Z .. 2026-11-14T15:04:42.526777607Z
+     aggregator-67b4f59465-5cfj5        12 requests  2026-11-14T15:04:43.869410559Z .. 2026-11-14T15:05:00.581787789Z
+     aggregator-67b4f59465-swqb7        12 requests  2026-11-14T15:05:02.646449649Z .. 2026-11-14T15:05:18.86700919Z
+     aggregator-67b4f59465-pbpwt        20 requests  2026-11-14T15:06:11.189245736Z .. 2026-11-14T15:06:42.814467504Z
+   pvmbg-mock
+     aggregator-67b4f59465-nk4h9         6 requests  2026-11-14T14:54:12.810356621Z .. 2026-11-14T14:54:36.648791673Z
+     aggregator-67b4f59465-69csj         5 requests  2026-11-14T14:55:19.039512873Z .. 2026-11-14T14:55:37.327780287Z
+     aggregator-67b4f59465-swqb7         2 requests  2026-11-14T14:55:38.769370215Z .. 2026-11-14T14:55:43.687577311Z
+     aggregator-67b4f59465-9qngf        21 requests  2026-11-14T14:57:49.819939314Z .. 2026-11-14T15:01:03.659005179Z
+     aggregator-67b4f59465-pwttl         4 requests  2026-11-14T15:01:08.634561557Z .. 2026-11-14T15:01:25.559882815Z
+     aggregator-67b4f59465-k69gr         4 requests  2026-11-14T15:01:29.466712296Z .. 2026-11-14T15:01:45.173779735Z
+     aggregator-67b4f59465-swqb7         2 requests  2026-11-14T15:01:47.820681512Z .. 2026-11-14T15:01:53.122953425Z
+     aggregator-67b4f59465-58748        24 requests  2026-11-14T15:02:04.645098237Z .. 2026-11-14T15:04:41.294251857Z
+     aggregator-67b4f59465-5cfj5         4 requests  2026-11-14T15:04:45.591857027Z .. 2026-11-14T15:05:00.670113158Z
+     aggregator-67b4f59465-swqb7         4 requests  2026-11-14T15:05:04.79830738Z .. 2026-11-14T15:05:20.082246874Z
+     aggregator-67b4f59465-pbpwt         7 requests  2026-11-14T15:05:23.284808297Z .. 2026-11-14T15:06:42.115552009Z
+   [32mPASS[0m no two instances ever polled an upstream in the same period
+
+[1m[36m== [3] Store: write periods per leadership term (store clock) ==[0m
+ term |           writer            | writes |          first_write          |          last_write           
+------+-----------------------------+--------+-------------------------------+-------------------------------
+    1 | aggregator-66b75f6bf-25tqz  |     72 | 2026-11-14 14:13:25.280512+00 | 2026-11-14 14:13:28.442395+00
+    2 | aggregator-66b75f6bf-25tqz  |     38 | 2026-11-14 14:13:34.929526+00 | 2026-11-14 14:16:30.343154+00
+    3 | aggregator-66b75f6bf-5ds2q  |     18 | 2026-11-14 14:16:34.758848+00 | 2026-11-14 14:17:39.632816+00
+    5 | aggregator-56f879844-g8vmw  |     78 | 2026-11-14 14:20:59.338945+00 | 2026-11-14 14:25:34.583227+00
+    6 | aggregator-56f879844-swmwm  |      5 | 2026-11-14 14:26:09.961821+00 | 2026-11-14 14:26:18.391179+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      5 | 2026-11-14 14:26:22.415374+00 | 2026-11-14 14:26:41.950142+00
+    8 | aggregator-69d6fdbdd6-pcjld |     17 | 2026-11-14 14:26:48.558005+00 | 2026-11-14 14:27:37.890924+00
+    9 | aggregator-69d6fdbdd6-vcqhv |     28 | 2026-11-14 14:27:41.644172+00 | 2026-11-14 14:29:42.219861+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |     13 | 2026-11-14 14:29:46.928091+00 | 2026-11-14 14:30:22.286759+00
+   11 | aggregator-69d6fdbdd6-spssn |     21 | 2026-11-14 14:30:29.594963+00 | 2026-11-14 14:31:49.225098+00
+   12 | aggregator-5645679cc5-49ngm |     24 | 2026-11-14 14:31:52.343904+00 | 2026-11-14 14:33:33.643692+00
+   13 | aggregator-5645679cc5-xvfv7 |      4 | 2026-11-14 14:33:36.55807+00  | 2026-11-14 14:33:54.52382+00
+   14 | aggregator-67b4f59465-4z527 |    173 | 2026-11-14 14:33:59.757567+00 | 2026-11-14 14:47:14.365222+00
+   15 | aggregator-67b4f59465-hj5jm |      2 | 2026-11-14 14:47:17.347472+00 | 2026-11-14 14:47:21.66599+00
+   18 | aggregator-67b4f59465-vxwww |     12 | 2026-11-14 14:47:40.98877+00  | 2026-11-14 14:48:18.164134+00
+   19 | aggregator-67b4f59465-vfmsd |      5 | 2026-11-14 14:48:23.398009+00 | 2026-11-14 14:48:38.56174+00
+   20 | aggregator-67b4f59465-csgvq |      4 | 2026-11-14 14:48:47.190547+00 | 2026-11-14 14:48:58.893939+00
+   21 | aggregator-67b4f59465-hlqls |      4 | 2026-11-14 14:49:09.146963+00 | 2026-11-14 14:49:19.142345+00
+   22 | aggregator-67b4f59465-swqb7 |      2 | 2026-11-14 14:49:26.789566+00 | 2026-11-14 14:49:28.174221+00
+   23 | aggregator-67b4f59465-nk4h9 |     28 | 2026-11-14 14:49:30.792261+00 | 2026-11-14 14:54:32.566659+00
+   24 | aggregator-67b4f59465-69csj |      9 | 2026-11-14 14:55:18.270201+00 | 2026-11-14 14:55:33.117539+00
+   25 | aggregator-67b4f59465-swqb7 |      2 | 2026-11-14 14:55:43.69724+00  | 2026-11-14 14:55:44.497778+00
+   26 | aggregator-67b4f59465-9qngf |     17 | 2026-11-14 14:56:00.871833+00 | 2026-11-14 14:59:05.644887+00
+   27 | aggregator-67b4f59465-9qngf |     18 | 2026-11-14 14:59:16.35039+00  | 2026-11-14 15:01:03.706758+00
+   28 | aggregator-67b4f59465-pwttl |      4 | 2026-11-14 15:01:14.54061+00  | 2026-11-14 15:01:24.53225+00
+   29 | aggregator-67b4f59465-k69gr |      4 | 2026-11-14 15:01:33.893962+00 | 2026-11-14 15:01:43.956159+00
+   30 | aggregator-67b4f59465-swqb7 |      3 | 2026-11-14 15:01:45.813235+00 | 2026-11-14 15:01:53.163171+00
+   31 | aggregator-67b4f59465-58748 |     29 | 2026-11-14 15:01:55.596498+00 | 2026-11-14 15:04:42.560294+00
+   32 | aggregator-67b4f59465-5cfj5 |      3 | 2026-11-14 15:04:50.816575+00 | 2026-11-14 15:05:00.755353+00
+   33 | aggregator-67b4f59465-swqb7 |      4 | 2026-11-14 15:05:02.668823+00 | 2026-11-14 15:05:20.096366+00
+   34 | aggregator-67b4f59465-pbpwt |      9 | 2026-11-14 15:05:22.448892+00 | 2026-11-14 15:06:42.867639+00
+(31 rows)
+
+   [32mPASS[0m no two instances ever stored results in the same period
+   [32mPASS[0m no duplicate HazardEvent
+
+[1m[36m== [4] Aggregator logs: leadership changes and refused writes (last 15m) ==[0m

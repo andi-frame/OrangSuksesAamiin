@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +44,7 @@ func NewHandler(cfg Config, store *Store, state *State, gen *Generator, log *slo
 	mux.Handle("POST /admin/outage", s.withAdmin(http.HandlerFunc(s.adminOutage)))
 	mux.Handle("POST /admin/delay", s.withAdmin(http.HandlerFunc(s.adminDelay)))
 	mux.Handle("POST /admin/generate", s.withAdmin(http.HandlerFunc(s.adminGenerate)))
+	mux.Handle("POST /admin/malformed", s.withAdmin(http.HandlerFunc(s.adminMalformed)))
 	return obs.Middleware(log, "/health", "/ready")(mux)
 }
 
@@ -110,6 +113,11 @@ func (s *server) withAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := r.Header.Get(HeaderAdmin)
 		if tok == "" {
+			if s.cfg.AdminOpen {
+				s.log.WarnContext(r.Context(), "admin_without_token", "path", r.URL.Path, "remote", r.RemoteAddr)
+				next.ServeHTTP(w, r)
+				return
+			}
 			obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "missing "+HeaderAdmin+" header")
 			return
 		}
@@ -154,7 +162,18 @@ func (s *server) volcanicReports(w http.ResponseWriter, r *http.Request) {
 	}
 	// The schema flag is read after the delay: it reflects the moment of the
 	// response, so a switch flipped while the request was waiting is honoured.
-	obs.WriteJSON(w, http.StatusOK, s.store.Since(since, s.state.Confidence()))
+	cut := s.state.TakeTruncate()
+	body, err := EncodeArray(s.store.Since(since, s.state.Confidence()), cut)
+	if err != nil {
+		obs.WriteError(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if cut {
+		s.log.WarnContext(r.Context(), "response_truncated", "bytes", len(body))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 func decode(r *http.Request, v any) error {
@@ -168,37 +187,117 @@ func (s *server) adminState(w http.ResponseWriter, r *http.Request) {
 	obs.WriteJSON(w, http.StatusOK, s.state.Snapshot())
 }
 
-// adminSchema switches confidence_level on/off at runtime, no restart needed.
-// Body: {"confidence_level": true} or {"version": 2} (1 = original schema).
+// adminSchema changes the schema of new reports at runtime, no restart needed.
+//
+//	{"confidence_level": true}             compatible change (M1): a new field
+//	{"version": 1|2|3}                     1 original, 2 = + confidence_level,
+//	                                       3 = every incompatible change (M2)
+//	{"mode": "original"|"compatible"|"incompatible"}   same as version 1|2|3
+//	{"incompatible": ["rename","type_change","drop_required"]}   a subset ([] = none)
+//	{"extra_fields": {...}}                arbitrary extra fields
 func (s *server) adminSchema(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ConfidenceLevel *bool          `json:"confidence_level"`
 		Version         *int           `json:"version"`
+		Mode            string         `json:"mode"`
+		Incompatible    *[]string      `json:"incompatible"`
 		ExtraFields     map[string]any `json:"extra_fields"`
 	}
-	if err := decode(r, &body); err != nil || (body.ConfidenceLevel == nil && body.Version == nil && body.ExtraFields == nil) {
-		obs.WriteError(w, http.StatusBadRequest, "bad_request", `body must contain confidence_level (bool), version (1|2) and/or extra_fields (object)`)
+	const usage = `body must contain confidence_level (bool), version (1|2|3), mode (original|compatible|incompatible), ` +
+		`incompatible (subset of ["rename","type_change","drop_required"]) and/or extra_fields (object)`
+	if err := decode(r, &body); err != nil ||
+		(body.ConfidenceLevel == nil && body.Version == nil && body.Mode == "" && body.Incompatible == nil && body.ExtraFields == nil) {
+		obs.WriteError(w, http.StatusBadRequest, "bad_request", usage)
 		return
 	}
-	if body.ConfidenceLevel != nil || body.Version != nil {
-		on := false
-		if body.ConfidenceLevel != nil {
-			on = *body.ConfidenceLevel
-		} else {
-			if *body.Version != 1 && *body.Version != 2 {
-				obs.WriteError(w, http.StatusBadRequest, "bad_request", "version must be 1 or 2")
+	if body.Mode != "" {
+		v, ok := map[string]int{"original": 1, "compatible": 2, "incompatible": 3}[body.Mode]
+		if !ok {
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "mode must be original, compatible or incompatible")
+			return
+		}
+		body.Version = &v
+	}
+	if body.Version != nil {
+		switch *body.Version {
+		case 1, 2:
+			s.state.SetConfidence(*body.Version == 2)
+			s.state.SetChanges(nil)
+		case 3:
+			s.state.SetChanges(AllChanges)
+		default:
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "version must be 1, 2 or 3")
+			return
+		}
+	}
+	if body.ConfidenceLevel != nil {
+		s.state.SetConfidence(*body.ConfidenceLevel)
+	}
+	if body.Incompatible != nil {
+		for _, c := range *body.Incompatible {
+			if !slices.Contains(AllChanges, c) {
+				obs.WriteError(w, http.StatusBadRequest, "bad_request", "unknown incompatible change "+strconv.Quote(c))
 				return
 			}
-			on = *body.Version == 2
 		}
-		s.state.SetConfidence(on)
-		s.log.WarnContext(r.Context(), "schema_version_changed", "confidence_level", on)
+		s.state.SetChanges(*body.Incompatible)
 	}
 	if body.ExtraFields != nil {
 		s.state.SetExtra(body.ExtraFields)
 		s.log.WarnContext(r.Context(), "extra_fields_changed", "count", len(body.ExtraFields))
 	}
-	obs.WriteJSON(w, http.StatusOK, s.state.Snapshot())
+	sn := s.state.Snapshot()
+	s.log.WarnContext(r.Context(), "schema_version_changed", "schema_version", sn.SchemaVersion,
+		"confidence_level", sn.ConfidenceLevel, "incompatible_changes", sn.IncompatibleChanges)
+	obs.WriteJSON(w, http.StatusOK, sn)
+}
+
+// adminMalformed makes PVMBG send broken messages (M2 Problem 3).
+//
+//	{"kind":"truncated","count":1}           the next count responses are cut off mid-element
+//	{"kind":"deep","depth":100000}           a report nested depth levels deep
+//	{"kind":"invalid_utf8"}                  a report whose bytes are not UTF-8
+//	{"kind":"oversize","size_bytes":2097152} a report of that many bytes
+//
+// Broken reports are stored like any other and sent while they are inside the
+// requested since-window; a truncated response also creates one fresh report
+// so that there is something to cut.
+func (s *server) adminMalformed(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Kind      string `json:"kind"`
+		Count     int    `json:"count"`
+		Depth     int    `json:"depth"`
+		SizeBytes int    `json:"size_bytes"`
+	}
+	if err := decode(r, &body); err != nil {
+		obs.WriteError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+	switch body.Kind {
+	case MalformedTruncated:
+		n := min(max(body.Count, 1), 100)
+		s.gen.Generate(1, "", "", nil)
+		s.state.AddTruncate(n)
+		s.log.WarnContext(r.Context(), "malformed_scheduled", "kind", body.Kind, "responses", n)
+		obs.WriteJSON(w, http.StatusOK, map[string]any{"kind": body.Kind, "truncated_responses": n})
+		return
+	case MalformedDeep, MalformedInvalidUTF8, MalformedOversize:
+	default:
+		obs.WriteError(w, http.StatusBadRequest, "bad_request", "kind must be truncated, deep, invalid_utf8 or oversize")
+		return
+	}
+	depth := body.Depth
+	if depth <= 0 {
+		depth = 100000
+	}
+	size := body.SizeBytes
+	if size <= 0 {
+		size = 2 << 20
+	}
+	// bounded so the mock itself stays inside its 128 Mi memory limit
+	depth, size = min(depth, 2_000_000), min(size, 16<<20)
+	rep, _ := s.gen.GenerateMalformed(body.Kind, depth, size)
+	obs.WriteJSON(w, http.StatusOK, map[string]any{"kind": body.Kind, "report_id": rep.ReportID, "bytes": len(rep.Raw)})
 }
 
 // adminOutage turns the outage on/off instantly.

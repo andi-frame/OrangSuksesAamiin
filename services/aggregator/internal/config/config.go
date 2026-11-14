@@ -4,6 +4,7 @@
 package config
 
 import (
+	"os"
 	"time"
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
@@ -12,6 +13,8 @@ import (
 type Config struct {
 	Port       string
 	ServiceKey string // X-Service-Key guarding /internal/* (used by the Client-Facing API)
+	OpsToken   string // Bearer token of BNPB Internal Ops: dead-letter inspection and reprocessing
+	AuditToken string // Bearer token of the auditor (Lampiran A, /internal/audit/*)
 
 	BMKGURL    string
 	BMKGKey    string // X-BMKG-Key       - valid for BMKG only
@@ -30,16 +33,37 @@ type Config struct {
 	RepositoryBackend string // memory | postgres
 	PublisherBackend  string // log | kafka
 	VolcanoTablePath  string
+	SchemaRulesPath   string
 
 	RelayInterval time.Duration
 	RelayBatch    int
 	RelayBackoff  time.Duration
+
+	// M2 Problem 2: one ingesting instance
+	LeaderElection string // none | kubernetes
+	Identity       string // pod name
+	Namespace      string
+	LeaseName      string
+	LeaseDuration  time.Duration
+	RenewDeadline  time.Duration
+	RetryPeriod    time.Duration
+	StatusMaxAge   time.Duration // a stored source status older than this is shown as stale
+
+	// M2 Problem 3: dead letters and message limits
+	MessageMaxBytes int
+	MessageMaxDepth int
+	DLQMaxAttempts  int
+	DLQBaseBackoff  time.Duration
+	DLQMaxBackoff   time.Duration
 }
 
 func Load() Config {
+	host, _ := os.Hostname()
 	return Config{
 		Port:              obs.EnvString("AGGREGATOR_PORT", "8083"),
 		ServiceKey:        obs.MustEnv("AGGREGATOR_SERVICE_KEY"),
+		OpsToken:          obs.MustEnv("AGGREGATOR_OPS_TOKEN"),
+		AuditToken:        obs.MustEnv("AUDIT_TOKEN"),
 		BMKGURL:           obs.EnvString("BMKG_URL", "http://bmkg-mock:8081"),
 		BMKGKey:           obs.MustEnv("BMKG_API_KEY"),
 		PVMBGURL:          obs.EnvString("PVMBG_URL", "http://pvmbg-mock:8082"),
@@ -53,8 +77,22 @@ func Load() Config {
 		RepositoryBackend: obs.EnvString("REPOSITORY_BACKEND", "memory"),
 		PublisherBackend:  obs.EnvString("PUBLISHER_BACKEND", "log"),
 		VolcanoTablePath:  obs.EnvString("VOLCANO_TABLE_PATH", "/app/config/volcanoes.json"),
+		SchemaRulesPath:   obs.EnvString("SCHEMA_RULES_PATH", "/app/rules/schema-rules.json"),
 		RelayInterval:     obs.EnvMillis("RELAY_INTERVAL_MS", 500*time.Millisecond),
 		RelayBatch:        obs.EnvInt("RELAY_BATCH", 100),
 		RelayBackoff:      obs.EnvSeconds("RELAY_MAX_BACKOFF_SEC", 10*time.Second),
+		LeaderElection:    obs.EnvString("LEADER_ELECTION", "none"),
+		Identity:          obs.EnvString("POD_NAME", host),
+		Namespace:         obs.EnvString("POD_NAMESPACE", ""),
+		LeaseName:         obs.EnvString("LEASE_NAME", "aggregator-ingest"),
+		LeaseDuration:     obs.EnvSeconds("LEASE_DURATION_SEC", 15*time.Second),
+		RenewDeadline:     obs.EnvSeconds("LEASE_RENEW_DEADLINE_SEC", 10*time.Second),
+		RetryPeriod:       obs.EnvSeconds("LEASE_RETRY_PERIOD_SEC", 2*time.Second),
+		StatusMaxAge:      obs.EnvSeconds("SOURCE_STATUS_MAX_AGE_SEC", 30*time.Second),
+		MessageMaxBytes:   obs.EnvInt("MESSAGE_MAX_BYTES", 1<<20),
+		MessageMaxDepth:   obs.EnvInt("MESSAGE_MAX_DEPTH", 32),
+		DLQMaxAttempts:    obs.EnvInt("DLQ_MAX_ATTEMPTS", 8),
+		DLQBaseBackoff:    obs.EnvSeconds("DLQ_BASE_BACKOFF_SEC", 2*time.Second),
+		DLQMaxBackoff:     obs.EnvSeconds("DLQ_MAX_BACKOFF_SEC", 120*time.Second),
 	}
 }

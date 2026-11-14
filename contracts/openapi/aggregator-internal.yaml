@@ -1,11 +1,20 @@
 openapi: 3.0.3
 info:
-  title: Aggregator internal API (M1)
-  version: "1.0"
+  title: Aggregator internal API (M1 + M2)
+  version: "2.0"
   description: |
     The Canonical Store is private to the Aggregator. Every other component (the Client-Facing API in particular)
-    reads hazards ONLY through this API. Credential: header `X-Service-Key` (401 missing, 403 wrong).
-    It returns the full HazardEvent (including Mentah fields); the Client-Facing API is what restricts fields per client.
+    reads hazards ONLY through this API. It returns the full HazardEvent (including Mentah fields); the Client-Facing
+    API is what restricts fields per client.
+
+    Three principals, three independent credentials (M2):
+      - `X-Service-Key` (Client-Facing API): /internal/hazards, /internal/sources/status, /internal/leader. 401 missing, 403 wrong.
+      - `Authorization: Bearer <ops-token>` (BNPB Internal Ops): /internal/ops/*. The service key does NOT open these.
+      - `Authorization: Bearer <audit-token>` (auditor, Lampiran A): /internal/audit/*.
+    Bearer endpoints: missing / unknown token = 401, a valid token of another principal = 403.
+    Every error body: {"error":{"code":"...","message":"..."}}.
+
+    M2: several instances run behind one Service; every instance answers every endpoint (reads go to the store).
 servers:
   - url: http://127.0.0.1:8083
 paths:
@@ -25,7 +34,8 @@ paths:
           description: |
             {items:[HazardEvent], next_cursor:"" | "...", freshness:{BMKG:{state,last_success_at,stale_since}, PVMBG:{...}}}.
             `freshness.<source>.stale_since` is non-null while the source is not "up": the data of that source is at
-            least that old (used by the Client-Facing API to mark data stale during an outage).
+            least that old. M2: freshness is the view the LEADER stored (every instance serves the same one); a view
+            older than SOURCE_STATUS_MAX_AGE_SEC (store clock) means nobody polls: state "unknown", stale_since set.
         "400": {description: bad filter}
         "401": {description: missing key}
         "403": {description: wrong key}
@@ -40,20 +50,84 @@ paths:
         "404": {description: not found}
   /internal/sources/status:
     get:
-      summary: Health of each upstream (state, breaker, last_success_at, stale_since, failures, latency)
+      summary: Health of each upstream as seen by the leader (state, breaker, last_success_at, stale_since, polled_by, status_age_s)
       security: [{serviceKey: []}]
       responses:
-        "200": {description: "{sources:[Status], quarantine_total:{SOURCE:n}}"}
-  /internal/quarantine:
+        "200": {description: "{sources:[Status], unprocessed:{SOURCE:{retrying:n, parked:n}}} (counts only)"}
+  /internal/leader:
     get:
-      summary: Source records rejected by the mapper (unsupported schema changes), newest first
+      summary: (M2) leader election state of THIS instance
       security: [{serviceKey: []}]
       responses:
-        "200": {description: "{total:{SOURCE:n}, recent:[{at,source,record_id,field,reason,correlation_id,raw}]}"}
+        "200": {description: "{election:'kubernetes', instance:{identity, leader, term, observed_holder, observed_term, leader_since, lease_name}} or {election:'none', leader:true}"}
+  /internal/ops/unprocessed:
+    get:
+      summary: (M2, Internal Ops) messages that could not be processed, oldest first, with their exact bytes
+      security: [{opsToken: []}]
+      parameters:
+        - {name: source, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [retrying, parked, resolved, all]}, description: "default: retrying + parked"}
+        - {name: limit, in: query, schema: {type: integer, default: 100, maximum: 1000}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: raw, in: query, schema: {type: boolean, default: true}, description: "false = leave out raw_text / raw_base64"}
+      responses:
+        "200":
+          description: |
+            {items:[{message_id, source, received_at, reason, retryable, attempts, status, seq, kind, record_key,
+            next_attempt_at, resolved_at, correlation_id, raw_size, raw_stored_bytes, raw_text|null, raw_base64}],
+            next_cursor: string|null, open:{SOURCE:{retrying:n, parked:n}}}
+        "400": {description: bad parameter}
+  /internal/ops/unprocessed/{id}:
+    get:
+      summary: (M2, Internal Ops) one message, any status
+      security: [{opsToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: same item shape as the list}
+        "404": {description: not found}
+  /internal/ops/unprocessed/reprocess:
+    post:
+      summary: |
+        (M2, Internal Ops) move parked messages back to "retrying", due now. The leader retries them in arrival order
+        per record (source + kind + record_key), through the current code and schema rules.
+      security: [{opsToken: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                source: {type: string, description: "empty = every source"}
+                message_ids: {type: array, items: {type: string}, description: "empty = every parked message of source"}
+      responses:
+        "202": {description: "{requeued:n, note}"}
+  /internal/ops/schema-rules:
+    get:
+      summary: (M2, Internal Ops) schema adaptation rules loaded by this instance
+      security: [{opsToken: []}]
+      responses:
+        "200": {description: "{rules:[\"PVMBG rename level -> alert_level\", ...]}"}
+  /internal/audit/unprocessed:
+    get:
+      summary: (M2, Lampiran A) open messages (retrying, parked), oldest first; metadata only
+      security: [{auditToken: []}]
+      parameters:
+        - {name: source, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, default: 100, maximum: 1000}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: "{items:[{message_id, source, received_at, reason, retryable, attempts, status}], next_cursor: string|null}"}
+        "400": {description: bad parameter}
+        "401": {description: missing or invalid token}
+        "403": {description: token of another principal}
   /health:
-    get: {summary: liveness (no credential), responses: {"200": {description: ok}}}
+    get: {summary: "liveness (no credential); includes the build version", responses: {"200": {description: ok}}}
   /ready:
     get: {summary: readiness = canonical store reachable (no credential), responses: {"200": {description: ready}, "503": {description: store down}}}
 components:
   securitySchemes:
     serviceKey: {type: apiKey, in: header, name: X-Service-Key}
+    opsToken: {type: http, scheme: bearer, description: AGGREGATOR_OPS_TOKEN}
+    auditToken: {type: http, scheme: bearer, description: AUDIT_TOKEN (given by the assistants)}

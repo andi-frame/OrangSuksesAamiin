@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 )
@@ -139,6 +140,7 @@ func (g *Generator) Seed(now time.Time) {
 // removes a field), which lets an operator simulate unsupported schema changes.
 func (g *Generator) Generate(n int, volcanoID, level string, override map[string]any) []Wire {
 	withConf := g.state.Confidence()
+	changes := g.state.Changes()
 	out := make([]Wire, 0, n)
 	for i := 0; i < n; i++ {
 		extra := g.state.Extra()
@@ -146,12 +148,48 @@ func (g *Generator) Generate(n int, volcanoID, level string, override map[string
 			extra[k] = v
 		}
 		r := g.newReport(time.Now(), volcanoID, level, withConf, extra)
+		r.Changes = changes
 		g.store.Add(r)
 		out = append(out, r.render(withConf))
 		g.log.Info("report_generated", "report_id", r.ReportID, "volcano_id", r.VolcanoID,
-			"alert_level", r.AlertLevel, "has_confidence_level", r.Confidence != nil, "extra_fields", len(extra))
+			"alert_level", r.AlertLevel, "has_confidence_level", r.Confidence != nil, "extra_fields", len(extra),
+			"incompatible_changes", changes)
 	}
 	return out
+}
+
+// Malformed message kinds (M2 Problem 3, POST /admin/malformed). truncated is a
+// property of a response (State.AddTruncate); the others are stored reports
+// whose bytes are broken, and are sent again whenever they are in the window.
+const (
+	MalformedTruncated   = "truncated"
+	MalformedDeep        = "deep"
+	MalformedInvalidUTF8 = "invalid_utf8"
+	MalformedOversize    = "oversize"
+)
+
+// GenerateMalformed stores one report whose bytes are broken on purpose.
+// depth and sizeBytes size the deep and oversize kinds.
+func (g *Generator) GenerateMalformed(kind string, depth, sizeBytes int) (Report, bool) {
+	r := g.newReport(time.Now(), "", "", false, nil)
+	head := fmt.Sprintf(`{"report_id":%q,"volcano_id":%q,"alert_level":%q,"reported_at":%q`,
+		r.ReportID, r.VolcanoID, r.AlertLevel, r.ReportedAt.Format(time.RFC3339Nano))
+	var raw []byte
+	switch kind {
+	case MalformedDeep:
+		raw = []byte(head + `,"nested":` + strings.Repeat("[", depth) + strings.Repeat("]", depth) + "}")
+	case MalformedInvalidUTF8:
+		raw = append([]byte(head+`,"note":"Gunung `), 0xff, 0xfe, 0xfd)
+		raw = append(raw, []byte(`"}`)...)
+	case MalformedOversize:
+		raw = []byte(head + `,"blob":"` + strings.Repeat("A", sizeBytes) + `"}`)
+	default:
+		return Report{}, false
+	}
+	r.Raw = raw
+	g.store.Add(r)
+	g.log.Warn("malformed_report_generated", "report_id", r.ReportID, "kind", kind, "bytes", len(raw))
+	return r, true
 }
 
 // Run emits one report per cfg.ReportInterval until ctx is cancelled.

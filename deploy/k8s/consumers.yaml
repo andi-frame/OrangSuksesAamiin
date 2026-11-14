@@ -1,0 +1,78 @@
+# Kafka consumers (Orang 3): one consumer group each; they never touch the Canonical Store.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer-dashboard
+  labels: {app: consumer-dashboard, role: consumer}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: consumer-dashboard}}
+  template:
+    metadata:
+      labels: {app: consumer-dashboard, role: consumer, bnpb.io/kafka-client: "true"}
+    spec:
+      containers:
+        - name: consumer
+          image: argus/consumer-hazard
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8091}]
+          env:
+            - {name: CONSUMER_NAME, value: dashboard}
+            - {name: CONSUMER_PORT, value: "8091"}
+            - {name: KAFKA_BROKERS, value: "kafka:9092"}
+            - {name: KAFKA_TOPIC, value: hazard.events}
+            - {name: KAFKA_GROUP, value: dashboard-updater}
+            - {name: LOG_LEVEL, value: info}
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consumer-dashboard
+  labels: {app: consumer-dashboard, role: consumer}
+spec:
+  selector: {app: consumer-dashboard}
+  ports: [{name: http, port: 8091, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer-notifier
+  labels: {app: consumer-notifier, role: consumer}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: consumer-notifier}}
+  template:
+    metadata:
+      labels: {app: consumer-notifier, role: consumer, bnpb.io/kafka-client: "true"}
+    spec:
+      containers:
+        - name: consumer
+          image: argus/consumer-hazard
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8092}]
+          env:
+            - {name: CONSUMER_NAME, value: notifier}
+            - {name: CONSUMER_PORT, value: "8092"}
+            - {name: KAFKA_BROKERS, value: "kafka:9092"}
+            - {name: KAFKA_TOPIC, value: hazard.events}
+            - {name: KAFKA_GROUP, value: notifier}
+            - {name: LOG_LEVEL, value: info}
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consumer-notifier
+  labels: {app: consumer-notifier, role: consumer}
+spec:
+  selector: {app: consumer-notifier}
+  ports: [{name: http, port: 8092, targetPort: http}]

@@ -6,51 +6,51 @@ $ POST http://localhost:8082/admin/schema-version {confidence_level:false, extra
 
 == [2] Aggregator output with the OLD schema follows the mapping rules (both sources) ==
    example BMKG hazard (tsunami event with warning):
-{"hazard_id":"bmkg-EQ-11bf66-0020","source":"BMKG","hazard_type":"SEISMIC","severity":"AWAS","area_name":"Aceh Barat","latitude":4.7423,"longitude":96.1399,"occurred_at":"2026-10-07T12:04:27.166099Z","attributes":{"affected_zones":["Meulaboh","Calang","Simeulue"],"depth_km":31.5,"estimated_arrival":"2026-10-07T12:21:27.16609949Z","issued_at":"2026-10-07T12:06:27.16609949Z","magnitude":7.6,"potential_tsunami":true,"related_event_id":"EQ-11bf66-0020","threat_level":"Awas","warning_id":"TW-11bf66-0020"}}
+{"hazard_id":"bmkg-EQ-d881c8-0020","source":"BMKG","hazard_type":"SEISMIC","severity":"AWAS","area_name":"Jawa Barat Selatan","latitude":-8.186,"longitude":107.1398,"occurred_at":"2026-11-14T02:20:13.670423Z","attributes":{"affected_zones":["Pangandaran","Garut Selatan","Cianjur Selatan"],"depth_km":17.7,"estimated_arrival":"2026-11-14T02:38:13.670423654Z","issued_at":"2026-11-14T02:22:13.670423654Z","magnitude":7.6,"potential_tsunami":true,"related_event_id":"EQ-d881c8-0020","threat_level":"Awas","warning_id":"TW-d881c8-0020"}}
    example PVMBG hazard (initial schema):
-{"hazard_id":"pvmbg-VR-58ae09-0026","source":"PVMBG","hazard_type":"VOLCANIC","severity":"NORMAL","area_name":"Gunung Semeru","latitude":-8.108,"longitude":112.922,"occurred_at":"2026-10-07T19:34:47.169753Z","attributes":{"ash_column_height_m":99.2,"eruption_count_24h":0}}
-   PASS BMKG  SeismicEvent -> HazardEvent (severity rule, coordinates, attributes): {"source_events":26,"checked":26,"by_severity":{"AWAS":2,"NORMAL":12,"SIAGA":3,"WASPADA":9},"pass":true}
+{"hazard_id":"pvmbg-VR-42c09d-0026","source":"PVMBG","hazard_type":"VOLCANIC","severity":"WASPADA","area_name":"Gunung Prikitiw","latitude":-6.45,"longitude":105.9,"occurred_at":"2026-11-14T09:50:31.717517Z","attributes":{"ash_column_height_m":1405.6,"eruption_count_24h":3}}
+   PASS BMKG  SeismicEvent -> HazardEvent (severity rule, coordinates, attributes): {"source_events":26,"checked":26,"by_severity":{"AWAS":2,"NORMAL":11,"SIAGA":3,"WASPADA":10},"pass":true}
    PASS PVMBG VolcanicReport -> HazardEvent (reference table, severity, attributes): {"source_reports":27,"checked":27,"with_confidence_level":0,"pass":true}
    PASS no stored volcanic hazard has confidence_level yet
 
 == [3] Remember what is running (proof that nothing restarts) and the current data ==
-   bmkg-mock=2026-10-07T19:34:26.692656617Z
-   pvmbg-mock=2026-10-07T19:34:26.704155352Z
-   aggregator=2026-10-07T19:34:26.728062463Z
+   bmkg-mock=2026-11-14T09:50:10.886620302Z
+   pvmbg-mock=2026-11-14T09:50:10.867976173Z
+   aggregator=2026-11-14T09:50:10.957167399Z
 
 == [4] Trigger the schema change WHILE RUNNING: PVMBG starts sending confidence_level + a brand-new field ==
 $ POST http://localhost:8082/admin/schema-version {confidence_level:true, extra_fields:{lava_dome_volume_m3:125000}}
 {"schema_version":2,"confidence_level":true,"extra_fields":{"lava_dome_volume_m3":125000}}
-   PVMBG issued new reports: VR-58ae09-0029 VR-58ae09-0030 VR-58ae09-0031
+   PVMBG issued new reports: VR-42c09d-0030 VR-42c09d-0031 VR-42c09d-0032
 
 == [5] Aggregator still produces VALID HazardEvents - no crash, no restart, no code change ==
    new-schema hazard as stored:
-{"hazard_id":"pvmbg-VR-58ae09-0029","severity":"AWAS","area_name":"Gunung Lewotobi Laki-laki","latitude":-8.542,"longitude":122.775,"occurred_at":"2026-10-07T19:35:16.432914Z","attributes":{"ash_column_height_m":5345.9,"confidence_level":0.78,"eruption_count_24h":18,"lava_dome_volume_m3":125000}}
-   PASS PVMBG mapping after the change (new reports: attributes == every non-canonical source field, incl. confidence_level and lava_dome_volume_m3; old ones: nothing lost): {"source_reports":32,"checked":32,"with_confidence_level":4,"pass":true}
+{"hazard_id":"pvmbg-VR-42c09d-0030","severity":"WASPADA","area_name":"Gunung Semeru","latitude":-8.108,"longitude":112.922,"occurred_at":"2026-11-14T09:51:02.50011Z","attributes":{"ash_column_height_m":870.5,"confidence_level":0.88,"eruption_count_24h":5,"lava_dome_volume_m3":125000}}
+   PASS PVMBG mapping after the change (new reports: attributes == every non-canonical source field, incl. confidence_level and lava_dome_volume_m3; old ones: nothing lost): {"source_reports":33,"checked":32,"with_confidence_level":4,"pass":true}
    PASS confidence_level and the unknown field lava_dome_volume_m3 were forwarded to attributes (declared policy)
    PASS bmkg-mock, pvmbg-mock and aggregator were NOT restarted (StartedAt unchanged)
    PASS both sources are 'up' in /internal/sources/status
 
 == [6] Old records (stored BEFORE the change) are untouched and coexist with the new ones ==
    PASS all 28 pre-change volcanic hazards are unchanged (same version, same attributes)
-   side by side in the store: 5 hazards WITH confidence_level, 28 WITHOUT - both readable
+   side by side in the store: 6 hazards WITH confidence_level, 28 WITHOUT - both readable
 
 == [7] Consciously UNSUPPORTED changes are quarantined, never guessed - and never break the batch ==
 $ POST http://localhost:8082/admin/generate {override:{alert_level:"Darurat"}}   # new enum value
    PASS the valid report issued right after the bad one was stored (the batch was not blocked)
-   PASS report VR-58ae09-0035 with alert_level=Darurat was NOT stored
-{"source":"PVMBG","record_id":"VR-58ae09-0035","field":"alert_level","reason":"unknown enum value \"Darurat\"","correlation_id":"5dacbefeb284a2f8"}
-   PASS quarantine counter increased (0 -> 1)
+   PASS report VR-42c09d-0035 with alert_level=Darurat was NOT stored
+{"source":"PVMBG","record_key":"VR-42c09d-0035","status":"parked","retryable":false,"reason":"schema_incompatible: field 'alert_level': unknown enum value \"Darurat\"","correlation_id":"5720fcfc6e3f317b"}
+   PASS parked in the dead-letter store with its exact bytes (0 -> 1 parked PVMBG messages)
 
 == [8] One traceable flow: the same correlation ID from the PVMBG call to the stored hazard to the broker outbox ==
-   correlation id: 5dacbefeb284a2f8
-   {"ts":"2026-10-07T19:35:46.274077668Z","msg":"outbound_call","target":"pvmbg","latency_ms":2228.447,"status":200}
-   {"ts":"2026-10-07T19:35:46.275251949Z","msg":"mapping_rejected"}
-   {"ts":"2026-10-07T19:35:46.279103834Z","msg":"hazard_stored","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"outcome":"created"}
-   {"ts":"2026-10-07T19:35:46.281334211Z","msg":"poll_ok","fetched":3,"created":1,"quarantined":1}
-   {"ts":"2026-10-07T19:35:46.426610458Z","msg":"event_published","latency_ms":23}
-   {"ts":"2026-10-07T19:35:46.427546234Z","msg":"outbox_published","hazard_id":"pvmbg-VR-58ae09-0036","version":1,"event_id":"pvmbg-VR-58ae09-0036:1"}
-   PASS poll -> outbound call (latency logged) -> hazard_stored -> poll_ok share correlation ID 5dacbefeb284a2f8
+   correlation id: 5720fcfc6e3f317b
+   {"ts":"2026-11-14T09:51:29.671157337Z","msg":"outbound_call","target":"pvmbg","latency_ms":2971.784,"status":200}
+   {"ts":"2026-11-14T09:51:29.681771509Z","msg":"message_unprocessed","status":"parked"}
+   {"ts":"2026-11-14T09:51:29.68725466Z","msg":"hazard_stored","hazard_id":"pvmbg-VR-42c09d-0036","version":1,"outcome":"created"}
+   {"ts":"2026-11-14T09:51:29.69013474Z","msg":"poll_ok","fetched":3,"created":1,"unprocessed":1}
+   {"ts":"2026-11-14T09:51:29.799732037Z","msg":"event_published","latency_ms":6}
+   {"ts":"2026-11-14T09:51:29.799827864Z","msg":"outbox_published","hazard_id":"pvmbg-VR-42c09d-0036","version":1,"event_id":"pvmbg-VR-42c09d-0036:1"}
+   PASS poll -> outbound call (latency logged) -> hazard_stored -> poll_ok share correlation ID 5720fcfc6e3f317b
 
 == [9] Restore the original schema on PVMBG (leaves the system reusable) ==
 {"schema_version":1,"extra_fields":{}}

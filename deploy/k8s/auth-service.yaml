@@ -1,0 +1,62 @@
+# Auth Service (Orang 2): issues client tokens. Its SQLite file is its own storage on a node-local volume.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+data:
+  AUTH_SERVICE_PORT: "8084"
+  AUTH_ACCESS_TTL_SEC: "60"
+  AUTH_REFRESH_TTL_SEC: "86400"
+  AUTH_DB_PATH: /data/auth.db
+  LOG_LEVEL: info
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: auth-data
+  labels: {app: auth-service}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 256Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  labels: {app: auth-service, role: api}
+spec:
+  replicas: 1
+  strategy: {type: Recreate} # one writer of the SQLite volume
+  selector: {matchLabels: {app: auth-service}}
+  template:
+    metadata:
+      labels: {app: auth-service, role: api}
+    spec:
+      securityContext: {fsGroup: 10001}
+      containers:
+        - name: auth-service
+          image: argus/auth-service
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8084}]
+          envFrom:
+            - configMapRef: {name: auth-service-config}
+            - secretRef: {name: auth-service-credentials}
+          resources:
+            requests: {memory: 128Mi, cpu: 100m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: auth-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  labels: {app: auth-service, role: api}
+spec:
+  type: NodePort
+  selector: {app: auth-service}
+  ports: [{name: http, port: 8084, targetPort: http, nodePort: 30084}]

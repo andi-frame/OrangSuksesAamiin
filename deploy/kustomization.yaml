@@ -1,0 +1,39 @@
+# The whole BNPB system on Kubernetes (M2).  kubectl apply -k deploy/   (scripts/k8s/up.sh does it for you)
+#
+# Credentials are NOT here: scripts/k8s/secrets.sh creates one Secret per component from .env,
+# so every component only receives its own credentials (M1 rule, unchanged).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: sistem-informasi-kebencanaan-bnpb
+
+labels:
+  - pairs: {app.kubernetes.io/part-of: argus}
+    includeSelectors: false
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/bmkg-mock.yaml
+  - k8s/pvmbg-mock.yaml
+  - k8s/postgres-canonical.yaml
+  - k8s/kafka.yaml
+  - k8s/aggregator.yaml
+  - k8s/auth-service.yaml
+  - k8s/client-api.yaml
+  - k8s/consumers.yaml
+  - k8s/networkpolicy.yaml
+
+configMapGenerator:
+  - name: kafka-init-script
+    files: [kafka/create-topic.sh]
+  # Changing schema-rules.json and re-applying changes the ConfigMap's name (hash suffix), which
+  # rolls the Aggregator out with the new rules - without downtime (P2 criterion 8, P3 criterion 4).
+  - name: aggregator-schema-rules
+    files: [schema-rules.json=k8s/schema-rules.json]
+
+images:
+  - {name: argus/aggregator, newTag: dev}
+  - {name: argus/bmkg-mock, newTag: dev}
+  - {name: argus/pvmbg-mock, newTag: dev}
+  - {name: argus/auth-service, newTag: dev}
+  - {name: argus/client-api, newTag: dev}
+  - {name: argus/consumer-hazard, newTag: dev}

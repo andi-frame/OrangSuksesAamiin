@@ -15,7 +15,9 @@ require_stack
 
 hz_url()   { echo "/internal/hazards?hazard_type=$1&limit=500"; }
 count_of() { agg "$(hz_url "$1")" | jqx '.items|length'; }
-quarantine_total() { agg /internal/quarantine | jqx '.total.PVMBG // 0'; }
+# M2: rejected records live in the dead-letter store, readable by Internal Ops only (no longer /internal/quarantine)
+ops_get() { curl -sS --max-time 15 -H "Authorization: Bearer ${AGGREGATOR_OPS_TOKEN}" "${AGG_URL}$1"; }
+quarantine_total() { ops_get '/internal/ops/unprocessed?source=PVMBG&status=parked&raw=false&limit=1000' | jqx '.items|length'; }
 has_hazard() { [ "$(code -H "X-Service-Key: ${AGGREGATOR_SERVICE_KEY}" "${AGG_URL}/internal/hazards/$1")" = "200" ]; }
 seed_ready() { [ "$(count_of SEISMIC)" -ge 20 ] && [ "$(count_of VOLCANIC)" -ge 20 ]; }
 started_all() { local s; for s in bmkg-mock pvmbg-mock aggregator; do echo "$s=$(started_at "$s")"; done; }
@@ -163,18 +165,19 @@ GOOD_ID="$(pvmbg_admin /admin/generate '{"count":1}' | jqx -r '.generated[0].rep
 wait_until "valid report pvmbg-$GOOD_ID stored" 60 has_hazard "pvmbg-$GOOD_ID"
 ok "the valid report issued right after the bad one was stored (the batch was not blocked)"
 if has_hazard "pvmbg-$BAD_ID"; then fail "unsupported enum value was stored"; else ok "report $BAD_ID with alert_level=Darurat was NOT stored"; fi
-agg /internal/quarantine | jqx -c '.recent[0] | {source,record_id,field,reason,correlation_id}'
+ops_get "/internal/ops/unprocessed?source=PVMBG&status=parked&raw=false&limit=1000" |
+  jqx -c --arg id "$BAD_ID" '.items[] | select(.record_key == $id) | {source,record_key,status,retryable,reason,correlation_id}'
 if [ "$(quarantine_total)" -gt "$QUAR0" ]; then
-  ok "quarantine counter increased ($QUAR0 -> $(quarantine_total))"
+  ok "parked in the dead-letter store with its exact bytes ($QUAR0 -> $(quarantine_total) parked PVMBG messages)"
 else
-  fail "quarantine counter did not increase"
+  fail "the rejected report was not parked"
 fi
 
 step "One traceable flow: the same correlation ID from the PVMBG call to the stored hazard to the broker outbox"
 CID="$(docker compose logs --no-log-prefix aggregator 2>/dev/null | grep '"hazard_stored"' | grep "pvmbg-$GOOD_ID" | tail -1 | jqx -r '.cid')"
 info "correlation id: $CID"
 FLOW="$(docker compose logs --no-log-prefix aggregator 2>/dev/null | grep "\"cid\":\"$CID\"")"
-echo "$FLOW" | jqx -c '{ts,msg,target,latency_ms,status,hazard_id,version,outcome,event_id,fetched,created,quarantined} | with_entries(select(.value != null))' | sed 's/^/   /'
+echo "$FLOW" | jqx -c '{ts,msg,target,latency_ms,status,hazard_id,version,outcome,event_id,fetched,created,unprocessed} | with_entries(select(.value != null))' | sed 's/^/   /'
 for m in outbound_call hazard_stored poll_ok; do
   echo "$FLOW" | grep -q "\"msg\":\"$m\"" || fail "log line '$m' missing for cid $CID"
 done
@@ -182,4 +185,4 @@ ok "poll -> outbound call (latency logged) -> hazard_stored -> poll_ok share cor
 
 step "Restore the original schema on PVMBG (leaves the system reusable)"
 pvmbg_admin /admin/schema-version '{"confidence_level":false,"extra_fields":{}}' | jqx -c '{schema_version, extra_fields}'
-printf '\n%sP1 PASS%s - schema evolution handled live, per the declared policy (additive-only; unknown fields -> attributes; breaking changes -> quarantine).\n' "$C_G$C_B" "$C_0"
+printf '\n%sP1 PASS%s - schema evolution handled live, per the declared policy (additive-only; unknown fields -> attributes; breaking changes -> parked in the dead-letter store).\n' "$C_G$C_B" "$C_0"

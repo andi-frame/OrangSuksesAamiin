@@ -69,6 +69,11 @@ func (s *server) withAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := r.Header.Get(HeaderAdmin)
 		if tok == "" {
+			if s.cfg.AdminOpen {
+				s.log.WarnContext(r.Context(), "admin_without_token", "path", r.URL.Path, "remote", r.RemoteAddr)
+				next.ServeHTTP(w, r)
+				return
+			}
 			obs.WriteError(w, http.StatusUnauthorized, "unauthorized", "missing "+HeaderAdmin+" header")
 			return
 		}

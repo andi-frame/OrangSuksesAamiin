@@ -5,7 +5,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 )
 
 // SourceError marks a failure of the upstream itself (network, timeout, non-2xx,
@@ -38,9 +39,11 @@ func (e *SourceError) IsAuth() bool {
 	return e.Status == http.StatusUnauthorized || e.Status == http.StatusForbidden
 }
 
-// getArray performs GET base+path?since=... and decodes a JSON array. Elements
-// are returned as generic values so that unknown fields survive untouched.
-func getArray(ctx context.Context, hc *http.Client, source, base, path string, since time.Time, hdr map[string]string) ([]any, error) {
+// getArray performs GET base+path?since=... and splits the JSON array response
+// into its elements without decoding them (SplitArray): every element keeps its
+// exact bytes, and a broken element is returned with its Problem instead of
+// failing the whole response.
+func getArray(ctx context.Context, hc *http.Client, lim Limits, source, base, path string, since time.Time, hdr map[string]string) ([]Element, error) {
 	u := strings.TrimRight(base, "/") + path
 	if !since.IsZero() {
 		u += "?" + url.Values{"since": {since.UTC().Format(time.RFC3339Nano)}}.Encode()
@@ -50,7 +53,9 @@ func getArray(ctx context.Context, hc *http.Client, source, base, path string, s
 		return nil, &SourceError{Source: source, Err: err}
 	}
 	for k, v := range hdr {
-		req.Header.Set(k, v)
+		if v != "" {
+			req.Header.Set(k, v)
+		}
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := hc.Do(req)
@@ -62,9 +67,9 @@ func getArray(ctx context.Context, hc *http.Client, source, base, path string, s
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
 		return nil, &SourceError{Source: source, Status: resp.StatusCode, Err: errors.New(strings.TrimSpace(string(snippet)))}
 	}
-	var out []any
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, &SourceError{Source: source, Status: resp.StatusCode, Err: fmt.Errorf("response is not a JSON array: %w", err)}
+	out, err := SplitArray(resp.Body, lim)
+	if err != nil {
+		return nil, &SourceError{Source: source, Status: resp.StatusCode, Err: fmt.Errorf("reading response: %w", err)}
 	}
 	return out, nil
 }
@@ -74,16 +79,20 @@ type BMKG struct {
 	HTTP    *http.Client
 	BaseURL string
 	APIKey  string
+	Caller  string // instance name sent as X-Caller, so the upstream log shows who asked
+	Limits  Limits
 }
 
-func (c *BMKG) hdr() map[string]string { return map[string]string{"X-BMKG-Key": c.APIKey} }
-
-func (c *BMKG) SeismicEvents(ctx context.Context, since time.Time) ([]any, error) {
-	return getArray(ctx, c.HTTP, "bmkg", c.BaseURL, "/seismic-events", since, c.hdr())
+func (c *BMKG) hdr() map[string]string {
+	return map[string]string{"X-BMKG-Key": c.APIKey, obs.HeaderCaller: c.Caller}
 }
 
-func (c *BMKG) TsunamiWarnings(ctx context.Context, since time.Time) ([]any, error) {
-	return getArray(ctx, c.HTTP, "bmkg", c.BaseURL, "/tsunami-warnings", since, c.hdr())
+func (c *BMKG) SeismicEvents(ctx context.Context, since time.Time) ([]Element, error) {
+	return getArray(ctx, c.HTTP, c.Limits, "bmkg", c.BaseURL, "/seismic-events", since, c.hdr())
+}
+
+func (c *BMKG) TsunamiWarnings(ctx context.Context, since time.Time) ([]Element, error) {
+	return getArray(ctx, c.HTTP, c.Limits, "bmkg", c.BaseURL, "/tsunami-warnings", since, c.hdr())
 }
 
 // PVMBG is the client of the PVMBG mock (credential: Authorization: Bearer).
@@ -91,9 +100,11 @@ type PVMBG struct {
 	HTTP    *http.Client
 	BaseURL string
 	Token   string
+	Caller  string
+	Limits  Limits
 }
 
-func (c *PVMBG) VolcanicReports(ctx context.Context, since time.Time) ([]any, error) {
-	return getArray(ctx, c.HTTP, "pvmbg", c.BaseURL, "/volcanic-reports", since,
-		map[string]string{"Authorization": "Bearer " + c.Token})
+func (c *PVMBG) VolcanicReports(ctx context.Context, since time.Time) ([]Element, error) {
+	return getArray(ctx, c.HTTP, c.Limits, "pvmbg", c.BaseURL, "/volcanic-reports", since,
+		map[string]string{"Authorization": "Bearer " + c.Token, obs.HeaderCaller: c.Caller})
 }
