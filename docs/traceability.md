@@ -130,10 +130,23 @@ P3 kriteria 6 (`POST /field-reports`), load test, dashboard analitik P1; **Orang
 | 7. Dashboard analitik | Gunakan angka logis dan metadata cakupan dari API | 2 | ⬜ |
 | Laporan | `docs/report/m2/01-p1.md` | 3 | 🟡 draf sebelum demo k3s |
 
-## Problem 4, 5 dan bonus
+## Problem 4 — Feed Satelit
+
+| Kriteria | Demo / bukti | Owner | Status |
+|---|---|---|---|
+| 1. WILDFIRE lintas satelit | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard`, `p4-practice-dev.log` | 3 | 🟡 fixture dan sampel practice |
+| 2. Waktu akuisisi, keterlambatan, singleton | `satellite_checkpoint` dan `/internal/satellite/status` | 3 | 🟡 implementasi |
+| 3. Update/retract menjaga ID kebakaran | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard` | 3 | ✅ fixture |
+| 4. 60×, catch-up ≤60 s, p95 | `scripts/demo/m2-p4.sh` dengan akhir burst, `p4-practice-dev.log` | 3 | 🟡 p95 replay 597 ms di kind, target k3s tertunda |
+| 5. Restart selama pemrosesan | `TestPendingChangesResumeAfterPartialApply` | 3 | ✅ fixture |
+| 6. Perbandingan hasil referensi | Audit API `events` dan `checksum?source=SATELIT` | 3 | ⬜ menunggu referensi |
+| 7. Live feed selama demo | `p4-practice-dev.log` membuktikan wire contract | 3 | 🟡 rekaman cluster tertunda |
+| 8. Resume tanpa gap atau duplikasi | SSE `from` inklusif, tes reconnect dan replay | 3 | ✅ fixture |
+| Laporan | `docs/report/m2/04-p4.md` | 3 | 🟡 draf sebelum demo k3s |
+
+## Problem 5 dan bonus
 
 | Bagian | Owner | Status |
 |---|---|---|
-| P4 Feed Satelit | 3 | ⬜ |
 | P5 Sensor Pantai, SLO, game day | 2 | ⬜ |
 | Bonus host fisik berbeda / AI-native / HPA | 1 / 3 / 2 | ⬜ opsional |

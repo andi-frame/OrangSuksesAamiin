@@ -198,3 +198,13 @@ logical rows. An unavailable logical shard can omit rows. The API does not hold 
 snapshot between pages. Restart a partial scan after recovery. A checksum uses a
 statement snapshot on each reachable primary and can be compared reliably with an
 independent export while input is quiescent.
+
+### M2 P4 Feed Satelit
+
+`SATELIT/WILDFIRE` IDs begin with `satelit-`. The `detection_keys` attributes retain
+the lexical values received from the feed. An extinguished/retracted component has
+a versioned `retired` envelope, with `hazard.retired: true`. Ordinary reads and Audit
+exclude retired records. Existing created/updated envelopes keep their field names.
+The Aggregator's `GET /internal/satellite/status` uses the service key and exposes
+its last applied offset, feed head, lag, singleton and late counts, and status age.
+Structured `satellite_hazard_applied` logs carry receive-to-store latency.

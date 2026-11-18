@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ports"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/relay"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/resilience"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/satellite"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/sources"
 )
 
@@ -84,6 +86,24 @@ func main() {
 	defer pub.Close()
 
 	ing := &ingestion{cfg: cfg, log: log, repo: repo, pub: pub, rules: rules, volcanoes: volcanoes}
+	if cfg.SatelliteToken != "" && !strings.HasPrefix(cfg.SatelliteToken, "example-") {
+		body, err := os.ReadFile(cfg.ProvinceTablePath)
+		if err != nil {
+			fatal(log, "province_table", err)
+		}
+		provinces, err := satellite.LoadProvinces(body)
+		if err != nil {
+			fatal(log, "province_table", err)
+		}
+		store, ok := repo.(ports.SatelliteStore)
+		if !ok {
+			fatal(log, "satellite", errors.New("repository lacks satellite checkpoints"))
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.ResponseHeaderTimeout = 5 * time.Second
+		ing.satellite = &satellite.Runner{Repo: repo, Store: store, Client: &http.Client{Transport: transport},
+			URL: cfg.SatelliteURL, Token: cfg.SatelliteToken, Lateness: cfg.SatelliteLateness, Provinces: provinces, Log: log}
+	}
 
 	// background work ends (and the lease is released) before the process exits
 	bgDone := make(chan struct{})
@@ -109,9 +129,13 @@ func main() {
 		fatal(log, "config", errors.New("LEADER_ELECTION must be none or kubernetes"))
 	}
 
+	activeSources := []string{"BMKG", "PVMBG"}
+	if ing.satellite != nil {
+		activeSources = append(activeSources, string(domain.SourceSatellite))
+	}
 	apiSrv := &api.Server{
 		Repo:   repo,
-		Status: &api.StoreStatus{Repo: repo, Sources: []string{"BMKG", "PVMBG"}, MaxAge: cfg.StatusMaxAge, Log: log},
+		Status: &api.StoreStatus{Repo: repo, Sources: activeSources, MaxAge: cfg.StatusMaxAge, Log: log},
 		Rules:  rules.Summary(), ServiceKey: cfg.ServiceKey, OpsToken: cfg.OpsToken, AuditToken: cfg.AuditToken, Log: log,
 		Version: version,
 	}
@@ -148,6 +172,7 @@ type ingestion struct {
 	pub       ports.Publisher
 	rules     mapping.SchemaRules
 	volcanoes mapping.VolcanoTable
+	satellite *satellite.Runner
 	gate      func(context.Context) error // nil when there is no election
 }
 
@@ -200,6 +225,11 @@ func (g *ingestion) run(ctx context.Context) {
 	rel := &relay.Relay{Repo: repo, Pub: g.pub, Log: log, Interval: cfg.RelayInterval, Batch: cfg.RelayBatch, MaxBackoff: cfg.RelayBackoff}
 
 	var wg sync.WaitGroup
+	if g.satellite != nil {
+		runner := *g.satellite
+		runner.Gate = g.gate
+		wg.Go(func() { runner.Run(ctx) })
+	}
 	for _, l := range loops {
 		l.Interval, l.CycleTimeout, l.Log, l.Gate, l.Publish = cfg.PollInterval, cycleTimeout, log, g.gate, g.publish
 		wg.Add(1)

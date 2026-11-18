@@ -12,6 +12,7 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -66,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /internal/hazards", s.auth(http.HandlerFunc(s.list)))
 	mux.Handle("GET /internal/hazards/{id}", s.auth(http.HandlerFunc(s.get)))
 	mux.Handle("GET /internal/sources/status", s.auth(http.HandlerFunc(s.status)))
+	mux.Handle("GET /internal/satellite/status", s.auth(http.HandlerFunc(s.satelliteStatus)))
 	mux.Handle("GET /internal/leader", s.auth(http.HandlerFunc(s.leader)))
 
 	mux.Handle("GET /internal/ops/unprocessed", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsList)))
@@ -230,4 +232,25 @@ func (s *Server) leader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	obs.WriteJSON(w, http.StatusOK, map[string]any{"election": "kubernetes", "instance": s.Leader()})
+}
+
+func (s *Server) satelliteStatus(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Repo.ListSourceStatus(r.Context())
+	if err != nil {
+		obs.WriteError(w, 503, "store_unavailable", "canonical store unavailable")
+		return
+	}
+	for _, row := range rows {
+		if row.Source == string(domain.SourceSatellite) {
+			var status map[string]any
+			if err := json.Unmarshal(row.Doc, &status); err != nil {
+				obs.WriteError(w, 503, "store_unavailable", "invalid satellite status")
+				return
+			}
+			status["status_age_s"] = row.Age.Seconds()
+			obs.WriteJSON(w, 200, status)
+			return
+		}
+	}
+	obs.WriteError(w, 404, "not_found", "no satellite checkpoint")
 }

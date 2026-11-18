@@ -146,6 +146,7 @@ type Envelope struct {
 const (
 	KindCreated = "created"
 	KindUpdated = "updated"
+	KindRetired = "retired"
 	SchemaName  = "hazard-event/v1"
 )
 

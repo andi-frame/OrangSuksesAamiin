@@ -30,10 +30,12 @@ type Config struct {
 
 	PendingWarningTTL time.Duration
 
-	RepositoryBackend string // memory | postgres
-	PublisherBackend  string // log | kafka
-	VolcanoTablePath  string
-	SchemaRulesPath   string
+	RepositoryBackend                               string // memory | postgres | sharded
+	PublisherBackend                                string // log | kafka
+	VolcanoTablePath                                string
+	SchemaRulesPath                                 string
+	SatelliteURL, SatelliteToken, ProvinceTablePath string
+	SatelliteLateness                               time.Duration
 
 	RelayInterval time.Duration
 	RelayBatch    int
@@ -60,6 +62,10 @@ type Config struct {
 func Load() Config {
 	host, _ := os.Hostname()
 	return Config{
+		SatelliteURL:      obs.EnvString("SATELLITE_FEED_URL", "https://satellite.naufarrel.dev"),
+		SatelliteToken:    os.Getenv("SATELLITE_FEED_TOKEN"),
+		ProvinceTablePath: obs.EnvString("SATELLITE_PROVINCES_PATH", "/app/config/provinces.json"),
+		SatelliteLateness: obs.EnvSeconds("SATELLITE_LATENESS_SEC", 24*time.Hour),
 		Port:              obs.EnvString("AGGREGATOR_PORT", "8083"),
 		ServiceKey:        obs.MustEnv("AGGREGATOR_SERVICE_KEY"),
 		OpsToken:          obs.MustEnv("AGGREGATOR_OPS_TOKEN"),

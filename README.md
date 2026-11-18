@@ -90,7 +90,7 @@ curl -X POST -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" -d '{"source":"PVM
 Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/schema-rules/pvmbg-v3.json`), jalankan
 `make k8s-up` (ConfigMap berganti nama → rolling update), lalu *reprocess* setelah rollout selesai.
 
-### M2.5 Sharded storage
+### M2.5 Sharded storage and Feed Satelit
 
 Use three k3s nodes with distinct kernels and node disks. With the VirtualBox helper, set
 `VBOX_NODES="node-a node-b node-c"`. Specify `STORE_NODE_A`, `STORE_NODE_B`,
@@ -108,8 +108,14 @@ For an existing singleton store, run `K8S_STORAGE=sharded MIGRATE_CANONICAL=1 ma
 in the maintenance window. It drains the Aggregator, copies and verifies data, switches the
 backend, and scales the old database down after rollout. Its PVC remains available for recovery.
 
-Run the remaining P1 demo checks with the [P1 report](docs/report/m2/01-p1.md).
-The Canonical Store importer consumes one BMKG
+Set `SATELLITE_FEED_TOKEN` in `.env` to enable the elected Aggregator consumer.
+The `satellite-feed-credentials` Secret is mounted through `secretRef`.
+Use `SATELLITE_FEED_URL` for a fixture endpoint, `SATELLITE_LATENESS_SEC` for the local
+event-time window, and `SATELLITE_PROVINCES_PATH` for an alternate province table.
+Kubernetes uses the Aggregator ConfigMap for non-secret overrides.
+
+Run the remaining P1 and P4 demo checks with the [P1 report](docs/report/m2/01-p1.md)
+and [P4 report](docs/report/m2/04-p4.md). The Canonical Store importer consumes one BMKG
 `SeismicEvent` JSON object per line. Convert the assistant's catalog to the fields in
 `contracts/schemas/seismic-event.json`, retaining its original event IDs and UTC timestamps.
 
@@ -117,6 +123,7 @@ The Canonical Store importer consumes one BMKG
 kubectl -n sistem-informasi-kebencanaan-bnpb exec -i deploy/aggregator -- \
   /usr/local/bin/aggregator import-catalog < catalog.ndjson
 K8S_STORAGE=sharded bash scripts/demo/m2-p1.sh baseline
+K8S_STORAGE=sharded bash scripts/demo/m2-p4.sh
 ```
 
 ## 1. Prasyarat

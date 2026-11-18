@@ -69,6 +69,9 @@ services:
       AGGREGATOR_SERVICE_KEY: ${AGGREGATOR_SERVICE_KEY:?copy .env.example to .env}
       # M2: BNPB Internal Ops (dead letters) and the auditor (Audit API) have their own credentials
       AGGREGATOR_OPS_TOKEN: ${AGGREGATOR_OPS_TOKEN:?copy .env.example to .env}
+      SATELLITE_FEED_TOKEN: ${SATELLITE_FEED_TOKEN:-}
+      SATELLITE_FEED_URL: ${SATELLITE_FEED_URL:-https://satellite.naufarrel.dev}
+      SATELLITE_LATENESS_SEC: ${SATELLITE_LATENESS_SEC:-86400}
       AUDIT_TOKEN: ${AUDIT_TOKEN:?copy .env.example to .env}
       # one instance in compose: no election (Kubernetes runs >= 3 with LEADER_ELECTION=kubernetes)
       LEADER_ELECTION: none

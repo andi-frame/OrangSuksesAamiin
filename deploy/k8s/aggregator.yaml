@@ -108,6 +108,7 @@ spec:
           envFrom:
             - configMapRef: {name: aggregator-config}
             - secretRef: {name: aggregator-credentials}
+            - secretRef: {name: satellite-feed-credentials, optional: true}
           resources:
             requests: {memory: 256Mi, cpu: 200m}
             limits: {memory: 512Mi}

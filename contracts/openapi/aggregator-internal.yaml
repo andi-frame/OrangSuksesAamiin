@@ -55,6 +55,15 @@ paths:
       security: [{serviceKey: []}]
       responses:
         "200": {description: "{sources:[Status], unprocessed:{SOURCE:{retrying:n, parked:n}}} (counts only)"}
+  /internal/satellite/status:
+    get:
+      summary: Most recent persisted Feed Satelit checkpoint and lag
+      security: [{serviceKey: []}]
+      responses:
+        "200":
+          description: "{source, state, last_success_at, applied_offset, last_session_head, lag_offsets, late_detections, singletons, status_age_s}"
+        "404": {description: No satellite checkpoint yet}
+        "503": {description: Canonical store unavailable}
   /internal/leader:
     get:
       summary: (M2) leader election state of THIS instance

@@ -1,0 +1,20 @@
+Feed Satelit read-only practice probe
+group=orangsuksesaamiin profile=practice speed=60
+GET /v1/session: 200
+GET /v1/stream?from=0: 200, begins at offset 0
+GET /v1/stream?from=69: 200, first event is update with id 69
+Numbered heartbeats are part of the contiguous offset sequence.
+Replay of bounded practice capture:
+  complete offsets 0 to 1026
+  944 detection, 4 heartbeat, 33 retract, 46 update
+  17 active fires, 680 hazard mutations, 0 late detections
+  TestPracticeCaptureReplay: PASS (0.24s)
+Replay used an in-memory test. It did not measure cluster durability latency or catch-up.
+
+Development cluster replay of the same bounded sample through the Aggregator and PostgreSQL:
+  applied_offset=1026, last_session_head=1026, lag_offsets=0
+  singleton detections=119, late detections=0
+  Audit SATELIT: count=17, partial=false, unavailable_units=[]
+  SHA-256: f9577ea57f6f0af7d0c370a37ed3cbe9944e269a2c7ab5b5ceb66ba6d6aab00a
+  680 durable hazard versions, p95 from local receive to storage=597 ms.
+  Capture replay was unthrottled. The result is a development measurement.
