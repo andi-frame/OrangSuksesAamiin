@@ -179,3 +179,22 @@ pesan jelas bila variabelnya kosong. Orang 2 dan 3 menambahkan variabel milik me
 `POST /admin/schema-version`: `{"version":3}` / `{"mode":"incompatible"}` / `{"incompatible":["rename","type_change","drop_required"]}`;
 `{"version":1}` kembali ke skema asli. `POST /admin/malformed {"kind":"truncated|deep|invalid_utf8|oversize"}`.
 Rincian: `contracts/openapi/pvmbg.yaml`.
+
+### M2 P1 Audit API (Lampiran A)
+
+All routes use the existing audit bearer principal. Missing or invalid bearer tokens
+return 401. Another known principal returns 403. Responses use UTC and JSON.
+
+| Route | Query | Response |
+|---|---|---|
+| `GET /internal/audit/events` | Optional `source`, `since`, `limit`, `cursor` | Active canonical events sorted by `ingested_at`, then `hazard_id`, ascending. `since` is inclusive and uses ingestion time. Default page size 100, maximum 1000. The last `next_cursor` is JSON null. |
+| `GET /internal/audit/checksum` | Optional `source` | `count`, `checksum`, `source`, `algorithm`, `as_of` and coverage. Sort the `source_ref_id` values by byte order, join with LF and hash using SHA-256. No trailing LF. An omitted source returns `source: ""` and includes every source. |
+| `GET /internal/audit/location` | Required `hazard_id` | `hazard_id`, `locations`, and `partial`. Each verified location has `node`, `unit` and `role`. A 404 means the authoritative shard confirmed absence. |
+| `GET /internal/audit/unprocessed` | Optional `source`, `limit`, `cursor` | Existing open DLQ projection. See earlier section. |
+
+Event, checksum, and both hazard list APIs report `partial` with `unavailable_units`.
+An unavailable replica can make coverage partial while its primary still supplies all
+logical rows. An unavailable logical shard can omit rows. The API does not hold a global
+snapshot between pages. Restart a partial scan after recovery. A checksum uses a
+statement snapshot on each reachable primary and can be compared reliably with an
+independent export while input is quiescent.

@@ -74,6 +74,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /internal/ops/schema-rules", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsRules)))
 
 	mux.Handle("GET /internal/audit/unprocessed", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditUnprocessed)))
+	mux.Handle("GET /internal/audit/events", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditEvents)))
+	mux.Handle("GET /internal/audit/checksum", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditChecksum)))
+	mux.Handle("GET /internal/audit/location", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditLocation)))
 	return obs.Middleware(s.Log, "/health", "/ready")(mux)
 }
 
@@ -140,19 +143,19 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	f := ports.ListFilter{Cursor: q.Get("cursor")}
 	if v := q.Get("hazard_type"); v != "" {
 		switch t := domain.HazardType(strings.ToUpper(v)); t {
-		case domain.HazardSeismic, domain.HazardVolcanic:
+		case domain.HazardSeismic, domain.HazardVolcanic, domain.HazardWildfire, domain.HazardCoastal:
 			f.HazardType = t
 		default:
-			obs.WriteError(w, http.StatusBadRequest, "bad_request", "hazard_type must be SEISMIC or VOLCANIC")
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "unsupported hazard_type")
 			return
 		}
 	}
 	if v := q.Get("source"); v != "" {
 		switch src := domain.Source(strings.ToUpper(v)); src {
-		case domain.SourceBMKG, domain.SourcePVMBG:
+		case domain.SourceBMKG, domain.SourcePVMBG, domain.SourceSatellite, domain.SourceCoastal:
 			f.Source = src
 		default:
-			obs.WriteError(w, http.StatusBadRequest, "bad_request", "source must be BMKG or PVMBG")
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "unsupported source")
 			return
 		}
 	}
@@ -196,13 +199,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	obs.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": items, "next_cursor": page.NextCursor, "freshness": s.freshness(r.Context()),
+		"partial": len(page.UnavailableUnits) > 0, "unavailable_units": unitNames(page.UnavailableUnits),
 	})
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	h, err := s.Repo.Get(r.Context(), r.PathValue("id"))
 	switch {
-	case errors.Is(err, ports.ErrNotFound):
+	case errors.Is(err, ports.ErrNotFound) || (err == nil && h.Retired):
 		obs.WriteError(w, http.StatusNotFound, "not_found", "hazard not found")
 	case err != nil:
 		s.Log.ErrorContext(r.Context(), "get_failed", "error", err.Error())

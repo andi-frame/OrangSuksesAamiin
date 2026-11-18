@@ -45,7 +45,7 @@ func checkFence(ctx context.Context, tx pgx.Tx) error {
 		return fmt.Errorf("fence: %w", err)
 	}
 	var term int64
-	if err := tx.QueryRow(ctx, `SELECT term FROM fence WHERE name = $1`, f.Name).Scan(&term); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT term FROM fence WHERE name = $1 FOR UPDATE`, f.Name).Scan(&term); err != nil {
 		return fmt.Errorf("fence: %w", err)
 	}
 	if term > f.Term {

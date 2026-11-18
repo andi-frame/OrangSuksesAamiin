@@ -23,8 +23,8 @@ paths:
       summary: List hazards, newest first (occurred_at DESC, hazard_id DESC), keyset pagination
       security: [{serviceKey: []}]
       parameters:
-        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC]}}
-        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG]}}
+        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC, WILDFIRE, COASTAL]}}
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG, SATELIT, SENSOR_PANTAI]}}
         - {name: severity, in: query, schema: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}}
         - {name: since, in: query, schema: {type: string, format: date-time}, description: "occurred_at >= since"}
         - {name: limit, in: query, schema: {type: integer, default: 100, maximum: 500}}
@@ -33,6 +33,7 @@ paths:
         "200":
           description: |
             {items:[HazardEvent], next_cursor:"" | "...", freshness:{BMKG:{state,last_success_at,stale_since}, PVMBG:{...}}}.
+            The response also includes partial and unavailable_units.
             `freshness.<source>.stale_since` is non-null while the source is not "up": the data of that source is at
             least that old. M2: freshness is the view the LEADER stored (every instance serves the same one); a view
             older than SOURCE_STATUS_MAX_AGE_SEC (store clock) means nobody polls: state "unknown", stale_since set.
@@ -109,6 +110,89 @@ paths:
       security: [{opsToken: []}]
       responses:
         "200": {description: "{rules:[\"PVMBG rename level -> alert_level\", ...]}"}
+  /internal/audit/events:
+    get:
+      summary: List active canonical hazards by ingested_at and hazard_id, ascending
+      security: [{auditToken: []}]
+      parameters:
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG, SATELIT, SENSOR_PANTAI]}}
+        - {name: since, in: query, schema: {type: string, format: date-time}, description: Inclusive ingested_at}
+        - {name: limit, in: query, schema: {type: integer, default: 100, maximum: 1000}}
+        - {name: cursor, in: query, schema: {type: string}, description: Opaque next_cursor from this route}
+      responses:
+        "200":
+          description: Canonical records and coverage
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor, partial, unavailable_units]
+                properties:
+                  items: {type: array, items: {$ref: "../schemas/hazard-event.json"}}
+                  next_cursor: {type: string, nullable: true}
+                  partial: {type: boolean}
+                  unavailable_units: {type: array, items: {type: string}}
+        "400": {description: Invalid query}
+        "401": {description: Missing or invalid token}
+        "403": {description: Wrong principal}
+        "503": {description: Store unavailable}
+  /internal/audit/checksum:
+    get:
+      summary: Count active records and hash byte-sorted source_ref_id values joined by LF
+      security: [{auditToken: []}]
+      parameters:
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG, SATELIT, SENSOR_PANTAI]}}
+      responses:
+        "200":
+          description: Digest and coverage
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source, count, checksum, algorithm, as_of, partial, unavailable_units]
+                properties:
+                  source: {type: string, description: Empty for all sources}
+                  count: {type: integer, minimum: 0}
+                  checksum: {type: string, pattern: "^[a-f0-9]{64}$"}
+                  algorithm: {type: string, enum: [sha256]}
+                  as_of: {type: string, format: date-time}
+                  partial: {type: boolean}
+                  unavailable_units: {type: array, items: {type: string}}
+        "400": {description: Invalid source}
+        "401": {description: Missing or invalid token}
+        "403": {description: Wrong principal}
+        "503": {description: Store unavailable}
+  /internal/audit/location:
+    get:
+      summary: Verify physical placement of an active canonical hazard
+      security: [{auditToken: []}]
+      parameters:
+        - {name: hazard_id, in: query, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Verified physical placements
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hazard_id, locations, partial]
+                properties:
+                  hazard_id: {type: string}
+                  partial: {type: boolean}
+                  locations:
+                    type: array
+                    items:
+                      type: object
+                      required: [node, unit, role]
+                      properties:
+                        node: {type: string}
+                        unit: {type: string}
+                        role: {type: string, enum: [primary, replica]}
+        "400": {description: Missing hazard_id}
+        "401": {description: Missing or invalid token}
+        "403": {description: Wrong principal}
+        "404": {description: Authoritative shard confirmed absence}
+        "503": {description: Store unavailable}
   /internal/audit/unprocessed:
     get:
       summary: (M2, Lampiran A) open messages (retrying, parked), oldest first; metadata only

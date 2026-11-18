@@ -13,8 +13,8 @@ paths:
       summary: List hazards (newest first), shaped per client role
       security: [{bearerAuth: []}]
       parameters:
-        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC]}}
-        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG]}}
+        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC, WILDFIRE, COASTAL]}}
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG, SATELIT, SENSOR_PANTAI]}}
         - {name: severity, in: query, schema: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}}
         - {name: since, in: query, schema: {type: string, format: date-time}}
         - {name: limit, in: query, schema: {type: integer, maximum: 500}}

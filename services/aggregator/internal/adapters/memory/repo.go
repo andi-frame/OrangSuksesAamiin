@@ -5,6 +5,7 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -30,20 +31,21 @@ type outboxRow struct {
 
 // Repo is a thread-safe in-memory ports.Repository.
 type Repo struct {
-	mu      sync.Mutex
-	hazards map[string][]byte
-	cursors map[string]time.Time
-	outbox  []*outboxRow
-	fences  map[string]int64
-	dlq     map[string]*ports.Unprocessed
-	dlqSeq  int64
-	status  map[string]statusRow
-	failing error // test hook: makes every call fail
+	mu        sync.Mutex
+	hazards   map[string][]byte
+	cursors   map[string]time.Time
+	outbox    []*outboxRow
+	fences    map[string]int64
+	dlq       map[string]*ports.Unprocessed
+	dlqSeq    int64
+	status    map[string]statusRow
+	satellite map[string][]byte
+	failing   error // test hook: makes every call fail
 }
 
 func New() *Repo {
 	return &Repo{hazards: map[string][]byte{}, cursors: map[string]time.Time{},
-		fences: map[string]int64{}, dlq: map[string]*ports.Unprocessed{}, status: map[string]statusRow{}}
+		fences: map[string]int64{}, dlq: map[string]*ports.Unprocessed{}, status: map[string]statusRow{}, satellite: map[string][]byte{}}
 }
 
 // checkFenceLocked enforces the fence carried by ctx: an older term than the
@@ -132,6 +134,9 @@ func (r *Repo) List(_ context.Context, f ports.ListFilter) (ports.Page, error) {
 	var all []domain.HazardEvent
 	for id := range r.hazards {
 		h, _ := r.getLocked(id)
+		if h.Retired {
+			continue
+		}
 		if f.HazardType != "" && h.HazardType != f.HazardType {
 			continue
 		}
@@ -141,16 +146,13 @@ func (r *Repo) List(_ context.Context, f ports.ListFilter) (ports.Page, error) {
 		if f.Severity != "" && h.Severity != f.Severity {
 			continue
 		}
-		if f.Since != nil && h.OccurredAt.Before(*f.Since) {
+		if f.Since != nil && f.Position(*h).Before(*f.Since) {
 			continue
 		}
 		all = append(all, *h)
 	}
 	sort.Slice(all, func(i, j int) bool {
-		if !all[i].OccurredAt.Equal(all[j].OccurredAt) {
-			return all[i].OccurredAt.After(all[j].OccurredAt)
-		}
-		return all[i].HazardID > all[j].HazardID
+		return f.Before(all[i], all[j])
 	})
 	if f.Cursor != "" {
 		ct, cid, err := ports.DecodeCursor(f.Cursor)
@@ -158,10 +160,7 @@ func (r *Repo) List(_ context.Context, f ports.ListFilter) (ports.Page, error) {
 			return ports.Page{}, err
 		}
 		i := sort.Search(len(all), func(i int) bool { // first item strictly "after" the cursor
-			if !all[i].OccurredAt.Equal(ct) {
-				return all[i].OccurredAt.Before(ct)
-			}
-			return all[i].HazardID < cid
+			return f.Before(domain.HazardEvent{HazardID: cid, OccurredAt: ct, IngestedAt: ct}, all[i])
 		})
 		all = all[i:]
 	}
@@ -169,7 +168,7 @@ func (r *Repo) List(_ context.Context, f ports.ListFilter) (ports.Page, error) {
 	if len(all) > f.Limit {
 		all = all[:f.Limit]
 		last := all[len(all)-1]
-		page.NextCursor = ports.EncodeCursor(last.OccurredAt, last.HazardID)
+		page.NextCursor = ports.EncodeCursor(f.Position(last), last.HazardID)
 	}
 	page.Items = all
 	return page, nil
@@ -216,11 +215,14 @@ func (r *Repo) PendingOutbox(_ context.Context, limit int) ([]ports.OutboxEntry,
 	return out, nil
 }
 
-func (r *Repo) MarkPublished(_ context.Context, ids []string) error {
+func (r *Repo) MarkPublished(ctx context.Context, ids []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.failing != nil {
 		return r.failing
+	}
+	if err := r.checkFenceLocked(ctx); err != nil {
+		return err
 	}
 	set := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -232,4 +234,42 @@ func (r *Repo) MarkPublished(_ context.Context, ids []string) error {
 		}
 	}
 	return nil
+}
+
+func (r *Repo) LoadSatellite(_ context.Context, key string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return bytes.Clone(r.satellite[key]), r.failing
+}
+
+func (r *Repo) StoreSatellite(ctx context.Context, key string, body []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failing != nil {
+		return r.failing
+	}
+	if err := r.checkFenceLocked(ctx); err != nil {
+		return err
+	}
+	r.satellite[key] = bytes.Clone(body)
+	return nil
+}
+
+func (r *Repo) AuditReferences(_ context.Context, source domain.Source) ([]string, []string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failing != nil {
+		return nil, nil, r.failing
+	}
+	var refs []string
+	for id := range r.hazards {
+		h, err := r.getLocked(id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !h.Retired && (source == "" || h.Source == source) {
+			refs = append(refs, h.SourceRefID)
+		}
+	}
+	return refs, nil, nil
 }

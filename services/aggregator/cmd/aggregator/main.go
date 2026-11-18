@@ -22,6 +22,7 @@ import (
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters/sharded"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/api"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/config"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/dlq"
@@ -40,6 +41,25 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "import-catalog":
+			runCatalog()
+			return
+		case "migrate-single":
+			ctx, stop := obs.SignalContext()
+			defer stop()
+			log := obs.NewLogger("canonical-migration")
+			source, destinations := os.Getenv("CANONICAL_DB_URL"), os.Getenv("CANONICAL_SHARD_URLS")
+			if source == "" || destinations == "" {
+				fatal(log, "canonical_migration", errors.New("CANONICAL_DB_URL and CANONICAL_SHARD_URLS are required"))
+			}
+			if err := sharded.MigrateSingle(ctx, source, destinations, log); err != nil {
+				fatal(log, "canonical_migration", err)
+			}
+			return
+		}
+	}
 	cfg := config.Load()
 	log := obs.NewLogger("aggregator").With("instance", cfg.Identity)
 	ctx, stop := obs.SignalContext()

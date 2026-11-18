@@ -58,6 +58,7 @@ func (s *Server) listHazards(w http.ResponseWriter, r *http.Request) {
 
 	obs.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": items, "next_cursor": page.NextCursor, "freshness": page.Freshness,
+		"partial": page.Partial, "unavailable_units": page.UnavailableUnits,
 	})
 }
 

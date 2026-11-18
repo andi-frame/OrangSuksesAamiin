@@ -21,10 +21,12 @@ type Freshness struct {
 }
 
 type ListPage struct {
-	Items      []json.RawMessage
-	NextCursor string
-	Freshness  map[string]Freshness
-	StatusCode int
+	Items            []json.RawMessage
+	NextCursor       string
+	Freshness        map[string]Freshness
+	StatusCode       int
+	Partial          bool
+	UnavailableUnits []string
 }
 
 type Client struct {
@@ -101,12 +103,19 @@ func (c *Client) getList(ctx context.Context, u string) (ListPage, error) {
 		return out, fmt.Errorf("aggregator list: %d: %s", resp.StatusCode, string(body))
 	}
 	var parsed struct {
-		Items      []json.RawMessage    `json:"items"`
-		NextCursor string               `json:"next_cursor"`
-		Freshness  map[string]Freshness `json:"freshness"`
+		Partial          bool                 `json:"partial"`
+		UnavailableUnits []string             `json:"unavailable_units"`
+		Items            []json.RawMessage    `json:"items"`
+		NextCursor       string               `json:"next_cursor"`
+		Freshness        map[string]Freshness `json:"freshness"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return out, err
+	}
+	out.Partial = parsed.Partial
+	out.UnavailableUnits = parsed.UnavailableUnits
+	if out.UnavailableUnits == nil {
+		out.UnavailableUnits = []string{}
 	}
 	out.Items = parsed.Items
 	out.NextCursor = parsed.NextCursor

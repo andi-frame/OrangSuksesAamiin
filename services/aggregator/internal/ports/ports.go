@@ -45,8 +45,9 @@ type ListFilter struct {
 	HazardType domain.HazardType // "" = any
 	Source     domain.Source     // "" = any
 	Severity   domain.Severity   // "" = any
-	Since      *time.Time        // occurred_at >= Since
-	Limit      int               // default 100, max 500
+	Since      *time.Time        // inclusive, on the active order timestamp
+	AuditOrder bool              // ascending ingested_at and hazard_id (Appendix A)
+	Limit      int               // default 100, max 500 (1000 for AuditOrder)
 	Cursor     string            // opaque, from Page.NextCursor
 }
 
@@ -55,21 +56,26 @@ func (f *ListFilter) Normalize() {
 	if f.Limit <= 0 {
 		f.Limit = 100
 	}
-	if f.Limit > 500 {
-		f.Limit = 500
+	maxLimit := 500
+	if f.AuditOrder {
+		maxLimit = 1000
+	}
+	if f.Limit > maxLimit {
+		f.Limit = maxLimit
 	}
 }
 
-// Page is one page of results ordered by (occurred_at DESC, hazard_id DESC).
+// Page holds items in the requested keyset order and any gaps in coverage.
 type Page struct {
-	Items      []domain.HazardEvent
-	NextCursor string // "" when there are no more results
+	UnavailableUnits []string
+	Items            []domain.HazardEvent
+	NextCursor       string // "" when there are no more results
 }
 
 // Repository is the Aggregator's view of the Canonical Store.
 //
 // Fencing (M2 Problem 2): every write method below that changes ingested state
-// (Save, SetCursor, AddUnprocessed, UpdateUnprocessed) checks the Fence carried
+// checks the Fence carried
 // by ctx (WithFence) in the same transaction as the write and returns ErrFenced,
 // writing nothing, when the store has already seen a newer term for that lease.
 type Repository interface {
@@ -84,7 +90,7 @@ type Repository interface {
 	// nothing (neither hazard nor outbox entry).
 	Save(ctx context.Context, h domain.HazardEvent, expectedVersion int, out OutboxEntry) error
 
-	// List returns hazards newest-first with keyset pagination.
+	// List returns active hazards in the filter’s keyset order.
 	List(ctx context.Context, f ListFilter) (Page, error)
 
 	// GetCursor / SetCursor persist the per-source polling watermark so that a
@@ -123,6 +129,40 @@ type Repository interface {
 	// store's clock, so instances that do not poll serve the same freshness.
 	PutSourceStatus(ctx context.Context, source string, doc []byte) error
 	ListSourceStatus(ctx context.Context) ([]SourceStatus, error)
+}
+
+// Location identifies a verified physical copy of a hazard.
+type Location struct {
+	Node string `json:"node"`
+	Unit string `json:"unit"`
+	Role string `json:"role"`
+}
+
+// Locator verifies copies of the given hazard, including replicas.
+type Locator interface {
+	Locate(context.Context, string) ([]Location, bool, error)
+}
+
+// Position returns the timestamp used by the selected keyset order.
+func (f ListFilter) Position(h domain.HazardEvent) time.Time {
+	if f.AuditOrder {
+		return h.IngestedAt
+	}
+	return h.OccurredAt
+}
+
+func (f ListFilter) Before(a, b domain.HazardEvent) bool {
+	at, bt := f.Position(a), f.Position(b)
+	if !at.Equal(bt) {
+		if f.AuditOrder {
+			return at.Before(bt)
+		}
+		return at.After(bt)
+	}
+	if f.AuditOrder {
+		return a.HazardID < b.HazardID
+	}
+	return a.HazardID > b.HazardID
 }
 
 // SourceStatus is one stored upstream status document.
@@ -167,4 +207,9 @@ func DecodeCursor(c string) (time.Time, string, error) {
 		return time.Time{}, "", fmt.Errorf("invalid cursor")
 	}
 	return t, id, nil
+}
+
+// AuditReferences allows a backend to scan IDs without decoding event bodies.
+type AuditReferences interface {
+	AuditReferences(context.Context, domain.Source) (refs, unavailable []string, err error)
 }
