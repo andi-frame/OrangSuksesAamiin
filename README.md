@@ -92,6 +92,10 @@ Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/
 
 ### M2.5 Sharded storage and Feed Satelit
 
+On a Linux x86-64 host with KVM and Docker, run `bash scripts/k8s/qemu-cluster.sh up`
+followed by `bash scripts/k8s/qemu-cluster.sh deploy`. This provisions three Linux VMs
+and uses their own disks. See the [Linux VM commands](docs/k8s-cluster.md#menjalankan-demo-dari-host-linux).
+
 Use three k3s nodes with distinct kernels and node disks. With the VirtualBox helper, set
 `VBOX_NODES="node-a node-b node-c"`. Specify `STORE_NODE_A`, `STORE_NODE_B`,
 and `STORE_NODE_C` for different node names. Keep the real Kubernetes context explicit.

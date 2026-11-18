@@ -1,0 +1,26 @@
+NODE     CONTROL-PLANE   IP           KERNEL              OS                   CPU   MEMORY      BOOT-ID
+node-a   true            10.77.1.11   6.8.0-147-generic   Ubuntu 24.04.5 LTS   2     2263464Ki   6d955747-e54b-4695-b214-b6ee7ff482e8
+node-b   <none>          10.77.1.12   6.8.0-147-generic   Ubuntu 24.04.5 LTS   2     1750440Ki   595cfdbc-b324-4d6a-8d1a-2abf28061656
+node-c   <none>          10.77.1.13   6.8.0-147-generic   Ubuntu 24.04.5 LTS   2     1750440Ki   b9d69a0c-00c7-479f-8cac-682b4fc73be9
+
+3 distinct kernels on 3 nodes
+
+Local service health
+{"checks":{"canonical_store":"ok"},"service":"aggregator","status":"ready"}
+{"service":"client-api","status":"ok"}
+{"service":"auth-service","status":"ok"}
+
+NAME      READY   AGE
+kafka     1/1     10m
+shard-0   2/2     10m
+shard-1   2/2     10m
+shard-2   2/2     10m
+NAME           DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+tester-agent   3         3         3       3            3           <none>          10m
+
+shard-0-0 persisted PGDATA permissions: 700
+shard-0-1 persisted PGDATA permissions: 700
+shard-1-0 persisted PGDATA permissions: 700
+shard-1-1 persisted PGDATA permissions: 700
+shard-2-0 persisted PGDATA permissions: 700
+shard-2-1 persisted PGDATA permissions: 700
