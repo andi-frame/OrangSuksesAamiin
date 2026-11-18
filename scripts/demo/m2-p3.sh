@@ -108,7 +108,7 @@ for i in $ids; do
   wait_until 60 "$i recovered" agg_has "/internal/hazards/pvmbg-$i"
   hazard "$i" | jqx -c '{hazard_id, severity, area_name, occurred_at, version}' | sed 's/^/   /'
 done
-dups=$(psql_q "SELECT count(*) - count(DISTINCT source_ref_id) FROM hazards WHERE source='PVMBG'")
+dups=$(psql_q "SELECT to_json(source_ref_id)::text FROM hazards WHERE source='PVMBG'" | sort | uniq -d | awk 'END {print NR+0}' )
 [ "$dups" = 0 ] || fail "duplicates after reprocessing"
 ok "all incompatible reports recovered after the adjustment, no duplicate (hazard_id is deterministic)"
 show "GET /internal/ops/unprocessed?source=PVMBG (still open)"

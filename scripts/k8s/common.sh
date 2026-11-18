@@ -14,6 +14,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NS=sistem-informasi-kebencanaan-bnpb
 TESTER_MANIFEST=https://raw.githubusercontent.com/susTuna/if4031-tester-agent/ebb55261711123a9a211739ffbf140a275caa6da/manifest.yaml
 SERVICES=(aggregator bmkg-mock pvmbg-mock auth-service client-api consumer-hazard)
+K8S_STORAGE="${K8S_STORAGE:-single}"
+K8S_MANIFESTS="$ROOT/deploy"
+if [ "$K8S_STORAGE" = sharded ]; then
+  K8S_MANIFESTS="$ROOT/overlays/sharded"
+  SERVICES+=(canonical-shard)
+fi
 
 KUBE_CONTEXT="${KUBE_CONTEXT:-$(kubectl config current-context)}"
 kc() { kubectl --context "$KUBE_CONTEXT" "$@"; }
@@ -26,6 +32,7 @@ if [ -z "${IMAGE_TAG:-}" ]; then
   fi
 fi
 IMAGE_PREFIX="${IMAGE_REGISTRY:+${IMAGE_REGISTRY%/}/}"
+export IMAGE_TAG KUBE_CONTEXT K8S_STORAGE
 
 if [ -z "${K8S_IMAGE_MODE:-}" ]; then
   case "$KUBE_CONTEXT" in kind-*) K8S_IMAGE_MODE=kind ;; *) K8S_IMAGE_MODE=ssh ;; esac
@@ -47,6 +54,6 @@ load_env() {
 
 # render prints the manifests with the image names/tags of this deployment.
 render() {
-  kc kustomize "$ROOT/deploy" |
+  kc kustomize "$K8S_MANIFESTS" |
     sed -E "s#image: argus/([a-z-]+):dev#image: ${IMAGE_PREFIX}argus/\1:${IMAGE_TAG}#"
 }

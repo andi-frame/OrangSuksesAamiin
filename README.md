@@ -90,6 +90,35 @@ curl -X POST -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" -d '{"source":"PVM
 Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/schema-rules/pvmbg-v3.json`), jalankan
 `make k8s-up` (ConfigMap berganti nama → rolling update), lalu *reprocess* setelah rollout selesai.
 
+### M2.5 Sharded storage
+
+Use three k3s nodes with distinct kernels and node disks. With the VirtualBox helper, set
+`VBOX_NODES="node-a node-b node-c"`. Specify `STORE_NODE_A`, `STORE_NODE_B`,
+and `STORE_NODE_C` for different node names. Keep the real Kubernetes context explicit.
+
+```bash
+K8S_STORAGE=sharded make k8s-up
+```
+
+The command labels the three storage slots and deploys three PostgreSQL groups with two
+members per shard on the k3s `local-path` StorageClass. Supply independent `CANONICAL_DB_ADMIN_PASSWORD` and
+`CANONICAL_DB_REPLICATION_PASSWORD` values in `.env` along with the regular application
+password. The default `K8S_STORAGE=single` remains available for the two-node environment.
+For an existing singleton store, run `K8S_STORAGE=sharded MIGRATE_CANONICAL=1 make k8s-up`
+in the maintenance window. It drains the Aggregator, copies and verifies data, switches the
+backend, and scales the old database down after rollout. Its PVC remains available for recovery.
+
+Run the remaining P1 demo checks with the [P1 report](docs/report/m2/01-p1.md).
+The Canonical Store importer consumes one BMKG
+`SeismicEvent` JSON object per line. Convert the assistant's catalog to the fields in
+`contracts/schemas/seismic-event.json`, retaining its original event IDs and UTC timestamps.
+
+```bash
+kubectl -n sistem-informasi-kebencanaan-bnpb exec -i deploy/aggregator -- \
+  /usr/local/bin/aggregator import-catalog < catalog.ndjson
+K8S_STORAGE=sharded bash scripts/demo/m2-p1.sh baseline
+```
+
 ## 1. Prasyarat
 
 - **Docker** dengan **Compose v2** (`docker compose`). Itu satu-satunya kebutuhan untuk menjalankan sistem.

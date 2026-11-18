@@ -13,7 +13,10 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - podSelector: {matchLabels: {app: aggregator, bnpb.io/canonical-client: "true"}}
+        - podSelector:
+            matchLabels: {bnpb.io/canonical-client: "true"}
+            matchExpressions:
+              - {key: app, operator: In, values: [aggregator, canonical-migration]}
       ports: [{protocol: TCP, port: 5432}]
 ---
 # Broker: producer (Aggregator), consumers and the topic job only.

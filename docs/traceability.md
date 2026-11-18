@@ -88,7 +88,7 @@ P3 kriteria 6 (`POST /field-reports`), load test, dashboard analitik P1; **Orang
 | Tester Agent terpasang tanpa modifikasi, tidak dihalangi; `schema` sampai ke PVMBG (HTTP 200) | `make k8s-up`; `bash scripts/k8s/practice.sh schema` | `docs/evidence/m2/tester-*.log` (schema, kill-leader, clock-skew, partition) | `scripts/k8s/common.sh` (URL dipin), `deploy/k8s/*-mock.yaml` (`*_ADMIN_OPEN`, Service bmkg tanpa label role), `vbox-cluster.sh` (symlink iptables agar `partition` jalan) | 1 | ✅ k3s |
 | Observabilitas (dashboard metrik, trace, log `cid`) | – | – | – | 2 | ⬜ |
 | Audit API `unprocessed` | `make demo-m2-p3` langkah 3; `TestAuditUnprocessedMatchesLampiranA` | `docs/evidence/m2/p3-latest.log` | `aggregator/internal/api/ops.go` | 1 | ✅ |
-| Audit API `events`, `checksum`, `location` | – | – | – | 3 | ⬜ |
+| Audit API `events`, `checksum`, `location` | `TestAuditRoutesMatchAppendixA` | `docs/evidence/m2/p1-kind-audit.log` | `aggregator/internal/api/audit.go` | 3 | 🟡 kind dan unit test |
 
 ## Problem 2 — Dua Nakhoda, Satu Kapal (Owner: 1; load test: 2)
 
@@ -117,11 +117,23 @@ P3 kriteria 6 (`POST /field-reports`), load test, dashboard analitik P1; **Orang
 | 6. `POST /field-reports` 202 cepat; tidak hilang, tidak ganda | – | – | – | 2 | ⬜ |
 | Laporan: persoalan, kebijakan skema, mekanisme DLQ, jaminan pengiriman | – | `docs/report/m2/03-p3.md` (kriteria 1–5) | – | 1 / 2 | 🟡 kriteria 6 milik Orang 2 |
 
-## Problem 1, 4, 5 dan bonus
+## Problem 1 — Canonical Store terdistribusi
+
+| Kriteria | Demo / bukti | Owner | Status |
+|---|---|---|---|
+| 1. Katalog dan sebaran fisik | `aggregator import-catalog`, `m2-p1.sh baseline`, `docs/evidence/m2/p1-kind-audit.log` | 3 | 🟡 katalog sintetis |
+| 2. Lonjakan satu wilayah | Impor fixture regional, bandingkan snapshot SQL dari `m2-p1.sh` | 3 | ⬜ pengukuran k3s |
+| 3. Urutan dan pagination global | `TestShardLossStillServesAndFenceCoversEveryShard`, `p1-kind-audit.log` | 3 | 🟡 kind dan unit test |
+| 4. Worker hilang, cek checksum dan cakupan parsial | `p1-kind-failover.log`, `practice.sh kill-store`, `practice.sh wipe-node` | 3 | 🟡 freeze kind, Tester k3s tertunda |
+| 5. Rebuild disk dan kembalikan beban | `scripts/k8s/restore-shard.sh --confirmed-wipe ... --promote`, `p1-kind-restore.log` | 3 | 🟡 kind |
+| 6. Tahan gagal lagi setelah sinkronisasi | `p1-kind-restore.log`, kehilangan worker berikutnya setelah standby sinkron | 3 | 🟡 kind, 64/64 record |
+| 7. Dashboard analitik | Gunakan angka logis dan metadata cakupan dari API | 2 | ⬜ |
+| Laporan | `docs/report/m2/01-p1.md` | 3 | 🟡 draf sebelum demo k3s |
+
+## Problem 4, 5 dan bonus
 
 | Bagian | Owner | Status |
 |---|---|---|
-| P1 storage terdistribusi, rebalancing, Audit API, dashboard analitik | 3 (dashboard: 2) | ⬜ |
 | P4 Feed Satelit | 3 | ⬜ |
 | P5 Sensor Pantai, SLO, game day | 2 | ⬜ |
 | Bonus host fisik berbeda / AI-native / HPA | 1 / 3 / 2 | ⬜ opsional |

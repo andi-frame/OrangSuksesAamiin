@@ -59,12 +59,45 @@ agg_has() { [ "$(code -H "X-Service-Key: $AGGREGATOR_SERVICE_KEY" "$AGG$1")" = 2
 pvmbg_admin() { ensure_forwards; curl -sS --max-time 15 -X POST -H "X-Admin-Token: $PVMBG_ADMIN_TOKEN" -H 'Content-Type: application/json' -d "${2:-{\}}" "$PVMBG$1"; }
 bmkg_admin()  { ensure_forwards; curl -sS --max-time 15 -X POST -H "X-Admin-Token: $BMKG_ADMIN_TOKEN" -H 'Content-Type: application/json' -d "${2:-{\}}" "$BMKG$1"; }
 
-# psql runs SQL in the Canonical Store pod (the only way in from outside: kubectl exec)
-psql_q() {
-  kn exec postgres-canonical-0 -c postgres -- sh -c 'psql -X -q -A -t -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' _ "$1" | tr -d '\r'
+# Read each PostgreSQL primary once. Never aggregate replica rows.
+store_pods() {
+  if [ "$K8S_STORAGE" = sharded ]; then
+    local shard pod
+    for shard in shard-0 shard-1 shard-2; do
+      pod=$(kn get pod -l "shard=$shard,db-role=primary" -o jsonpath='{.items[*].metadata.name}') || return
+      [[ "$pod" =~ ^$shard-[01]$ ]] || { echo "$shard has no unique primary" >&2; return 1; }
+      printf '%s\n' "$pod"
+    done
+  else
+    printf '%s\n' postgres-canonical-0
+  fi
 }
+
+store_sql() {
+  local pod=$1
+  shift
+  kn exec "$pod" -c postgres -- sh -c     'export PGPASSWORD="$POSTGRES_PASSWORD"; psql -h 127.0.0.1 -X -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"' _ "$@" |
+    tr -d '\r'
+}
+
+psql_q() {
+  local pods pod
+  pods=$(store_pods) || return
+  for pod in $pods; do store_sql "$pod" -A -t -c "$1" || return; done
+}
+psql_sum() { psql_q "$1" | awk '{total+=$1} END {print total+0}'; }
 psql_table() {
-  kn exec postgres-canonical-0 -c postgres -- sh -c 'psql -X -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' _ "$1" | tr -d '\r'
+  local pods pod
+  pods=$(store_pods) || return
+  for pod in $pods; do
+    printf '  [%s]\n' "$pod"
+    store_sql "$pod" -c "$1" || return
+  done
+}
+
+duplicate_hazards() {
+  psql_q "SELECT json_build_array(source, source_ref_id)::text FROM hazards" |
+    sort | uniq -d | awk 'END {print NR+0}'
 }
 
 # retried: a node freezing or a partition can make single API calls fail, and under set -e a failed
@@ -112,7 +145,7 @@ term_periods() {
 }
 # term_overlaps: pairs of terms whose write periods overlap (must be 0)
 term_overlaps() {
-  psql_q "WITH t AS (SELECT writer_term, min(stored_at) lo, max(stored_at) hi FROM outbox WHERE writer_term IS NOT NULL GROUP BY 1)
+  psql_sum "WITH t AS (SELECT writer_term, min(stored_at) lo, max(stored_at) hi FROM outbox WHERE writer_term IS NOT NULL GROUP BY 1)
     SELECT count(*) FROM t a JOIN t b ON a.writer_term < b.writer_term AND a.hi > b.lo"
 }
 
