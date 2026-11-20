@@ -20,6 +20,9 @@ spec:
       ports: [{protocol: TCP, port: 5432}]
 ---
 # Broker: producer (Aggregator), consumers and the topic job only.
+# The broker itself is allowed too: Kafka transactions (field-report processor, M2 P3 criterion 6) make the
+# broker send AddPartitionsToTxn to itself through its advertised listener (kafka:9092); without this rule the
+# request is dropped and every transaction hangs.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -30,4 +33,5 @@ spec:
   ingress:
     - from:
         - podSelector: {matchLabels: {bnpb.io/kafka-client: "true"}}
+        - podSelector: {matchLabels: {app: kafka}}
       ports: [{protocol: TCP, port: 9092}]

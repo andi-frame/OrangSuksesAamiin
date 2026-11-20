@@ -44,6 +44,8 @@ if [ "$migrate" = 1 ]; then
 fi
 
 say "manifests ($K8S_MANIFESTS)"
+# a Job's template is immutable: a finished kafka-init is replaced (it is idempotent) so new topics get created
+kn delete job kafka-init --ignore-not-found >/dev/null
 render | kc apply -f -
 
 if [ "${SKIP_TESTER:-0}" != 1 ]; then
@@ -53,7 +55,8 @@ fi
 
 say "waiting for the rollout"
 for kind_name in "${storage[@]}" statefulset/kafka deployment/bmkg-mock deployment/pvmbg-mock \
-  deployment/aggregator deployment/auth-service deployment/client-api deployment/consumer-dashboard deployment/consumer-notifier; do
+  deployment/aggregator deployment/auth-service deployment/client-api deployment/consumer-dashboard deployment/consumer-notifier \
+  deployment/field-reports deployment/sensor-pantai deployment/prometheus deployment/grafana deployment/jaeger; do
   kn rollout status "$kind_name" --timeout=300s
 done
 kn wait --for=condition=complete job/kafka-init --timeout=300s || true
@@ -73,5 +76,7 @@ Entry points (any node IP):
   Client-Facing API  http://<node-ip>:30080
   Auth Service       http://<node-ip>:30084
   Aggregator         http://<node-ip>:30083   (/internal/*: X-Service-Key; /internal/ops/*: ops token; /internal/audit/*: audit token)
+  Analytics (P1)     http://<node-ip>:30080/dashboard
+  Grafana (metrics)  http://<node-ip>:30030   Jaeger (traces) http://<node-ip>:30686   Prometheus http://<node-ip>:30090
 Leader:   kubectl -n $NS get lease aggregator-ingest -o jsonpath='{.spec.holderIdentity}'
 EOF

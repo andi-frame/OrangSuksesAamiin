@@ -1,0 +1,61 @@
+# Field-report processor (Orang 2, M2 Problem 3 criterion 6): reads "field-reports" (written by the
+# Client-Facing API before its 202) and processes every report exactly once with Kafka transactions;
+# its dedup set is rebuilt from the compacted "field-reports.processed" topic at startup, so it has no
+# storage of its own. One replica, Recreate: the transactional id fences an old instance anyway.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: field-reports-config
+data:
+  FIELD_REPORTS_PORT: "8093"
+  KAFKA_BROKERS: kafka:9092
+  FIELD_REPORTS_TOPIC: field-reports
+  FIELD_REPORTS_PROCESSED_TOPIC: field-reports.processed
+  KAFKA_GROUP: field-report-processor
+  KAFKA_TRANSACTIONAL_ID: field-report-processor
+  # demo knob: artificial processing time per report ("downstream is slow"); 0 in normal operation
+  FIELD_REPORT_PROCESS_DELAY_MS: "0"
+  LOG_LEVEL: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: field-reports
+  labels: {app: field-reports, role: consumer}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: field-reports}}
+  template:
+    metadata:
+      labels: {app: field-reports, role: consumer, bnpb.io/kafka-client: "true"}
+    spec:
+      terminationGracePeriodSeconds: 20
+      tolerations:
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20}
+      containers:
+        - name: field-reports
+          image: argus/field-reports
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8093}]
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          envFrom:
+            - configMapRef: {name: field-reports-config}
+            - configMapRef: {name: observability-config, optional: true}   # OTEL_* (trace export), see observability.yaml
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /ready, port: http}, periodSeconds: 3, failureThreshold: 2}
+          livenessProbe: {httpGet: {path: /health, port: http}, periodSeconds: 10, failureThreshold: 3}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: field-reports
+  labels: {app: field-reports, role: consumer}
+spec:
+  selector: {app: field-reports}
+  ports: [{name: http, port: 8093, targetPort: http}]
