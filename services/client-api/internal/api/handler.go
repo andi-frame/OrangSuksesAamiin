@@ -52,6 +52,10 @@ func (s *Server) Handler(jwtSecret []byte) http.Handler {
 	mux.Handle("GET /v1/sources/status", secured(http.HandlerFunc(s.sourcesStatus)))
 	mux.Handle("POST /v1/field-reports", secured(http.HandlerFunc(s.postFieldReport)))
 	mux.Handle("GET /v1/field-reports/{id}", secured(http.HandlerFunc(s.getFieldReport)))
+	mux.Handle("GET /v1/analytics/summary", secured(http.HandlerFunc(s.analyticsSummary)))
+	mux.HandleFunc("GET /dashboard", s.dashboard)
+	mux.HandleFunc("POST /dashboard/login", s.dashboardLogin)
+	mux.HandleFunc("POST /dashboard/refresh", s.dashboardRefresh)
 
 	return mux
 }

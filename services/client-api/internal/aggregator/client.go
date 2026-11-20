@@ -129,3 +129,23 @@ func (c *Client) setHeaders(req *http.Request) {
 		req.Header.Set(obs.HeaderCorrelationID, id)
 	}
 }
+
+// Analytics returns GET /internal/analytics/summary as is.
+func (c *Client) Analytics(ctx context.Context, q url.Values) ([]byte, int, error) {
+	u := c.Base + "/internal/analytics/summary"
+	if enc := q.Encode(); enc != "" {
+		u += "?" + enc
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	c.setHeaders(req)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return body, resp.StatusCode, err
+}
