@@ -53,7 +53,7 @@ func mappingFailure(err error) error {
 var keyPattern = map[string]*regexp.Regexp{}
 
 func init() {
-	for _, f := range []string{"report_id", "event_id", "warning_id"} {
+	for _, f := range []string{"report_id", "event_id", "warning_id", "observation_id"} {
 		keyPattern[f] = regexp.MustCompile(`"` + f + `"\s*:\s*"([^"\\]{1,200})"`)
 	}
 }

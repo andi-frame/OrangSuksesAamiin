@@ -133,6 +133,9 @@ func main() {
 	if ing.satellite != nil {
 		activeSources = append(activeSources, string(domain.SourceSatellite))
 	}
+	if ing.coastalEnabled() {
+		activeSources = append(activeSources, string(domain.SourceCoastal))
+	}
 	apiSrv := &api.Server{
 		Repo:   repo,
 		Status: &api.StoreStatus{Repo: repo, Sources: activeSources, MaxAge: cfg.StatusMaxAge, Log: log},
@@ -142,6 +145,7 @@ func main() {
 	if elector != nil {
 		apiSrv.Leader = elector.Status
 	}
+	go exportGauges(ctx, apiSrv.Status, repo, apiSrv.Leader)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           apiSrv.Handler(),
@@ -215,13 +219,24 @@ func (g *ingestion) run(ctx context.Context) {
 		{Source: bmkg, Breaker: bmkgBreaker, Tracker: bmkgTracker},
 		{Source: pvmbg, Breaker: pvmbgBreaker, Tracker: pvmbgTracker},
 	}
-	worker := &dlq.Worker{Queue: queue, Log: log, Handlers: map[string]dlq.Handler{
+	handlers := map[string]dlq.Handler{
 		poller.KindPVMBGReport:   pvmbg.Reprocess,
 		poller.KindBMKGEvent:     bmkg.ReprocessEvent,
 		poller.KindBMKGWarning:   bmkg.ReprocessWarning,
 		poller.KindPVMBGFragment: poller.FragmentHandler(repo, domain.SourcePVMBG),
 		poller.KindBMKGFragment:  poller.FragmentHandler(repo, domain.SourceBMKG),
-	}}
+	}
+	if coastal := g.coastal(ing, queue); coastal != nil {
+		// Sensor Pantai: own loop, own HTTP client and own breaker (bulkhead), a
+		// short timeout and a fast interval (critical alerts: p95 <= 5 s end to end)
+		br := resilience.NewBreaker(cfg.BreakerThreshold, cfg.SensorBreakerOpen)
+		tr := resilience.NewTracker(coastal.Name(), br)
+		g.restore(ctx, tr)
+		loops = append(loops, &poller.Loop{Source: coastal, Breaker: br, Tracker: tr,
+			Interval: cfg.SensorPollInterval, CycleTimeout: time.Duration(cfg.SensorMaxPages+2) * cfg.SensorTimeout})
+		handlers[poller.KindCoastalObservation] = coastal.Reprocess
+	}
+	worker := &dlq.Worker{Queue: queue, Log: log, Handlers: handlers}
 	rel := &relay.Relay{Repo: repo, Pub: g.pub, Log: log, Interval: cfg.RelayInterval, Batch: cfg.RelayBatch, MaxBackoff: cfg.RelayBackoff}
 
 	var wg sync.WaitGroup
@@ -231,7 +246,10 @@ func (g *ingestion) run(ctx context.Context) {
 		wg.Go(func() { runner.Run(ctx) })
 	}
 	for _, l := range loops {
-		l.Interval, l.CycleTimeout, l.Log, l.Gate, l.Publish = cfg.PollInterval, cycleTimeout, log, g.gate, g.publish
+		if l.Interval == 0 {
+			l.Interval, l.CycleTimeout = cfg.PollInterval, cycleTimeout
+		}
+		l.Log, l.Gate, l.Publish = log, g.gate, g.publish
 		wg.Add(1)
 		go func() { defer wg.Done(); l.Run(ctx) }()
 	}
@@ -317,4 +335,29 @@ func connect[T any](ctx context.Context, log *slog.Logger, what string, build fu
 func fatal(log *slog.Logger, what string, err error) {
 	log.Error("fatal", "what", what, "error", err.Error())
 	os.Exit(1)
+}
+
+func (g *ingestion) coastalEnabled() bool {
+	return g.cfg.SensorToken != "" && !strings.HasPrefix(g.cfg.SensorToken, "example-")
+}
+
+// coastal builds the Sensor Pantai poller (nil when it is not configured).
+func (g *ingestion) coastal(ing *ingest.Ingestor, queue *dlq.Queue) *poller.CoastalSource {
+	if !g.coastalEnabled() {
+		return nil
+	}
+	store, ok := g.repo.(ports.SatelliteStore)
+	if !ok {
+		g.log.Error("sensor_pantai_disabled", "reason", "repository lacks checkpoint documents")
+		return nil
+	}
+	cfg := g.cfg
+	// NewHTTPClient clones the transport: this client has its own connection pool
+	client := obs.NewHTTPClient(g.log, "sensor-pantai", cfg.SensorTimeout)
+	return &poller.CoastalSource{
+		Client: &sources.Coastal{HTTP: client, BaseURL: cfg.SensorURL, Token: cfg.SensorToken, Caller: cfg.Identity},
+		Repo:   g.repo, Store: store, Ingestor: ing, DLQ: queue, Log: g.log,
+		PageSize: cfg.SensorPageSize, MaxPages: cfg.SensorMaxPages,
+		FreezeAfter: cfg.SensorFreezeAfter, MaxLag: cfg.SensorMaxLag,
+	}
 }
