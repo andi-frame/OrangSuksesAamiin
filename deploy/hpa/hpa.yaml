@@ -1,0 +1,35 @@
+# Bonus "Kapasitas yang menyesuaikan diri": the number of instances follows the load (HorizontalPodAutoscaler,
+# CPU from metrics-server - built into k3s). NOT part of deploy/kustomization.yaml: the P2 load tests change the
+# number of Aggregator instances by hand (3 -> 5 -> 2, 1 vs 3), which an HPA would undo. Switch with
+#   bash scripts/k8s/hpa.sh on | off | status        demo: bash scripts/demo/m2-hpa.sh
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: client-api
+  labels: {app: client-api, role: api}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: client-api}
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 60}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 2, periodSeconds: 15}]}
+    scaleDown: {stabilizationWindowSeconds: 60, policies: [{type: Pods, value: 1, periodSeconds: 30}]}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aggregator
+  labels: {app: aggregator, role: aggregator}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: aggregator}
+  minReplicas: 3          # P2 criterion 1: never fewer than 3 instances
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 60}}
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Pods, value: 2, periodSeconds: 15}]}
+    scaleDown: {stabilizationWindowSeconds: 60, policies: [{type: Pods, value: 1, periodSeconds: 30}]}
