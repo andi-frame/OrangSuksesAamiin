@@ -8,5 +8,6 @@ use (
 	./services/auth-service
 	./services/client-api
 	./services/consumer-hazard
+	./services/field-reports
 	./tools/pvmbg-token
 )

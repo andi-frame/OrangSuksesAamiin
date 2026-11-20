@@ -1,0 +1,53 @@
+# Sensor Pantai (M2 Problem 5): the assistants' black box, deployed from their example manifest
+# (https://raw.githubusercontent.com/susTuna/if4031-sensor-pantai/772f2c6a58b5eab786c718ead5d7b1541760f517/manifest.yaml).
+# The image (by digest) and its env are unchanged. Added only what the platform rules require:
+# resources (Lampiran B, "Komponen lain"), a Service for the Aggregator, and the exam switch below.
+#
+#   practice (default):  PANTAI_PROFILE=practice
+#   exam (demo):         bash scripts/k8s/sensor-exam.sh <key-file>   (Secret pantai-key + PANTAI_PROFILE=exam)
+#
+# Secret pantai-token (key "token") is created by scripts/k8s/secrets.sh from PANTAI_AUTH_TOKEN in .env.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sensor-pantai
+  labels: {app: sensor-pantai, role: sensor}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: sensor-pantai}}
+  template:
+    metadata:
+      labels: {app: sensor-pantai, role: sensor}
+    spec:
+      containers:
+        - name: sensor
+          image: sustuna/sensor-pantai@sha256:51fbd90d3891ad6e9f5768ad330ffb65205644cb29e50da65c7538f2e0b4397d
+          env:
+            - {name: PANTAI_PROFILE, value: practice}      # demo: exam
+            - {name: PANTAI_SEED, value: "42"}
+            - {name: PANTAI_SPEED, value: "60"}
+            - name: PANTAI_AUTH_TOKEN
+              valueFrom: {secretKeyRef: {name: pantai-token, key: token}}
+          ports: [{containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            # Hanya demo: Secret 'pantai-key' berisi berkas 'key' dari asisten.
+            # - {name: key, mountPath: /var/run/pantai, readOnly: true}
+      volumes:
+        - {name: data, emptyDir: {}}          # tanpa volume tetap jalan (mulai dari awal)
+        # - name: key
+        #   secret: {secretName: pantai-key}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sensor-pantai
+  labels: {app: sensor-pantai, role: sensor}
+spec:
+  selector: {app: sensor-pantai}
+  ports: [{name: http, port: 8080, targetPort: 8080}]

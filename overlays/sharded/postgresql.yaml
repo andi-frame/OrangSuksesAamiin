@@ -1,0 +1,338 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canonical-shard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: canonical-shard
+rules:
+  - apiGroups: [""]
+    resources: [endpoints, configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: canonical-shard
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: canonical-shard}
+subjects: [{kind: ServiceAccount, name: canonical-shard}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: canonical-shard-only-aggregator
+spec:
+  podSelector: {matchLabels: {app: canonical-shard}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {bnpb.io/canonical-client: "true"}
+            matchExpressions:
+              - {key: app, operator: In, values: [aggregator, canonical-migration]}
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-0
+  labels: {app: canonical-shard, role: store}
+spec:
+  # Patroni owns the endpoint for this selectorless Service.
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-0-members
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: canonical-shard, shard: shard-0}
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: shard-0
+  labels: {app: canonical-shard, role: store}
+spec:
+  serviceName: shard-0-members
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: canonical-shard, shard: shard-0}
+  template:
+    metadata:
+      labels: {app: canonical-shard, role: store, shard: shard-0}
+    spec:
+      serviceAccountName: canonical-shard
+      securityContext: {fsGroup: 999, fsGroupChangePolicy: OnRootMismatch}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: bnpb.io/store-slot
+                    operator: In
+                    values: [a, b]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app: canonical-shard, shard: shard-0}}
+      containers:
+        - name: postgres
+          image: argus/canonical-shard
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: SHARD_NAME, value: shard-0}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          envFrom:
+            - secretRef: {name: canonical-shard-credentials}
+          ports: [{name: postgres, containerPort: 5432}, {name: patroni, containerPort: 8008}]
+          resources:
+            requests: {memory: 512Mi, cpu: 100m}
+            limits: {memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /health, port: patroni}
+            periodSeconds: 3
+            failureThreshold: 100
+          readinessProbe:
+            httpGet: {path: /readiness, port: patroni}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /liveness, port: patroni}
+            periodSeconds: 10
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app: canonical-shard, role: store}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources: {requests: {storage: 2Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-1
+  labels: {app: canonical-shard, role: store}
+spec:
+  # Patroni owns the endpoint for this selectorless Service.
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-1-members
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: canonical-shard, shard: shard-1}
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: shard-1
+  labels: {app: canonical-shard, role: store}
+spec:
+  serviceName: shard-1-members
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: canonical-shard, shard: shard-1}
+  template:
+    metadata:
+      labels: {app: canonical-shard, role: store, shard: shard-1}
+    spec:
+      serviceAccountName: canonical-shard
+      securityContext: {fsGroup: 999, fsGroupChangePolicy: OnRootMismatch}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: bnpb.io/store-slot
+                    operator: In
+                    values: [b, c]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app: canonical-shard, shard: shard-1}}
+      containers:
+        - name: postgres
+          image: argus/canonical-shard
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: SHARD_NAME, value: shard-1}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          envFrom:
+            - secretRef: {name: canonical-shard-credentials}
+          ports: [{name: postgres, containerPort: 5432}, {name: patroni, containerPort: 8008}]
+          resources:
+            requests: {memory: 512Mi, cpu: 100m}
+            limits: {memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /health, port: patroni}
+            periodSeconds: 3
+            failureThreshold: 100
+          readinessProbe:
+            httpGet: {path: /readiness, port: patroni}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /liveness, port: patroni}
+            periodSeconds: 10
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app: canonical-shard, role: store}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources: {requests: {storage: 2Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-2
+  labels: {app: canonical-shard, role: store}
+spec:
+  # Patroni owns the endpoint for this selectorless Service.
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shard-2-members
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: canonical-shard, shard: shard-2}
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: shard-2
+  labels: {app: canonical-shard, role: store}
+spec:
+  serviceName: shard-2-members
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: canonical-shard, shard: shard-2}
+  template:
+    metadata:
+      labels: {app: canonical-shard, role: store, shard: shard-2}
+    spec:
+      serviceAccountName: canonical-shard
+      securityContext: {fsGroup: 999, fsGroupChangePolicy: OnRootMismatch}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: bnpb.io/store-slot
+                    operator: In
+                    values: [c, a]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app: canonical-shard, shard: shard-2}}
+      containers:
+        - name: postgres
+          image: argus/canonical-shard
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: SHARD_NAME, value: shard-2}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          envFrom:
+            - secretRef: {name: canonical-shard-credentials}
+          ports: [{name: postgres, containerPort: 5432}, {name: patroni, containerPort: 8008}]
+          resources:
+            requests: {memory: 512Mi, cpu: 100m}
+            limits: {memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /health, port: patroni}
+            periodSeconds: 3
+            failureThreshold: 100
+          readinessProbe:
+            httpGet: {path: /readiness, port: patroni}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /liveness, port: patroni}
+            periodSeconds: 10
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {app: canonical-shard, role: store}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources: {requests: {storage: 2Gi}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shard-0-peer-replication
+spec:
+  podSelector: {matchLabels: {app: canonical-shard, shard: shard-0}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: canonical-shard, shard: shard-0}}
+      ports: [{protocol: TCP, port: 5432}, {protocol: TCP, port: 8008}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shard-1-peer-replication
+spec:
+  podSelector: {matchLabels: {app: canonical-shard, shard: shard-1}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: canonical-shard, shard: shard-1}}
+      ports: [{protocol: TCP, port: 5432}, {protocol: TCP, port: 8008}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shard-2-peer-replication
+spec:
+  podSelector: {matchLabels: {app: canonical-shard, shard: shard-2}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: canonical-shard, shard: shard-2}}
+      ports: [{protocol: TCP, port: 5432}, {protocol: TCP, port: 8008}]

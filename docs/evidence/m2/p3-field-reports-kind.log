@@ -1,0 +1,31 @@
+# kind (development cluster, 2 nodes on one laptop) - 2026-11-20T09:00:45Z; k3s run pending: make demo-m2-field-reports
+
+== [1] 1. Downstream dead: the processor is scaled to 0, then 20 reports are sent ==
+   PASS 20 x 202 Accepted while nothing processes them (curl time_total: p50 0.036s, p95 0.298s, max 0.338s)
+
+== [2] 2. Retries with the same Idempotency-Key (lost 202, double tap) ==
+   PASS 5 retries answered 202 with the SAME report_id (they will be skipped as duplicates)
+
+== [3] 3. The receiver dies right after its 202s: 20 more reports, then every client-api pod is killed (grace 0) ==
+$ kubectl delete pod -l app=client-api --grace-period=0 --force
+   PASS client-api pods replaced; nothing was kept in their memory (the reports were in Kafka before each 202)
+
+== [4] 4. Downstream back but SLOW (300 ms per report); killed in the middle of a transaction ==
+   before kill: {"duplicates_skipped":2,"invalid":0,"known_reports":24,"processed":23,"ready":true,"transactions_aborted":0}
+$ kubectl delete pod -l app=field-reports --grace-period=0 --force   (open transaction aborted)
+
+== [5] 5. Every report that got a 202 is processed exactly once ==
+   accepted (distinct report_id with a 202): 40
+   in field-reports.processed (read_committed): 40 records, 40 distinct
+   processor now: {"duplicates_skipped":3,"invalid":0,"known_reports":61,"processed":37,"ready":true,"transactions_aborted":0}
+   2026-11-20T08:59:25.715990092Z dedup_set_rebuilt 24
+   2026-11-20T09:00:12.107769544Z field_report_duplicate_skipped fr-1bee96bad7bee9cb774c
+   2026-11-20T09:00:12.108446961Z field_report_duplicate_skipped fr-bb58555ec0b6c4fc7cc9
+   2026-11-20T09:00:12.108468336Z field_report_duplicate_skipped fr-bf058ae6bce1426c8f56
+   PASS no report lost, none processed twice (40 accepted -> 40 processed, once each)
+
+== [6] 6. Status for the reporter ==
+$ GET /v1/field-reports/fr-1bee96bad7bee9cb774c
+   {"report_id":"fr-1bee96bad7bee9cb774c","status":"processed","received_at":"2026-11-20T08:58:51.631168424Z","processed_at":"2026-11-20T09:00:12.107595669Z","input":"field-reports/1@7"}
+
+P3 CRITERION 6 PASS

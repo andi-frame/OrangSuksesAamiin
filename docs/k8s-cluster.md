@@ -8,6 +8,43 @@ node memakai kernel yang sama.
 **Rekomendasi: 3 VM** (A control plane + worker, B dan C worker). Dengan 3 node, Aggregator tersebar ke 3 node dan
 store terdistribusi (P1) masih punya mayoritas ketika satu worker mati. 2 node adalah batas minimum spesifikasi.
 
+## Menjalankan demo dari host Linux
+
+Pada Linux x86-64, akses baca/tulis ke `/dev/kvm` dan Docker diperlukan. Skrip
+di bawah menjalankan QEMU dalam container dan menjalankan K3s di tiga VM Ubuntu,
+masing-masing dengan kernel dan disk sendiri. QEMU mengembalikan halaman memori
+guest yang bebas ke host melalui virtio-balloon. State VM, kunci SSH, dan
+kubeconfig disimpan di `.argus-k3s-linux/` yang diabaikan Git.
+
+```bash
+bash scripts/k8s/qemu-cluster.sh up
+bash scripts/k8s/qemu-cluster.sh deploy
+bash scripts/k8s/qemu-cluster.sh status
+```
+
+Alokasi RAM awal 2304 MiB untuk node-a dan 1792 MiB untuk tiap worker. Untuk host
+dengan RAM lebih banyak, atur `ARGUS_QEMU_SERVER_RAM` dan `ARGUS_QEMU_WORKER_RAM`
+saat membuat VM. CPU virtual masing-masing berjumlah dua. Alokasi melekat pada
+container VM saat dibuat. Endpoint host Linux di `127.0.0.1` menggunakan port
+30080 untuk Client API, 30083 untuk Aggregator, dan 30084 untuk Auth. Kubernetes
+memakai port 26443 dan konteks `argus-k3s-linux`.
+
+```bash
+bash scripts/k8s/qemu-cluster.sh kubectl get nodes -o wide
+bash scripts/k8s/qemu-cluster.sh exec bash scripts/k8s/practice.sh
+bash scripts/k8s/qemu-cluster.sh pause node-b
+bash scripts/k8s/qemu-cluster.sh resume node-b
+bash scripts/k8s/qemu-cluster.sh stop
+```
+
+`stop` mematikan VM melalui ACPI dengan disk tetap tersimpan. Jalankan `up`
+lagi untuk melanjutkan dari disk yang sama.
+
+Host Linux yang diuji memakai Intel Core i5-12500H dengan 16 CPU logis dan
+14,8 GiB RAM. K3s v1.37.2+k3s1 berjalan pada tiga VM Ubuntu 24.04.5 dengan
+dua vCPU per VM. Node-a bertindak sebagai control plane dan worker.
+Output topologi tersedia di [topology-linux.log](evidence/m2/topology-linux.log).
+
 ## 1. VM
 
 **Otomatis di satu laptop (VirtualBox, tanpa hak admin):** `bash scripts/k8s/vbox-cluster.sh up` membuat VM Ubuntu 24.04

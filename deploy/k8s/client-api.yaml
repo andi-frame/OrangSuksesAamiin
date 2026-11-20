@@ -1,4 +1,5 @@
 # Client-Facing API (Orang 2): the entry point for Media / Tim Lapangan / Pusat (NodePort 30080).
+# Also: POST /v1/field-reports (producer to Kafka, hence the kafka-client label), GET /dashboard (analytics).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,8 +8,20 @@ data:
   CLIENT_API_PORT: "8080"
   AGGREGATOR_URL: http://aggregator:8083
   AGGREGATOR_TIMEOUT_SEC: "10"
+  # admission control per pod (M2 P5 criterion 5): Tim Lapangan and Pusat keep CLIENT_PRIORITY_RESERVE of the
+  # rate and of the in-flight slots; Media is shed first with 429 + Retry-After. The in-flight bound is what
+  # reacts to real overload (Little's law: ~capacity x target latency); the rate bound caps floods.
   CLIENT_RATE_LIMIT_RPS: "500"
   CLIENT_RATE_LIMIT_BURST: "1000"
+  CLIENT_PRIORITY_RESERVE: "0.3"
+  CLIENT_MAX_IN_FLIGHT: "64"
+  # field reports (M2 P3 criterion 6): durable in Kafka before the 202
+  KAFKA_BROKERS: kafka:9092
+  FIELD_REPORTS_TOPIC: field-reports
+  FIELD_REPORT_ACK_TIMEOUT_SEC: "5"
+  FIELD_REPORTS_URL: http://field-reports:8093
+  # analytics dashboard login (same origin)
+  AUTH_URL: http://auth-service:8084
   LOG_LEVEL: info
 ---
 apiVersion: apps/v1
@@ -25,7 +38,7 @@ spec:
   selector: {matchLabels: {app: client-api}}
   template:
     metadata:
-      labels: {app: client-api, role: api}
+      labels: {app: client-api, role: api, bnpb.io/kafka-client: "true"}
     spec:
       terminationGracePeriodSeconds: 30
       topologySpreadConstraints:
@@ -42,6 +55,7 @@ spec:
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8080}]
           envFrom:
+            - configMapRef: {name: observability-config, optional: true}   # OTEL_* (trace export), see observability.yaml
             - configMapRef: {name: client-api-config}
             - secretRef: {name: client-api-credentials}
           resources:

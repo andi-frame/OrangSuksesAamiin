@@ -83,6 +83,39 @@ func (p *Publisher) Publish(ctx context.Context, m ports.Message) error {
 	return nil
 }
 
+// PublishBatch produces every message concurrently and waits for all
+// acknowledgements (acks=all): one round trip per partition instead of one per
+// message. Per-key order is kept by the idempotent producer.
+func (p *Publisher) PublishBatch(ctx context.Context, msgs []ports.Message) []error {
+	errs := make([]error, len(msgs))
+	recs := make([]*kgo.Record, len(msgs))
+	for i, m := range msgs {
+		rec := &kgo.Record{Key: []byte(m.Key), Value: m.Value}
+		for k, v := range m.Headers {
+			rec.Headers = append(rec.Headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
+		}
+		recs[i] = rec
+	}
+	start := time.Now()
+	res := p.client.ProduceSync(ctx, recs...)
+	for i, r := range res {
+		errs[i] = r.Err
+	}
+	failed := 0
+	for _, e := range errs {
+		if e != nil {
+			failed++
+		}
+	}
+	lvl := slog.LevelInfo
+	if failed > 0 {
+		lvl = slog.LevelWarn
+	}
+	p.log.Log(ctx, lvl, "event_batch_published", "backend", "kafka", "topic", p.topic, "messages", len(msgs),
+		"failed", failed, "latency_ms", time.Since(start).Milliseconds())
+	return errs
+}
+
 func (p *Publisher) Close() error {
 	p.client.Close()
 	return nil

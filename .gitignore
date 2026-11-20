@@ -24,3 +24,6 @@ docs/evidence/**/*.tmp
 docs/evidence/**/k6*.log
 loadtest/results/*.json
 progress.md
+
+# Local Linux k3s VM disks, SSH credentials, and kubeconfig
+.argus-k3s-linux/

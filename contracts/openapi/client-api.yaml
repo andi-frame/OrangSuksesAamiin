@@ -13,8 +13,8 @@ paths:
       summary: List hazards (newest first), shaped per client role
       security: [{bearerAuth: []}]
       parameters:
-        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC]}}
-        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG]}}
+        - {name: hazard_type, in: query, schema: {type: string, enum: [SEISMIC, VOLCANIC, WILDFIRE, COASTAL]}}
+        - {name: source, in: query, schema: {type: string, enum: [BMKG, PVMBG, SATELIT, SENSOR_PANTAI]}}
         - {name: severity, in: query, schema: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}}
         - {name: since, in: query, schema: {type: string, format: date-time}}
         - {name: limit, in: query, schema: {type: integer, maximum: 500}}
@@ -37,7 +37,7 @@ paths:
             Media items omit source_ref_id, latitude, longitude, attributes.
         "401": {description: missing, invalid or expired token}
         "403": {description: forbidden field request or role not allowed}
-        "429": {description: rate limit}
+        "429": {description: shed by admission control (Media first; Retry-After)}
         "502": {description: aggregator error}
         "503": {description: upstream unavailable}
   /v1/hazards/{id}:
@@ -60,6 +60,112 @@ paths:
         "200": {description: same shape as GET /internal/sources/status on Aggregator}
         "401": {description: missing, invalid or expired token}
         "403": {description: role not allowed (Media)}
+  # ---- M2 additions (nothing above changed) ------------------------------------------------------
+  /v1/field-reports:
+    post:
+      summary: Tim Lapangan submits a field report (M2 P3 criterion 6)
+      description: |
+        202 is sent only after the report is durable in the broker (Kafka topic field-reports, acks=all,
+        idempotent producer); the processing (services/field-reports) may be slow or down meanwhile.
+        report_id is derived from (client id, Idempotency-Key): a retry with the same key gets the same
+        report_id and is processed once. The receiver keeps nothing in memory after the 202.
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, pattern: '^[A-Za-z0-9._:\-]{1,128}$'}
+          description: chosen by the client, the same for every retry of one report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [area_name, description]
+              properties:
+                area_name: {type: string, maxLength: 200}
+                description: {type: string, maxLength: 4000}
+                hazard_type: {type: string, enum: [SEISMIC, VOLCANIC, WILDFIRE, COASTAL, TSUNAMI, OTHER]}
+                severity: {type: string, enum: [NORMAL, WASPADA, SIAGA, AWAS]}
+                latitude: {type: number, minimum: -90, maximum: 90}
+                longitude: {type: number, minimum: -180, maximum: 180}
+                observed_at: {type: string, format: date-time}
+                reporter: {type: string, maxLength: 200}
+              additionalProperties: true
+      responses:
+        "202":
+          description: accepted and durable; Location /v1/field-reports/{report_id}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report_id: {type: string, example: fr-9d7bc2ba3d5d3ae55701}
+                  status: {type: string, enum: [accepted]}
+                  idempotency_key: {type: string}
+                  received_at: {type: string, format: date-time}
+        "400": {description: 'missing/invalid Idempotency-Key or body (not JSON, required field missing, > 64 KiB)'}
+        "401": {description: 'missing, invalid or expired token'}
+        "403": {description: 'role is not Tim Lapangan'}
+        "429": {description: 'shed by admission control (Retry-After)'}
+        "503": {description: 'not accepted (broker did not acknowledge in time); retry with the same Idempotency-Key'}
+  /v1/field-reports/{id}:
+    get:
+      summary: Processing status of a field report (Lapangan - own reports, Pusat - all)
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: '{report_id, idempotency_key, client_id, status: processed, received_at, processed_at, report, input}'}
+        "403": {description: 'Media'}
+        "404": {description: 'not processed (yet), or not this client''s report'}
+  /v1/analytics/summary:
+    get:
+      summary: Aggregates of every HazardEvent across every storage unit (M2 P1 criterion 7)
+      description: |
+        Counts per category (hazard_type; SEISMIC with a BMKG tsunami warning counts as TSUNAMI), severity,
+        area_name and source, plus a time series per category. partial=true with unavailable_units when a
+        storage unit could not be read: the numbers are then incomplete. Any authenticated role (Ringkasan
+        fields only).
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: 'occurred_at >= from'}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: 'occurred_at < to'}
+        - {name: bucket, in: query, schema: {type: string, enum: [hour, day, month, year]}}
+        - {name: ingested_before, in: query, schema: {type: string, format: date-time},
+           description: 'count only ingested_at < t (comparison with the Audit API while ingestion goes on)'}
+      responses:
+        "200":
+          description: |
+            {generated_at, scan_ms, partial, unavailable_units, range, total, categories, by_category, by_severity,
+             by_source, by_area: [{area_name, count}], series: {bucket, points: [{t, SEISMIC, TSUNAMI, ...}]}}
+        "401": {description: 'missing, invalid or expired token'}
+  /dashboard:
+    get:
+      summary: Analytics dashboard page (HTML; the page logs in and reads /v1/analytics/summary)
+      security: []
+      responses:
+        "200": {description: 'text/html'}
+  /dashboard/login:
+    post:
+      summary: Same-origin proxy of the Auth Service POST /v1/token for the dashboard page
+      security: []
+      responses:
+        "200": {description: 'token pair'}
+        "401": {description: 'invalid client credentials'}
+  /dashboard/refresh:
+    post:
+      summary: Same-origin proxy of the Auth Service POST /v1/refresh for the dashboard page
+      security: []
+      responses:
+        "200": {description: 'token pair'}
+  /metrics:
+    get:
+      summary: Prometheus metrics (every service, pkg/obs)
+      security: []
+      responses:
+        "200": {description: 'text exposition format 0.0.4'}
   /health:
     get:
       security: []

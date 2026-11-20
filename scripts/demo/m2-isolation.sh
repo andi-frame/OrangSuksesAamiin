@@ -17,12 +17,17 @@ expect() { # <app> <host> <port> <open|blocked>
 
 step "NetworkPolicies in force"
 kn get networkpolicy
-step "Canonical Store (postgres-canonical:5432): Aggregator only"
-expect aggregator postgres-canonical 5432 open
-for app in client-api auth-service bmkg-mock pvmbg-mock consumer-dashboard; do
-  expect "$app" postgres-canonical 5432 blocked
+step "Canonical Store: Aggregator only"
+stores=(postgres-canonical)
+if [ "$K8S_STORAGE" = sharded ]; then stores=(shard-0 shard-1 shard-2); fi
+for store in "${stores[@]}"; do
+  expect aggregator "$store" 5432 open
+  for app in client-api auth-service bmkg-mock pvmbg-mock consumer-dashboard; do
+    expect "$app" "$store" 5432 blocked
+  done
 done
 ok "only the Aggregator reaches the Canonical Store"
+
 step "Broker (kafka:9092): producer and consumers only"
 expect aggregator kafka 9092 open
 expect consumer-notifier kafka 9092 open

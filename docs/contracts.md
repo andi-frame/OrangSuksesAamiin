@@ -179,3 +179,94 @@ pesan jelas bila variabelnya kosong. Orang 2 dan 3 menambahkan variabel milik me
 `POST /admin/schema-version`: `{"version":3}` / `{"mode":"incompatible"}` / `{"incompatible":["rename","type_change","drop_required"]}`;
 `{"version":1}` kembali ke skema asli. `POST /admin/malformed {"kind":"truncated|deep|invalid_utf8|oversize"}`.
 Rincian: `contracts/openapi/pvmbg.yaml`.
+
+### M2 P1 Audit API (Lampiran A)
+
+All routes use the existing audit bearer principal. Missing or invalid bearer tokens
+return 401. Another known principal returns 403. Responses use UTC and JSON.
+
+| Route | Query | Response |
+|---|---|---|
+| `GET /internal/audit/events` | Optional `source`, `since`, `limit`, `cursor` | Active canonical events sorted by `ingested_at`, then `hazard_id`, ascending. `since` is inclusive and uses ingestion time. Default page size 100, maximum 1000. The last `next_cursor` is JSON null. |
+| `GET /internal/audit/checksum` | Optional `source` | `count`, `checksum`, `source`, `algorithm`, `as_of` and coverage. Sort the `source_ref_id` values by byte order, join with LF and hash using SHA-256. No trailing LF. An omitted source returns `source: ""` and includes every source. |
+| `GET /internal/audit/location` | Required `hazard_id` | `hazard_id`, `locations`, and `partial`. Each verified location has `node`, `unit` and `role`. A 404 means the authoritative shard confirmed absence. |
+| `GET /internal/audit/unprocessed` | Optional `source`, `limit`, `cursor` | Existing open DLQ projection. See earlier section. |
+
+Event, checksum, and both hazard list APIs report `partial` with `unavailable_units`.
+An unavailable replica can make coverage partial while its primary still supplies all
+logical rows. An unavailable logical shard can omit rows. The API does not hold a global
+snapshot between pages. Restart a partial scan after recovery. A checksum uses a
+statement snapshot on each reachable primary and can be compared reliably with an
+independent export while input is quiescent.
+
+### M2 P4 Feed Satelit
+
+`SATELIT/WILDFIRE` IDs begin with `satelit-`. The `detection_keys` attributes retain
+the lexical values received from the feed. An extinguished/retracted component has
+a versioned `retired` envelope, with `hazard.retired: true`. Ordinary reads and Audit
+exclude retired records. Existing created/updated envelopes keep their field names.
+The Aggregator's `GET /internal/satellite/status` uses the service key and exposes
+its last applied offset, feed head, lag, singleton and late counts, and status age.
+Structured `satellite_hazard_applied` logs carry receive-to-store latency.
+
+## 10. Milestone 2 (Orang 2: observabilitas, P3 kriteria 6, P5, P1 kriteria 7, load test)
+
+Semua penambahan bersifat aditif; kontrak di atas tidak berubah.
+
+### 10.1 Observabilitas (setiap service, `pkg/obs`)
+
+| Aspek | Kontrak |
+|---|---|
+| Metrik | `GET /metrics` di port HTTP setiap service (format teks Prometheus 0.0.4), dilayani oleh `obs.Middleware`. Standar: `http_server_requests_total{service,method,route,code}`, `http_server_request_duration_seconds{service,method,route}` (histogram), `http_server_in_flight_requests`, `http_client_requests_total{service,target,code}`, `http_client_request_duration_seconds{service,target}`. `route` = pola ServeMux (`/v1/hazards/{id}`), bukan path mentah. Metrik khusus per service: `aggregator_*`, `sensor_pantai_*`, `consumer_*`, `client_api_*`, `field_reports_*`. |
+| Penemuan target | Prometheus menemukan sendiri setiap pod di namespace yang punya container port bernama `http`. Label hasil: `app`, `pod`, `node`, `role`. |
+| Trace | W3C `traceparent` dipropagasikan lewat header HTTP dan header record Kafka (`traceparent`, di samping `correlation_id`). Setiap respons HTTP membawa `traceparent` sehingga pemanggil dapat mencari trace-nya. Trace yang dimulai tanpa `traceparent` mendapat `trace_id = sha256("cid:"+cid)[:16]`, sehingga relay outbox (yang hanya tahu `cid`) masuk ke trace yang sama. Ekspor: OTLP/HTTP JSON ke `$OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces` (Jaeger `:4318`). Sampling: `OTEL_TRACES_SAMPLER_ARG` (0..1, deterministik per trace). Ekspor tidak pernah memblok: antrean 4096 span, sisanya dibuang dan dihitung (`obs_trace_spans_dropped_total`). |
+| Log | Baris JSON yang sudah ada mendapat `trace_id` di samping `cid` (`cid` tetap = `X-Correlation-ID`). |
+| UI (NodePort) | Grafana `30030` (dashboard "Argus / Observabilitas", anonim Viewer), Jaeger `30686`, Prometheus `30090`. Compose: `docker compose --profile obs up -d` (`3000`, `16686`, `9090` di loopback). |
+
+### 10.2 `POST /v1/field-reports` (P3 kriteria 6)
+
+| Aspek | Kontrak |
+|---|---|
+| Siapa | Hanya peran `lapangan` (selain itu 403). `GET /v1/field-reports/{id}`: `lapangan` (laporan sendiri) dan `pusat` (semua). |
+| Idempotensi | Header `Idempotency-Key` wajib (`[A-Za-z0-9._:-]{1,128}`). `report_id = "fr-" + hex(sha256(client_id + "\0" + key))[:20]`: kunci yang sama dari klien yang sama selalu menghasilkan `report_id` yang sama. |
+| 202 | Dikirim **setelah** record berada di topic Kafka `field-reports` (key = `report_id`, `acks=all`, producer idempoten). Bila broker tidak mengonfirmasi dalam `FIELD_REPORT_ACK_TIMEOUT_SEC` (5 s) → **503** + `Retry-After`; klien mengulang dengan kunci yang sama. Pemroses hilir tidak ada di jalur 202. |
+| Record `field-reports` | `{report_id, idempotency_key, client_id, received_at, report}`, header `correlation_id`, `traceparent`, `report_id`. |
+| Pemroses | `services/field-reports` (consumer group `field-report-processor`, transactional id `field-report-processor`): consume → produce `field-reports.processed` (compacted, key = `report_id`) → commit offset input dalam **satu transaksi Kafka**. `report_id` yang sudah ada di set dedup dilewati. Set dedup dibangun ulang dari `field-reports.processed` (read_committed) saat start. |
+| Jaminan | At-least-once ke broker (klien mengulang sampai 202) + pemrosesan transaksional dan idempoten = **effectively exactly-once** per `report_id`. |
+
+### 10.3 Kontrol admisi Client-Facing API (P5 kriteria 5)
+
+Setelah autentikasi, setiap permintaan melewati `limit.Priority`: satu token bucket (`CLIENT_RATE_LIMIT_RPS/BURST` per pod)
+dan batas permintaan bersamaan (`CLIENT_MAX_IN_FLIGHT`, default 64 per pod). `lapangan` dan `pusat` memiliki cadangan
+`CLIENT_PRIORITY_RESERVE` (0.3) dari keduanya. Media ditolak lebih dulu: **429** + `Retry-After: 1` (penolakan terkontrol).
+Prioritas tinggi ditolak hanya ketika kapasitas benar-benar habis, juga dengan **429** (kontrak M1 API ini). Metrik
+`client_api_admission_total{role,outcome}` membedakan `shed` (prioritas rendah) dari `rejected` (kapasitas habis).
+
+### 10.4 Sensor Pantai (P5)
+
+| Aspek | Kontrak |
+|---|---|
+| Deployment | Image asisten dipin dengan digest, manifest contoh asisten (`deploy/k8s/sensor-pantai.yaml`). Ditambahkan hanya `resources`, Service `sensor-pantai:8080`, Secret `pantai-token` (key `token`). Profil ujian: `bash scripts/k8s/sensor-exam.sh exam <key-file>`. |
+| Pengambilan | Aggregator (leader) memanggil `GET /v1/observations?cursor=&limit=500` setiap `SENSOR_POLL_INTERVAL_MS` (1 s) dengan timeout `SENSOR_TIMEOUT_SEC` (2 s), hingga 20 halaman per siklus. Klien HTTP dan circuit breaker sendiri (`SENSOR_BREAKER_OPEN_SEC` 10 s). Cursor disimpan sebagai dokumen checkpoint ber-fence `sensor-pantai.cursor` dan baru disimpan setelah semua observasi yang diambil tersimpan atau disisihkan. |
+| Validasi kontrak | `observation_id` string tak kosong; `station_id` ada di `GET /v1/stations`; `observed_at` RFC 3339 dan tidak melewati `generated_at` + 1 menit; `sea_level_anomaly_m` angka hingga ±20; `wave_height_m` angka 0..30; `quality` = `"ok"`; `critical` boolean; observasi tidak lebih tua dari `generated_at` − (`SENSOR_MAX_LAG_SEC` + waktu sensor yang lewat selama kita tidak membaca). Pelanggaran → dead-letter `sensor-pantai.observation` (stasiun tak dikenal: retrying; lainnya: parked). Halaman yang tidak dapat di-parse disimpan utuh sebagai `sensor-pantai.response` (parked), item yang masih terbaca diproses, dan aliran berlanjut dari `next_cursor` yang masih terbaca. ID yang sama dengan nilai berbeda → `conflicting_duplicate` (parked); ID yang sama dengan nilai sama → diabaikan. |
+| Kesehatan dari data | `/healthz` tidak dipercaya. `generated_at` yang tidak maju selama `SENSOR_FREEZE_AFTER_SEC` (15 s) atau mundur dihitung sebagai kegagalan sumber (breaker, `stale_since`). Bila mundur, cursor di-reset (sensor restart). |
+| Pemetaan | `HazardEvent{source: SENSOR_PANTAI, hazard_type: COASTAL, hazard_id: "sensor-pantai-"+observation_id, source_ref_id: observation_id, area_name: province stasiun, lat/lon stasiun, occurred_at: observed_at}`; severity: `critical` → AWAS; \|anomali\| ≥ 1.0 m atau gelombang ≥ 4.0 m → SIAGA; ≥ 0.5 m atau ≥ 2.5 m → WASPADA; selain itu NORMAL. `attributes`: `station_id, station_name, sea_level_anomaly_m, wave_height_m, quality, critical`. Observasi kritis disimpan lebih dulu dalam setiap siklus. |
+| Peringatan | `consumer-notifier` mengirim peringatan untuk setiap event dengan `attributes.critical = true` (sekali per `hazard_id`): baris log `critical_alert`, `GET /alerts`, dan metrik `consumer_critical_alert_seconds` (simpan → notifier). Offset di-commit hanya setelah peringatan dikirim. |
+
+### 10.5 Analitik (P1 kriteria 7)
+
+`GET /internal/analytics/summary` (Aggregator, `X-Service-Key`) dan `GET /v1/analytics/summary` (client-api, semua peran)
+memiliki parameter `from`, `to` (atas `occurred_at`), `bucket`, dan `ingested_before`. Respons: `by_category` (TSUNAMI =
+SEISMIC dengan `attributes.warning_id`), `by_severity`, `by_area`, `by_source`, `series`, `partial`, dan `unavailable_units`.
+Angka dihitung dari satu scan penuh berurutan audit yang memakai `Repository.List` yang sama dengan Audit API, dengan cache 5 s.
+Halaman: `GET /dashboard`.
+
+### 10.6 Topic Kafka tambahan
+
+| Topic | Partisi | Konfigurasi | Penulis → pembaca |
+|---|---|---|---|
+| `field-reports` | 3 | retention 7 hari | client-api → field-reports |
+| `field-reports.processed` | 3 | `cleanup.policy=compact` | field-reports → field-reports (rebuild dedup) |
+
+NetworkPolicy broker: selain klien berlabel `bnpb.io/kafka-client: "true"`, pod Kafka sendiri juga diizinkan, karena transaksi
+membuat broker mengirim `AddPartitionsToTxn` ke dirinya sendiri lewat `kafka:9092`.

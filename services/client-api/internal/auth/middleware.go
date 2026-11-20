@@ -11,9 +11,17 @@ import (
 
 type ctxKey struct{}
 
+type subjectKey struct{}
+
 func Role(ctx context.Context) string {
 	r, _ := ctx.Value(ctxKey{}).(string)
 	return r
+}
+
+// Subject is the authenticated client id (JWT "sub").
+func Subject(ctx context.Context) string {
+	s, _ := ctx.Value(subjectKey{}).(string)
+	return s
 }
 
 // unauthorized answers 401 with the challenge RFC 7235 requires.
@@ -40,7 +48,7 @@ func Middleware(secret []byte) func(http.Handler) http.Handler {
 				unauthorized(w, "missing Authorization Bearer token")
 				return
 			}
-			role, err := ParseBearer(secret, tok)
+			role, sub, err := ParseClaims(secret, tok)
 			if errors.Is(err, ErrUnknownRole) {
 				obs.WriteError(w, http.StatusForbidden, "forbidden", "token role is not allowed")
 				return
@@ -49,7 +57,8 @@ func Middleware(secret []byte) func(http.Handler) http.Handler {
 				unauthorized(w, "invalid or expired token")
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, role)))
+			ctx := context.WithValue(context.WithValue(r.Context(), ctxKey{}, role), subjectKey{}, sub)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

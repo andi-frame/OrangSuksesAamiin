@@ -54,7 +54,7 @@ done
 ok "callers only follow each other (one per leadership term), never overlap; the current one is the leader"
 
 dup_check() {
-  psql_q "SELECT count(*) - count(DISTINCT (source, source_ref_id)) FROM hazards"
+  duplicate_hazards
 }
 step "No duplicate HazardEvent in the store"
 show "psql: SELECT count(*), count(DISTINCT (source, source_ref_id)) FROM hazards"
@@ -66,7 +66,7 @@ step "Delete the leader pod (what Tester Agent kill-leader does); another instan
 info "a pod that gets SIGTERM hands the lease back (takeover in ~2 s); one that dies without it (node lost,"
 info "VM frozen) is replaced once the lease is not renewed for 15 s - see scripts/demo/m2-freeze.sh"
 bmkg_admin /admin/generate '{"magnitude":5.4}' >/dev/null
-before=$(psql_q "SELECT count(*) FROM hazards")
+before=$(psql_sum "SELECT count(*) FROM hazards")
 show "kubectl -n $NS delete pod $L --grace-period=0 --force"
 t0=$SECONDS
 kn delete pod "$L" --grace-period=0 --force >/dev/null 2>&1
@@ -92,7 +92,7 @@ mock_ids=$(curl -sS --max-time 15 -H "X-BMKG-Key: $BMKG_API_KEY" "$BMKG/seismic-
 [ -n "$mock_ids" ] || fail "could not read the BMKG mock's events"
 db_ids=$(psql_q "SELECT source_ref_id FROM hazards WHERE source='BMKG' ORDER BY 1" | sort)
 missing=$(comm -23 <(echo "$mock_ids") <(echo "$db_ids") | grep -c . || true)
-info "mock events: $(echo "$mock_ids" | grep -c .), stored: $(echo "$db_ids" | grep -c .), missing: $missing; hazards before kill: $before, now: $(psql_q 'SELECT count(*) FROM hazards')"
+info "mock events: $(echo "$mock_ids" | grep -c .), stored: $(echo "$db_ids" | grep -c .), missing: $missing; hazards before kill: $before, now: $(psql_sum 'SELECT count(*) FROM hazards')"
 [ "$missing" = 0 ] || fail "$missing events never stored"
 [ "$(dup_check)" = 0 ] || fail "duplicates after failover"
 ok "no gap and no duplicate across the failover"

@@ -10,3 +10,5 @@ contracts
 **/*_test.go
 **/testdata
 *.md
+
+.argus-k3s-linux/
