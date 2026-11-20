@@ -100,6 +100,16 @@ services:
       CANONICAL_DB_URL: postgres://${CANONICAL_DB_USER:-canonical}:${CANONICAL_DB_PASSWORD:?copy .env.example to .env}@postgres-canonical:5432/${CANONICAL_DB_NAME:-canonical}?sslmode=disable
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
+      # M2 P5: Sensor Pantai (we run the assistants' image; the token is ours, same value on both sides)
+      PANTAI_AUTH_TOKEN: ${PANTAI_AUTH_TOKEN:-}
+      SENSOR_PANTAI_URL: http://sensor-pantai:8080
+      SENSOR_POLL_INTERVAL_MS: ${SENSOR_POLL_INTERVAL_MS:-1000}
+      SENSOR_TIMEOUT_SEC: ${SENSOR_TIMEOUT_SEC:-2}
+      SENSOR_BREAKER_OPEN_SEC: ${SENSOR_BREAKER_OPEN_SEC:-10}
+      SENSOR_FREEZE_AFTER_SEC: ${SENSOR_FREEZE_AFTER_SEC:-15}
+      SENSOR_MAX_LAG_SEC: ${SENSOR_MAX_LAG_SEC:-7200}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes: ["./deploy/k8s/schema-rules.json:/app/rules/schema-rules.json:ro"]
     # loopback only: the internal API is for operators/demo scripts; clients use the Client-Facing API (8080)
@@ -172,6 +182,7 @@ services:
       KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
       KAFKA_PARTITIONS: ${KAFKA_PARTITIONS:-3}
       KAFKA_RETENTION_MS: ${KAFKA_RETENTION_MS:-604800000}
+      # + field-reports, field-reports.processed (defaults of create-topic.sh)
     volumes: [./deploy/kafka/create-topic.sh:/create-topic.sh:ro]
     entrypoint: ["/bin/sh", "/create-topic.sh"]
     networks: [broker-net]
@@ -215,9 +226,18 @@ services:
       AGGREGATOR_TIMEOUT_SEC: ${AGGREGATOR_TIMEOUT_SEC:-10}
       CLIENT_RATE_LIMIT_RPS: ${CLIENT_RATE_LIMIT_RPS:-500}
       CLIENT_RATE_LIMIT_BURST: ${CLIENT_RATE_LIMIT_BURST:-1000}
+      CLIENT_PRIORITY_RESERVE: ${CLIENT_PRIORITY_RESERVE:-0.3}
+      CLIENT_MAX_IN_FLIGHT: ${CLIENT_MAX_IN_FLIGHT:-64}
+      # M2 P3 criterion 6: field reports are made durable in Kafka before the 202
+      KAFKA_BROKERS: kafka:9092
+      FIELD_REPORT_ACK_TIMEOUT_SEC: ${FIELD_REPORT_ACK_TIMEOUT_SEC:-5}
+      FIELD_REPORTS_URL: http://field-reports:8093
+      AUTH_URL: http://auth-service:8084
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CLIENT_API_PORT:-8080}:8080"]
-    networks: [app-net]
+    networks: [app-net, broker-net]
     depends_on:
       aggregator: {condition: service_healthy}
       auth-service: {condition: service_healthy}
@@ -238,6 +258,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
       KAFKA_GROUP: dashboard-updater
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CONSUMER_DASHBOARD_PORT:-8091}:8091"]
     # broker-net is internal (no host port can be published through it); app-net only carries the /health + /stats port
@@ -261,6 +282,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-hazard.events}
       KAFKA_GROUP: notifier
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports: ["${CONSUMER_NOTIFIER_PORT:-8092}:8092"]
     # broker-net is internal (no host port can be published through it); app-net only carries the /health + /stats port
@@ -275,6 +297,76 @@ services:
       start_period: 5s
     logging: *logging
     restart: unless-stopped
+
+  # ------------------------------------------- M2: field reports (Orang 2, P3 criterion 6)
+  field-reports:
+    build: {context: ., dockerfile: services/field-reports/Dockerfile}
+    environment:
+      FIELD_REPORTS_PORT: "8093"
+      KAFKA_BROKERS: kafka:9092
+      FIELD_REPORT_PROCESS_DELAY_MS: ${FIELD_REPORT_PROCESS_DELAY_MS:-0}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports: ["127.0.0.1:${FIELD_REPORTS_PORT:-8093}:8093"]
+    networks: [broker-net, app-net]
+    depends_on:
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8093/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------- M2: Sensor Pantai (assistants' image, unmodified; P5)
+  sensor-pantai:
+    image: sustuna/sensor-pantai@sha256:51fbd90d3891ad6e9f5768ad330ffb65205644cb29e50da65c7538f2e0b4397d
+    platform: linux/amd64
+    environment:
+      PANTAI_PROFILE: ${PANTAI_PROFILE:-practice}
+      PANTAI_SEED: "42"
+      PANTAI_SPEED: "60"
+      PANTAI_AUTH_TOKEN: ${PANTAI_AUTH_TOKEN:-}
+    ports: ["127.0.0.1:${SENSOR_PANTAI_PORT:-8094}:8080"]
+    networks: [app-net]
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------- M2: observability (docker compose --profile obs up -d)
+  jaeger:
+    profiles: [obs]
+    image: jaegertracing/all-in-one:1.62.0
+    command: ["--memory.max-traces=3000"]
+    environment: {COLLECTOR_OTLP_ENABLED: "true"}
+    ports: ["127.0.0.1:16686:16686"]
+    networks: [app-net, broker-net]
+    logging: *logging
+  prometheus:
+    profiles: [obs]
+    image: prom/prometheus:v2.55.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=6h"]
+    volumes: ["./deploy/compose/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "./deploy/compose/rules.yml:/etc/prometheus/rules.yml:ro"]
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [app-net, broker-net]
+    logging: *logging
+  grafana:
+    profiles: [obs]
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/argus-overview.json
+    volumes:
+      - ./deploy/compose/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./deploy/compose/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./deploy/grafana/argus-overview.json:/var/lib/grafana/dashboards/argus-overview.json:ro
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [app-net]
+    logging: *logging
 
 networks:
   app-net: {}

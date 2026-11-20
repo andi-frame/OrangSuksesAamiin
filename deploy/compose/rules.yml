@@ -1,0 +1,29 @@
+# same rules as deploy/k8s/observability.yaml (prometheus-config/rules.yml)
+groups:
+  - name: argus-slo
+    rules:
+      # P5 criterion 8: SLO of the Tim Lapangan warning path - 99 % of critical alerts delivered within 5 s
+      - record: argus:critical_alerts_within_5s:ratio_5m
+        expr: |
+          sum(rate(consumer_critical_alert_seconds_bucket{le="5"}[5m]))
+          / clamp_min(sum(rate(consumer_critical_alert_seconds_count[5m])), 1e-9)
+      # "or ... * 0": a service without any 5xx shows 0 instead of no data
+      - record: argus:http_error_ratio:rate1m
+        expr: |
+          (sum by (app) (rate(http_server_requests_total{code=~"5.."}[1m]))
+            or sum by (app) (rate(http_server_requests_total[1m])) * 0)
+          / clamp_min(sum by (app) (rate(http_server_requests_total[1m])), 1e-9)
+      - alert: CriticalAlertLatencySLOBurn
+        expr: argus:critical_alerts_within_5s:ratio_5m < 0.99
+        for: 2m
+        labels: {severity: page}
+        annotations: {summary: "Critical coastal alerts slower than 5 s for more than 1 % of alerts"}
+      - alert: CriticalObservationRejected
+        expr: increase(sensor_pantai_critical_total{outcome="rejected"}[5m]) > 0
+        labels: {severity: page}
+        annotations: {summary: "A critical observation from Sensor Pantai violated the contract and was set aside"}
+      - alert: SourceDown
+        expr: max by (source) (aggregator_source_breaker_open) == 1
+        for: 30s
+        labels: {severity: warn}
+        annotations: {summary: "Circuit breaker of {{ $labels.source }} is open"}
