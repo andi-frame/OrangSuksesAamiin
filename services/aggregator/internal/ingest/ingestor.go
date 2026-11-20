@@ -44,7 +44,16 @@ type PrepareFunc func(existing *domain.HazardEvent, fresh *domain.HazardEvent)
 //   - changed content                  -> version+1, event "updated"
 //
 // The hazard and its outbox entry are written atomically by the repository.
-func (i *Ingestor) Upsert(ctx context.Context, h *domain.HazardEvent, prepare PrepareFunc) (Outcome, error) {
+func (i *Ingestor) Upsert(ctx context.Context, h *domain.HazardEvent, prepare PrepareFunc) (out Outcome, err error) {
+	ctx, span := obs.StartSpan(ctx, "store upsert", obs.SpanInternal, "hazard_id", h.HazardID, "source", string(h.Source))
+	defer func() {
+		span.SetAttr("outcome", string(out))
+		span.RecordError(err)
+		span.End()
+		if out != "" {
+			hazardsStored.Inc(string(h.Source), string(out))
+		}
+	}()
 	for attempt := 0; attempt < 3; attempt++ {
 		existing, err := i.Repo.Get(ctx, h.HazardID)
 		if err != nil && !errors.Is(err, ports.ErrNotFound) {
@@ -126,3 +135,6 @@ func mergeAttributes(old, incoming map[string]any) map[string]any {
 	}
 	return out
 }
+
+var hazardsStored = obs.NewCounter("aggregator_hazards_stored_total",
+	"HazardEvent writes by source and outcome (created, updated, unchanged).", "source", "outcome")

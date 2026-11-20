@@ -186,6 +186,14 @@ type Publisher interface {
 	Close() error
 }
 
+// BatchPublisher is an optional Publisher capability: hand a batch to the broker
+// in one round trip. The result has one error per message (nil = acknowledged).
+// The relay marks as delivered only the acknowledged prefix, so a failure in the
+// middle never lets a later version overtake an earlier one in the outbox order.
+type BatchPublisher interface {
+	PublishBatch(ctx context.Context, msgs []Message) []error
+}
+
 // EncodeCursor builds the opaque pagination token for the last returned item.
 func EncodeCursor(occurredAt time.Time, hazardID string) string {
 	raw := occurredAt.UTC().Format(time.RFC3339Nano) + "|" + hazardID
