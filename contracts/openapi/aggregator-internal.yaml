@@ -64,6 +64,23 @@ paths:
           description: "{source, state, last_success_at, applied_offset, last_session_head, lag_offsets, late_detections, singletons, status_age_s}"
         "404": {description: No satellite checkpoint yet}
         "503": {description: Canonical store unavailable}
+  /internal/analytics/summary:
+    get:
+      summary: Analytics aggregates across every storage unit (M2 P1 criterion 7; X-Service-Key)
+      description: |
+        One full scan in the audit order (the same Repository.List as GET /internal/audit/events), cached 5 s.
+        partial / unavailable_units as in Lampiran A. Same parameters and body as client-api /v1/analytics/summary.
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: bucket, in: query, schema: {type: string, enum: [hour, day, month, year]}}
+        - {name: ingested_before, in: query, schema: {type: string, format: date-time}}
+      responses:
+        "200": {description: summary}
+        "400": {description: a time parameter is not RFC 3339}
+        "401": {description: missing X-Service-Key}
+        "403": {description: invalid X-Service-Key}
+        "503": {description: store unavailable}
   /internal/leader:
     get:
       summary: (M2) leader election state of THIS instance

@@ -46,6 +46,8 @@ type Server struct {
 	Log        *slog.Logger
 	Now        func() time.Time
 	Version    string // build version, reported on /health
+
+	analytics Analytics
 }
 
 func (s *Server) now() time.Time {
@@ -69,6 +71,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /internal/sources/status", s.auth(http.HandlerFunc(s.status)))
 	mux.Handle("GET /internal/satellite/status", s.auth(http.HandlerFunc(s.satelliteStatus)))
 	mux.Handle("GET /internal/leader", s.auth(http.HandlerFunc(s.leader)))
+	s.analytics.Repo = s.Repo
+	mux.Handle("GET /internal/analytics/summary", s.auth(http.HandlerFunc(s.analytics.handler)))
 
 	mux.Handle("GET /internal/ops/unprocessed", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsList)))
 	mux.Handle("GET /internal/ops/unprocessed/{id}", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsGet)))
@@ -185,7 +189,15 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Limit = n
 	}
-	page, err := s.Repo.List(r.Context(), f)
+	sctx, span := obs.StartSpan(r.Context(), "store list", obs.SpanInternal, "limit", f.Limit)
+	page, err := s.Repo.List(sctx, f)
+	span.RecordError(err)
+	span.SetAttr("items", len(page.Items))
+	span.SetAttr("partial", len(page.UnavailableUnits) > 0)
+	span.End()
+	if len(page.UnavailableUnits) > 0 {
+		partialReads.Inc("list")
+	}
 	if err != nil {
 		if f.Cursor != "" && err.Error() == "invalid cursor" {
 			obs.WriteError(w, http.StatusBadRequest, "bad_request", "invalid cursor")
@@ -206,7 +218,10 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
-	h, err := s.Repo.Get(r.Context(), r.PathValue("id"))
+	sctx, span := obs.StartSpan(r.Context(), "store get", obs.SpanInternal)
+	h, err := s.Repo.Get(sctx, r.PathValue("id"))
+	span.RecordError(err)
+	span.End()
 	switch {
 	case errors.Is(err, ports.ErrNotFound) || (err == nil && h.Retired):
 		obs.WriteError(w, http.StatusNotFound, "not_found", "hazard not found")
@@ -254,3 +269,6 @@ func (s *Server) satelliteStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	obs.WriteError(w, 404, "not_found", "no satellite checkpoint")
 }
+
+var partialReads = obs.NewCounter("aggregator_partial_reads_total",
+	"Reads answered with partial=true because a storage unit was unreachable.", "endpoint")
