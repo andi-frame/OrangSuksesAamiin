@@ -63,6 +63,15 @@ data:
   DLQ_MAX_ATTEMPTS: "8"
   DLQ_BASE_BACKOFF_SEC: "2"
   DLQ_MAX_BACKOFF_SEC: "120"
+  # Sensor Pantai (M2 Problem 5): enabled by PANTAI_AUTH_TOKEN (Secret aggregator-credentials)
+  SENSOR_PANTAI_URL: http://sensor-pantai:8080
+  SENSOR_POLL_INTERVAL_MS: "1000"
+  SENSOR_TIMEOUT_SEC: "2"
+  SENSOR_BREAKER_OPEN_SEC: "10"
+  SENSOR_FREEZE_AFTER_SEC: "15"
+  SENSOR_MAX_LAG_SEC: "7200"
+  SENSOR_PAGE_SIZE: "500"
+  SENSOR_MAX_PAGES: "20"
   LOG_LEVEL: info
 ---
 apiVersion: apps/v1
@@ -106,8 +115,10 @@ spec:
             - name: POD_NAMESPACE
               valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
           envFrom:
+            - configMapRef: {name: observability-config, optional: true}   # OTEL_* (trace export), see observability.yaml
             - configMapRef: {name: aggregator-config}
             - secretRef: {name: aggregator-credentials}
+            - secretRef: {name: satellite-feed-credentials, optional: true}
           resources:
             requests: {memory: 256Mi, cpu: 200m}
             limits: {memory: 512Mi}

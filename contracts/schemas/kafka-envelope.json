@@ -5,8 +5,8 @@
   "type": "object",
   "required": ["event_id", "kind", "emitted_at", "hazard", "schema"],
   "properties": {
-    "event_id": {"type": "string", "pattern": "^(bmkg|pvmbg)-.+:[0-9]+$"},
-    "kind": {"enum": ["created", "updated"]},
+    "event_id": {"type": "string", "pattern": "^(bmkg|pvmbg|satelit|sensor-pantai)-.+:[0-9]+$"},
+    "kind": {"enum": ["created", "updated", "retired"]},
     "emitted_at": {"type": "string", "format": "date-time"},
     "hazard": {"$ref": "hazard-event.json"},
     "schema": {"enum": ["hazard-event/v1"]}

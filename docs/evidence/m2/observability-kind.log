@@ -1,0 +1,74 @@
+# kind (development cluster, 2 nodes on one laptop) - 2026-11-20T09:01:32Z; k3s run pending: make demo-m2-observability
+
+== [1] 1. Metrics: every service is scraped (Prometheus 'up', one target per pod) ==
+   aggregator         aggregator-745dc8f77c-9mwhk        argus-dev-control-plane  up=1
+   auth-service       auth-service-bc58fcc6c-bk4cd       argus-dev-worker         up=1
+   bmkg-mock          bmkg-mock-5bd6c586c-l29nf          argus-dev-worker         up=1
+   client-api         client-api-7df5c68bc5-xvq79        argus-dev-worker         up=1
+   consumer-notifier  consumer-notifier-7648f4df6-v9cj2  argus-dev-control-plane  up=1
+   field-reports      field-reports-5f95cd5649-25t94     argus-dev-worker         up=1
+   pvmbg-mock         pvmbg-mock-858b8b9f77-c8skg        argus-dev-worker         up=1
+   services with metrics: aggregator auth-service bmkg-mock client-api consumer-notifier field-reports pvmbg-mock
+   WARN consumer-dashboard is scaled to 0 (not checked)
+   PASS every BNPB service exposes /metrics and is scraped
+$ throughput / error rate / p95 per service (last 5 min) - the same queries as the Grafana dashboard
+   aggregator     0 req/s
+   auth-service   0.02 req/s
+   bmkg-mock      0.59 req/s
+   client-api     0.12 req/s
+   field-reports  0 req/s
+   pvmbg-mock     0.2 req/s
+   auth-service  p95 223 ms
+   bmkg-mock     p95 247 ms
+   client-api    p95 276 ms
+   pvmbg-mock    p95 4385 ms
+   Grafana dashboard: Argus / Observabilitas (38 panels)
+   PASS one dashboard: Grafana -> Argus / Observabilitas
+
+== [2] 2a. Trace of one READ request: client -> client-api -> aggregator -> store ==
+$ curl -H 'X-Correlation-ID: obs-demo-1795165286' http://127.0.0.1:18080/v1/hazards?limit=5
+   response traceparent: 00-9b30466e7b94c531825621f84c3e5b75-6f5733f3c465de67-01  ->  trace_id 9b30466e7b94c531825621f84c3e5b75
+   +0 ms    client-api  GET /v1/hazards        27.48 ms
+   +0.5 ms  client-api  GET aggregator         23.49 ms
+   +1.2 ms  aggregator  GET /internal/hazards  18.98 ms
+   +1.2 ms  aggregator  store list             10.98 ms
+   PASS one trace spans client-api and aggregator, with the duration of every step
+
+== [3] 2b. Trace of one WRITE: POST /v1/field-reports -> Kafka -> field-reports processor ==
+   +0 ms     client-api     POST /v1/field-reports  6.23 ms
+   +0.2 ms   client-api     produce field-reports   5.73 ms
+   +90.4 ms  field-reports  process field-report    243.22 ms
+   PASS the trace continues through Kafka (traceparent record header) into the processor
+
+== [4] 2c. Trace of one INGEST cycle: poll -> upstream -> store -> outbox -> Kafka -> consumers ==
+   +0 ms      aggregator       poll SENSOR_PANTAI     100.19 ms
+   +22.7 ms   aggregator       GET sensor-pantai      24.65 ms
+   +52.8 ms   aggregator       GET sensor-pantai      1.89 ms
+   +55.6 ms   aggregator       store upsert           15.45 ms
+   +71.7 ms   aggregator       store upsert           6.64 ms
+   +80.3 ms   aggregator       store upsert           3.69 ms
+   +84.3 ms   aggregator       store upsert           3.49 ms
+   +88.3 ms   aggregator       store upsert           4.51 ms
+   +406.7 ms  aggregator       publish hazard.events  6.6 ms
+   +413.3 ms  aggregator       publish hazard.events  6.61 ms
+   +415.2 ms  consumer-hazard  consume hazard.events  1.08 ms
+   +420 ms    aggregator       publish hazard.events  1.81 ms
+   +421 ms    consumer-hazard  consume hazard.events  0.14 ms
+   +421.9 ms  aggregator       publish hazard.events  6.28 ms
+   +425 ms    consumer-hazard  consume hazard.events  0.14 ms
+   +428.2 ms  aggregator       publish hazard.events  8.27 ms
+   +429.9 ms  consumer-hazard  consume hazard.events  0.13 ms
+   +431.7 ms  consumer-hazard  consume hazard.events  0.37 ms
+   PASS the ingest flow of one poll cycle is one trace (the outbox relay joins it through the stored cid)
+
+== [5] 3. Structured logs: the same cid (and trace_id) in every service of the flow ==
+   client-api:
+     {"ts":"2026-11-20T09:01:26.398624051Z","level":"INFO","msg":"outbound_call","service":"client-api","target":"aggregator","method":"GET","url":"http://aggregator:8083/internal/hazards","latency_ms":20.003,"status":200,"cid":"obs-demo-1795165286","trace_id":"9b3
+     {"ts":"2026-11-20T09:01:26.405520009Z","level":"INFO","msg":"request","service":"client-api","method":"GET","path":"/v1/hazards","status":200,"duration_ms":27.38,"bytes":2581,"remote":"127.0.0.1:39506","caller":"","cid":"obs-demo-1795165286","trace_id":"9b3046
+   aggregator:
+     {"ts":"2026-11-20T09:01:26.398250509Z","level":"INFO","msg":"request","service":"aggregator","instance":"aggregator-745dc8f77c-9mwhk","method":"GET","path":"/internal/hazards","status":200,"duration_ms":18.968,"bytes":2511,"remote":"10.244.1.18:54912","caller"
+   field-reports:
+     {"ts":"2026-11-20T09:01:28.113532719Z","level":"INFO","msg":"field_report_processing","service":"field-reports","report_id":"fr-34bebf0a5fc11bb0ace2","input":"field-reports/2@20","cid":"obs-demo-1795165286-w","trace_id":"04ccc6f3ad96860a7f4e396188002cb4"}
+   PASS JSON log lines carry cid and trace_id: grep a cid, open its trace in Jaeger
+
+OBSERVABILITY PASS

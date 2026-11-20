@@ -16,6 +16,8 @@ spec:
           image: argus/consumer-hazard
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8091}]
+          envFrom:
+            - configMapRef: {name: observability-config, optional: true}   # OTEL_* (trace export), see observability.yaml
           env:
             - {name: CONSUMER_NAME, value: dashboard}
             - {name: CONSUMER_PORT, value: "8091"}
@@ -55,6 +57,8 @@ spec:
           image: argus/consumer-hazard
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8092}]
+          envFrom:
+            - configMapRef: {name: observability-config, optional: true}   # OTEL_* (trace export), see observability.yaml
           env:
             - {name: CONSUMER_NAME, value: notifier}
             - {name: CONSUMER_PORT, value: "8092"}

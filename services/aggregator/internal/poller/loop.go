@@ -75,9 +75,12 @@ func (l *Loop) cycle(parent context.Context) error {
 	// every cycle is one traceable flow: poll -> map -> store -> outbox -> broker
 	ctx := obs.WithCorrelationID(parent, obs.NewCorrelationID())
 	name := l.Source.Name()
+	ctx, span := obs.StartSpan(ctx, "poll "+name, obs.SpanInternal, "source", name)
+	defer span.End()
 
 	if l.Gate != nil {
 		if err := l.Gate(ctx); err != nil {
+			pollSkipped.Inc(name, "not_leader")
 			l.Log.WarnContext(ctx, "poll_skipped", "source", name, "reason", "leadership_not_confirmed", "error", err.Error())
 			return nil
 		}
@@ -85,6 +88,7 @@ func (l *Loop) cycle(parent context.Context) error {
 	defer l.publish(ctx)
 	if !l.Breaker.Allow() {
 		l.Tracker.Skipped()
+		pollSkipped.Inc(name, "circuit_open")
 		l.Log.DebugContext(ctx, "poll_skipped", "source", name, "reason", "circuit_open")
 		return nil
 	}
@@ -94,6 +98,12 @@ func (l *Loop) cycle(parent context.Context) error {
 	stats, err := l.Source.PollOnce(cctx)
 	took := time.Since(start)
 	l.Tracker.AddUnprocessed(stats.Unprocessed)
+	span.SetAttr("fetched", stats.Fetched)
+	span.SetAttr("created", stats.Created)
+	span.SetAttr("updated", stats.Updated)
+	span.SetAttr("unprocessed", stats.Unprocessed)
+	span.RecordError(err)
+	recordPoll(name, took, stats, err)
 
 	var se *sources.SourceError
 	switch {

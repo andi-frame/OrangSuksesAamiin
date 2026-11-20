@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aggregator-config
+data:
+  REPOSITORY_BACKEND: sharded
+  CANONICAL_MEMBER_HOSTS: >-
+    shard-0-0.shard-0-members,shard-0-1.shard-0-members;
+    shard-1-0.shard-1-members,shard-1-1.shard-1-members;
+    shard-2-0.shard-2-members,shard-2-1.shard-2-members

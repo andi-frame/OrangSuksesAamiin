@@ -141,3 +141,52 @@ func TestRunDeliversNewEntriesUntilCancelled(t *testing.T) {
 }
 
 func (f *failingSecond) Close() error { return nil }
+
+// batchPub acknowledges everything except index failAt (once), like a broker
+// that rejected one record of a batch.
+type batchPub struct {
+	failAt  int
+	batches int
+	sent    []string
+}
+
+func (b *batchPub) Publish(context.Context, ports.Message) error { panic("batch publisher expected") }
+func (b *batchPub) Close() error                                 { return nil }
+func (b *batchPub) PublishBatch(_ context.Context, msgs []ports.Message) []error {
+	b.batches++
+	errs := make([]error, len(msgs))
+	for i, m := range msgs {
+		if i == b.failAt {
+			errs[i] = errors.New("rejected")
+			continue
+		}
+		b.sent = append(b.sent, m.Key)
+	}
+	b.failAt = -1
+	return errs
+}
+
+func TestBatchPublishMarksOnlyTheAcknowledgedPrefix(t *testing.T) {
+	repo := memory.New()
+	store(t, repo, "a", "b", "c", "d")
+	pub := &batchPub{failAt: 1}
+	r := &Relay{Repo: repo, Pub: pub, Log: lg(), Interval: time.Millisecond, Batch: 10, MaxBackoff: time.Millisecond}
+	n, err := r.Flush(context.Background())
+	if err == nil || n != 1 {
+		t.Fatalf("a delivered, b failed: got %d %v", n, err)
+	}
+	pend, _ := repo.PendingOutbox(context.Background(), 10)
+	if len(pend) != 3 || pend[0].HazardID != "b" {
+		t.Fatalf("b, c, d stay pending in order (c, d were acknowledged after a failure): %+v", pend)
+	}
+	if n, err := r.Flush(context.Background()); err != nil || n != 3 {
+		t.Fatalf("resume: %d %v", n, err)
+	}
+	if pub.batches != 2 {
+		t.Fatalf("one round trip per batch, got %d", pub.batches)
+	}
+	// c and d went out twice (at-least-once); consumers de-duplicate on event_id
+	if got := len(pub.sent); got != 6 {
+		t.Fatalf("sent %v", pub.sent)
+	}
+}

@@ -30,7 +30,7 @@ T=$(lease_term)
 info "leader $L (term $T) on node $node"
 
 step "Freeze node $node for ${FREEZE_SEC}s"
-start_db=$(psql_q "SELECT now()")
+before=$(psql_sum "SELECT count(*) FROM outbox WHERE writer_term = $T")
 if [ -n "${FREEZE_CMD:-}" ]; then
   # whatever happens next, never leave the node frozen
   trap 'eval "$THAW_CMD" >/dev/null 2>&1 || true; cleanup_pf' EXIT
@@ -68,8 +68,9 @@ step "What the woken leader did"
 kn logs "$L" --since=3m 2>/dev/null |
   grep -E '"msg":"(leader_lost|write_fenced|poll_skipped|fence_rejected|dlq_worker_fenced|ingestion_stopped|hazard_stored|poll_ok)"' |
   jqx -r '"   \(.ts) \(.msg) \(.reason // .error // .source // "")"' | head -15 || info "(pod $L was replaced while frozen)"
-late=$(psql_q "SELECT count(*) FROM outbox WHERE writer_term = $T AND stored_at > '$start_db'")
-info "rows stored by term $T after the freeze began (store clock): $late"
+after=$(psql_sum "SELECT count(*) FROM outbox WHERE writer_term = $T")
+late=$((after - before))
+info "rows stored by term $T between the before/after store queries: $late"
 [ "$late" = 0 ] || fail "the frozen leader stored something after it was replaced"
 ok "the woken instance stored nothing: its term $T was fenced by term $(lease_term)"
 

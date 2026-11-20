@@ -53,17 +53,24 @@ func EnsureCorrelationID(ctx context.Context) (context.Context, string) {
 	return WithCorrelationID(ctx, id), id
 }
 
-// InjectHeaders copies the correlation ID of ctx into a message-header map
-// (used for Kafka records).
+// InjectHeaders copies the correlation ID and the trace context of ctx into a
+// message-header map (used for Kafka records).
 func InjectHeaders(ctx context.Context, h map[string]string) {
 	if id := CorrelationID(ctx); id != "" {
 		h[KafkaHeaderCorrelationID] = id
+	}
+	if sc, ok := SpanContextFrom(ctx); ok {
+		h[HeaderTraceparent] = sc.Traceparent()
 	}
 }
 
 // ExtractHeaders returns ctx carrying the correlation ID found in h (or a new
 // one when the message carries none).
+// The trace context, when present, becomes the parent of spans started from it.
 func ExtractHeaders(ctx context.Context, h map[string]string) context.Context {
+	if sc, ok := ParseTraceparent(h[HeaderTraceparent]); ok {
+		ctx = ContextWithSpanContext(ctx, sc)
+	}
 	if id := h[KafkaHeaderCorrelationID]; id != "" {
 		return WithCorrelationID(ctx, id)
 	}

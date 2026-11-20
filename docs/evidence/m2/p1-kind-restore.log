@@ -1,0 +1,15 @@
+Development only: three-node kind with a 64-record synthetic BMKG catalog.
+
+Removed the local claim of shard-1-1 and recreated it.
+While the replica was unavailable, Audit returned partial=true,
+unavailable_units=["shard-1-1"], count=64 and the baseline digest
+d7fce900f519643b72e199cc036209c1720dac80d982a817d3c5fce892c020fe.
+The replacement had a different PVC UID and reached Sync Standby with zero replay lag.
+A Patroni switchover made shard-1-1 primary.
+After recovery Audit returned partial=false with the same count and digest.
+All three shards had a synchronized standby before the second worker loss.
+Second worker paused: shard 2 promoted in 25s
+shard-0 logical source records: 23
+shard-1 logical source records: 20
+shard-2 logical source records: 21
+All 64 catalog records survived the second worker loss.

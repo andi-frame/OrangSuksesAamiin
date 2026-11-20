@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analitik Bencana BNPB</title>
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#ffffff;--ink:#14171c;--muted:#5d6673;--line:#e2e5ea;--accent:#1f5fbf;
+  --warn-bg:#fff4e5;--warn-ink:#8a4b00;--warn-line:#f0b25a;--ok-bg:#e9f6ee;--ok-ink:#1d6b3a;
+  --c-SEISMIC:#c2410c;--c-TSUNAMI:#1d4ed8;--c-VOLCANIC:#7c3aed;--c-WILDFIRE:#b91c1c;--c-COASTAL:#0f766e;
+  --s-NORMAL:#64748b;--s-WASPADA:#ca8a04;--s-SIAGA:#ea580c;--s-AWAS:#b91c1c;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#101318;--panel:#171b22;--ink:#e8ebf0;--muted:#9aa3b0;--line:#2a313b;--accent:#7aa7ff;
+  --warn-bg:#3a2a12;--warn-ink:#ffcf8a;--warn-line:#a86b1f;--ok-bg:#12301f;--ok-ink:#8fe0ad;
+  --c-SEISMIC:#fb923c;--c-TSUNAMI:#60a5fa;--c-VOLCANIC:#a78bfa;--c-WILDFIRE:#f87171;--c-COASTAL:#2dd4bf;
+  --s-NORMAL:#94a3b8;--s-WASPADA:#facc15;--s-SIAGA:#fb923c;--s-AWAS:#f87171;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{font-size:18px;margin:0}
+h2{font-size:14px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+main{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:800px){.grid2{grid-template-columns:1fr}}
+button,select,input{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.banner{border-radius:8px;padding:10px 12px;border:1px solid}
+.banner.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-line)}
+.banner.ok{background:var(--ok-bg);color:var(--ok-ink);border-color:transparent}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tile{border:1px solid var(--line);border-radius:8px;padding:10px}
+.tile b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.tile span{color:var(--muted);font-size:12px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:baseline}
+svg{width:100%;height:auto;display:block}
+.axis{stroke:var(--line)}
+.lbl{fill:var(--muted);font-size:11px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+td.n,th.n{text-align:right}
+.bar{height:8px;background:var(--accent);border-radius:4px;opacity:.7}
+.muted{color:var(--muted)}
+.scroll{max-height:420px;overflow:auto}
+#login{max-width:420px}
+#login input{width:100%;margin:4px 0 10px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:12px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Analitik HazardEvent BNPB</h1>
+    <div class="muted" id="meta">Belum dimuat</div>
+  </div>
+  <div class="row" id="controls">
+    <span class="muted">Rentang:</span>
+    <span class="row" id="ranges"></span>
+    <button id="logout" class="hidden" type="button">Keluar</button>
+  </div>
+</header>
+<main>
+  <section class="panel" id="login">
+    <h2>Masuk</h2>
+    <p class="muted">Gunakan kredensial client (Media, Tim Lapangan, atau Pusat). Token disimpan hanya di tab ini.</p>
+    <form id="loginForm">
+      <label>client_id<input name="client_id" autocomplete="username" required></label>
+      <label>client_secret<input name="client_secret" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Masuk</button> <span id="loginErr" class="muted"></span>
+    </form>
+  </section>
+
+  <div id="app" class="hidden">
+    <div id="banner" class="banner ok">Memuat...</div>
+    <section class="panel" style="margin-top:16px">
+      <h2>Total per jenis bahaya</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+    <section class="panel" style="margin-top:16px">
+      <h2>Jumlah kejadian per jenis bahaya terhadap waktu <span class="muted" id="bucket"></span></h2>
+      <div id="line"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+    <div class="grid2" style="margin-top:16px">
+      <section class="panel">
+        <h2>Per tingkat severity</h2>
+        <div id="sev"></div>
+      </section>
+      <section class="panel">
+        <h2>Per wilayah (area_name)</h2>
+        <input id="areaFilter" placeholder="Cari wilayah" style="width:100%;margin-bottom:8px">
+        <div class="scroll"><table><thead><tr><th>Wilayah</th><th class="n">Jumlah</th><th style="width:35%"></th></tr></thead><tbody id="areas"></tbody></table></div>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+(function(){
+  "use strict";
+  var LABEL={SEISMIC:"Gempa",TSUNAMI:"Tsunami",VOLCANIC:"Gunung berapi",WILDFIRE:"Kebakaran hutan",COASTAL:"Pesisir"};
+  var SEV=["NORMAL","WASPADA","SIAGA","AWAS"];
+  var RANGES=[["24 jam",24*3600e3],["7 hari",7*86400e3],["30 hari",30*86400e3],["1 tahun",365*86400e3],["Semua",0]];
+  var current="Semua", data=null, timer=null;
+  function store(k,v){try{if(v===undefined)return sessionStorage.getItem(k);if(v===null)sessionStorage.removeItem(k);else sessionStorage.setItem(k,v)}catch(e){return null}}
+  function $(id){return document.getElementById(id)}
+  function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+  function el(tag,attrs,text){var e=document.createElement(tag);for(var k in attrs||{})e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;return e}
+  function svg(tag,attrs){var e=document.createElementNS("http://www.w3.org/2000/svg",tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e}
+  function fmt(n){return Number(n).toLocaleString("id-ID")}
+
+  RANGES.forEach(function(r){var b=el("button",{type:"button"},r[0]);b.onclick=function(){current=r[0];load()};b.dataset.r=r[0];$("ranges").appendChild(b)});
+
+  function showLogin(on){$("login").classList.toggle("hidden",!on);$("app").classList.toggle("hidden",on);$("logout").classList.toggle("hidden",on)}
+  $("logout").onclick=function(){store("tok",null);store("rt",null);showLogin(true);clearInterval(timer)};
+  $("loginForm").onsubmit=function(ev){
+    ev.preventDefault();var f=ev.target;$("loginErr").textContent="";
+    fetch("/dashboard/login",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({client_id:f.client_id.value,client_secret:f.client_secret.value})})
+    .then(function(r){return r.json().then(function(j){return [r.status,j]})})
+    .then(function(x){if(x[0]!==200||!x[1].access_token){$("loginErr").textContent="Gagal masuk ("+x[0]+")";return}
+      store("tok",x[1].access_token);store("rt",x[1].refresh_token||"");f.client_secret.value="";start()})
+    .catch(function(){$("loginErr").textContent="Auth Service tidak terjangkau"});
+  };
+
+  function relogin(){ // access tokens are short-lived: renew with the refresh token (the secret is never kept)
+    var rt=store("rt");if(!rt)return Promise.reject();
+    return fetch("/dashboard/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:rt})})
+      .then(function(r){return r.json()}).then(function(j){if(!j.access_token)throw 0;store("tok",j.access_token);if(j.refresh_token)store("rt",j.refresh_token)});
+  }
+
+  function load(retry){
+    document.querySelectorAll("#ranges button").forEach(function(b){b.classList.toggle("on",b.dataset.r===current)});
+    var span=RANGES.filter(function(r){return r[0]===current})[0][1], q="";
+    if(span){var to=new Date(),from=new Date(to.getTime()-span);q="?from="+from.toISOString()+"&to="+to.toISOString()}
+    fetch("/v1/analytics/summary"+q,{headers:{Authorization:"Bearer "+store("tok")}})
+    .then(function(r){
+      if(r.status===401&&!retry){return relogin().then(function(){load(true)},function(){showLogin(true)})}
+      return r.json().then(function(j){
+        if(r.status!==200){banner("warn","Data tidak tersedia ("+r.status+"): "+((j.error&&j.error.message)||""));return}
+        data=j;render()});
+    }).catch(function(){banner("warn","Client-Facing API tidak terjangkau. Angka terakhir tetap ditampilkan dan BELUM diperbarui.")});
+  }
+
+  function banner(kind,text){var b=$("banner");b.className="banner "+kind;b.textContent=text}
+
+  function render(){
+    var d=data;
+    $("meta").textContent="Dihitung "+new Date(d.generated_at).toLocaleString("id-ID")+" dari seluruh lokasi penyimpanan ("+d.scan_ms+" ms)";
+    if(d.partial){banner("warn","Angka BELUM LENGKAP: unit penyimpanan "+d.unavailable_units.join(", ")+" tidak terjangkau. Jumlah di bawah hanya dari unit yang terjangkau.")}
+    else banner("ok","Lengkap: seluruh unit penyimpanan terjangkau. Total "+fmt(d.total)+" HazardEvent.");
+    var t=$("tiles");t.textContent="";
+    d.categories.forEach(function(c){var x=el("div",{class:"tile"});var s=el("span");var sw=el("i",{class:"sw"});sw.style.background=css("--c-"+c);
+      s.appendChild(sw);s.appendChild(document.createTextNode(LABEL[c]||c));x.appendChild(el("b",null,fmt(d.by_category[c]||0)+(d.partial?"+":"")));x.appendChild(s);t.appendChild(x)});
+    line(d);sev(d);areas(d);
+  }
+
+  function line(d){
+    var pts=d.series.points, W=900,H=300,L=48,R=12,T=12,B=36, box=$("line");box.textContent="";
+    $("bucket").textContent="(per "+({hour:"jam",day:"hari",month:"bulan",year:"tahun"}[d.series.bucket]||d.series.bucket)+")";
+    var s=svg("svg",{viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"Line chart jumlah kejadian per jenis bahaya"});
+    if(!pts.length){var tx=svg("text",{x:W/2,y:H/2,"text-anchor":"middle",class:"lbl"});tx.textContent="Tidak ada kejadian pada rentang ini";s.appendChild(tx);box.appendChild(s);return}
+    var max=1;pts.forEach(function(p){d.categories.forEach(function(c){max=Math.max(max,p[c]||0)})});
+    var t0=new Date(pts[0].t).getTime(),t1=new Date(pts[pts.length-1].t).getTime();if(t1===t0)t1=t0+1;
+    function X(t){return L+(W-L-R)*(new Date(t).getTime()-t0)/(t1-t0)}
+    function Y(v){return T+(H-T-B)*(1-v/max)}
+    for(var i=0;i<=4;i++){var v=Math.round(max*i/4),y=Y(v);s.appendChild(svg("line",{x1:L,x2:W-R,y1:y,y2:y,class:"axis"}));
+      var lb=svg("text",{x:L-6,y:y+4,"text-anchor":"end",class:"lbl"});lb.textContent=fmt(v);s.appendChild(lb)}
+    var ticks=Math.min(6,pts.length);for(i=0;i<ticks;i++){var p=pts[Math.round(i*(pts.length-1)/Math.max(1,ticks-1))];
+      var tx2=svg("text",{x:X(p.t),y:H-12,"text-anchor":i===0?"start":(i===ticks-1?"end":"middle"),class:"lbl"});tx2.textContent=new Date(p.t).toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:d.series.bucket==="year"||d.series.bucket==="month"?"numeric":undefined,hour:d.series.bucket==="hour"?"2-digit":undefined});s.appendChild(tx2)}
+    var lg=$("legend");lg.textContent="";
+    d.categories.forEach(function(c){
+      var col=css("--c-"+c),path="";pts.forEach(function(p,j){path+=(j?"L":"M")+X(p.t).toFixed(1)+" "+Y(p[c]||0).toFixed(1)});
+      s.appendChild(svg("path",{d:path,fill:"none",stroke:col,"stroke-width":2}));
+      if(pts.length<60)pts.forEach(function(p){var ci=svg("circle",{cx:X(p.t),cy:Y(p[c]||0),r:2.5,fill:col});var ti=svg("title",{});ti.textContent=LABEL[c]+" "+p.t+": "+(p[c]||0);ci.appendChild(ti);s.appendChild(ci)});
+      var it=el("span");var sw=el("i",{class:"sw"});sw.style.background=col;it.appendChild(sw);it.appendChild(document.createTextNode(LABEL[c]||c));lg.appendChild(it)});
+    box.appendChild(s);
+  }
+
+  function sev(d){
+    var box=$("sev");box.textContent="";var max=1;SEV.forEach(function(k){max=Math.max(max,d.by_severity[k]||0)});
+    var W=420,H=34*SEV.length+8,s=svg("svg",{viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"Jumlah per severity"});
+    SEV.forEach(function(k,i){var v=d.by_severity[k]||0,y=8+i*34,w=(W-170)*v/max;
+      var lb=svg("text",{x:0,y:y+15,class:"lbl"});lb.textContent=k;s.appendChild(lb);
+      s.appendChild(svg("rect",{x:80,y:y+2,width:Math.max(1,w),height:18,rx:3,fill:css("--s-"+k)}));
+      var n=svg("text",{x:86+w,y:y+15,class:"lbl"});n.textContent=fmt(v);s.appendChild(n)});
+    box.appendChild(s);
+  }
+
+  function areas(d){
+    var f=$("areaFilter").value.toLowerCase(),tb=$("areas");tb.textContent="";
+    var max=d.by_area.length?d.by_area[0].count:1;
+    d.by_area.filter(function(a){return !f||String(a.area_name).toLowerCase().indexOf(f)>=0}).forEach(function(a){
+      var tr=el("tr");tr.appendChild(el("td",null,a.area_name||"(kosong)"));tr.appendChild(el("td",{class:"n"},fmt(a.count)));
+      var td=el("td");var b=el("div",{class:"bar"});b.style.width=(100*a.count/max)+"%";td.appendChild(b);tr.appendChild(td);tb.appendChild(tr)});
+  }
+  $("areaFilter").oninput=function(){if(data)areas(data)};
+
+  function start(){showLogin(false);load();clearInterval(timer);timer=setInterval(load,10000)}
+  if(store("tok"))start();else showLogin(true);
+})();
+</script>
+</body>
+</html>

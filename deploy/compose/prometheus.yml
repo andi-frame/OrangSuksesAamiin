@@ -1,0 +1,15 @@
+# docker compose (--profile obs): static targets; on Kubernetes Prometheus discovers the pods itself
+# (deploy/k8s/observability.yaml). Same metric names, so the same Grafana dashboard works on both.
+global: {scrape_interval: 5s}
+rule_files: [/etc/prometheus/rules.yml]
+scrape_configs:
+  - job_name: argus
+    static_configs:
+      - {targets: ["aggregator:8083"], labels: {app: aggregator}}
+      - {targets: ["client-api:8080"], labels: {app: client-api}}
+      - {targets: ["auth-service:8084"], labels: {app: auth-service}}
+      - {targets: ["bmkg-mock:8081"], labels: {app: bmkg-mock}}
+      - {targets: ["pvmbg-mock:8082"], labels: {app: pvmbg-mock}}
+      - {targets: ["consumer-dashboard:8091"], labels: {app: consumer-dashboard}}
+      - {targets: ["consumer-notifier:8092"], labels: {app: consumer-notifier}}
+      - {targets: ["field-reports:8093"], labels: {app: field-reports}}

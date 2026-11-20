@@ -65,6 +65,15 @@ manifest yang dipin, tanpa modifikasi.
 | `SCHEMA_RULES_PATH` | `/app/rules/schema-rules.json` | aturan penyesuaian skema (ConfigMap dari `deploy/k8s/schema-rules.json`) |
 | `IMAGE_TAG`, `IMAGE_REGISTRY`, `K8S_IMAGE_MODE`, `K8S_SSH_NODES` | git sha, –, kind/ssh | cara image sampai ke node (`scripts/k8s/common.sh`) |
 | `PVMBG_ADMIN_OPEN`, `BMKG_ADMIN_OPEN` | `false` (compose) / `true` (k8s) | `/admin/*` mock tanpa token, karena Tester Agent memanggilnya tanpa kredensial (Service mock hanya ClusterIP) |
+| `ENV_FILE` | `.env` | file kredensial yang dibaca skrip `scripts/k8s/*` dan demo M2 (mis. satu file per cluster) |
+| `PANTAI_AUTH_TOKEN` | dibuat acak oleh `secrets.sh` bila kosong | token Sensor Pantai (P5); Secret `pantai-token` (sensor) + `aggregator-credentials` (Aggregator) |
+| `SENSOR_POLL_INTERVAL_MS`, `SENSOR_TIMEOUT_SEC`, `SENSOR_BREAKER_OPEN_SEC` | 1000, 2, 10 | poller Sensor Pantai: interval, timeout per permintaan, lama breaker terbuka |
+| `SENSOR_FREEZE_AFTER_SEC`, `SENSOR_MAX_LAG_SEC`, `SENSOR_PAGE_SIZE`, `SENSOR_MAX_PAGES` | 15, 7200, 500, 20 | `generated_at` beku = sumber basi; batas kedaluwarsa (waktu sensor); paging saat burst |
+| `CLIENT_PRIORITY_RESERVE`, `CLIENT_MAX_IN_FLIGHT` | 0.3, 64 | kontrol admisi client-api: cadangan untuk Lapangan/Pusat, permintaan bersamaan per pod (Media → 429 lebih dulu) |
+| `KAFKA_BROKERS` (client-api), `FIELD_REPORT_ACK_TIMEOUT_SEC`, `FIELD_REPORTS_URL` | `kafka:9092`, 5, `http://field-reports:8093` | `POST /v1/field-reports`: 202 setelah broker mengonfirmasi; status laporan dari pemroses |
+| `FIELD_REPORT_PROCESS_DELAY_MS` | 0 | jeda buatan per laporan di pemroses (demo "hilir lambat") |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER_ARG` | `http://jaeger:4318`, 1 | ekspor trace (ConfigMap `observability-config`); kosong = trace hanya di log (`trace_id`) |
+| `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | `admin`, dibuat acak bila kosong | admin Grafana (dashboard juga terbuka anonim sebagai Viewer) |
 
 ### M2.4 Skenario pengujian
 
@@ -76,6 +85,18 @@ manifest yang dipin, tanpa modifikasi.
 | P2 node freeze | `FREEZE_NODE=node-b FREEZE_CMD='…' THAW_CMD='…' bash scripts/demo/m2-freeze.sh` | leader yang dibekukan lalu bangun tidak menyimpan apa pun |
 | **P3** (kriteria 1–5) | `make demo-m2-p3` | perubahan kompatibel diterima, pesan rusak tidak membuat crash, hanya Internal Ops melihat pesan gagal, perubahan tidak kompatibel di-*parked*, pulih setelah penyesuaian tanpa duplikat |
 | Tester Agent | `bash scripts/k8s/practice.sh [<skenario>]` | daftar / jalankan skenario latihan, log disimpan di `docs/evidence/m2/` |
+| **Observabilitas** | `make demo-m2-observability` | `/metrics` setiap service ter-scrape, satu trace lintas service (baca, tulis, ingest) dengan durasi tiap langkah, `cid` + `trace_id` di log |
+| **P3 kriteria 6** | `make demo-m2-field-reports` (`N=40`) | 202 cepat walau pemroses mati, retry kunci sama → `report_id` sama, penerima dan pemroses dibunuh, setiap laporan ber-202 diproses tepat sekali |
+| **P5** | `make demo-m2-p5` (`OUTAGE_S=45`, `P5_LOAD=0` tanpa k6) | image sensor tidak diubah, pelanggaran kontrak disisihkan, 0 peringatan kritis hilang dan p95 ≤ 5 s, sensor padam: BMKG tetap < 300 ms, data pesisir cepat + basi, permintaan tidak melonjak, pulih sendiri; prioritas Lapangan; SLO |
+| P5 profil ujian | `bash scripts/k8s/sensor-exam.sh exam <key-file>` / `practice` | Secret `pantai-key` + `PANTAI_PROFILE=exam`, image tetap |
+| **P1 kriteria 7** | `make demo-m2-analytics`; peramban `http://<node>:30080/dashboard` | angka dashboard = hitungan langsung Audit API; satu shard mati → `partial` dan banner "BELUM LENGKAP" |
+| **P2 kriteria 6** | `make loadtest-m2-scale` (`K6_VUS=10000`, k6 di mesin ini; lihat `docs/report/m2/02-p2.md` §8) | 10 000 VU, ≥ 120 s, Aggregator 3 → 5 → 2, error < 1 % di luar 429, lalu pemeriksaan satu penulis |
+| **P2 kriteria 7** | `make loadtest-m2-throughput` | throughput 3 instance ≥ 2× 1 instance (CPU limit sama per pod) |
+| Bonus HPA | `make demo-m2-hpa` (`bash scripts/k8s/hpa.sh on/off`) | instance bertambah saat beban naik dan berkurang saat turun; matikan sebelum load test P2 |
+
+UI di node mana pun: **Grafana** `http://<node>:30030` (dashboard "Argus / Observabilitas"), **Jaeger** `http://<node>:30686`,
+**Prometheus** `http://<node>:30090`, **dashboard analitik** `http://<node>:30080/dashboard`. Di compose:
+`docker compose --profile obs up -d` (Grafana `:3000`, Jaeger `:16686`, Prometheus `:9090`, Sensor Pantai `:8094`).
 
 Memicu manual di cluster (lewat `kubectl port-forward svc/pvmbg-mock 18082:8082`):
 
@@ -89,6 +110,46 @@ curl -X POST -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" -d '{"source":"PVM
 
 Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/schema-rules/pvmbg-v3.json`), jalankan
 `make k8s-up` (ConfigMap berganti nama → rolling update), lalu *reprocess* setelah rollout selesai.
+
+### M2.5 Sharded storage and Feed Satelit
+
+On a Linux x86-64 host with KVM and Docker, run `bash scripts/k8s/qemu-cluster.sh up`
+followed by `bash scripts/k8s/qemu-cluster.sh deploy`. This provisions three Linux VMs
+and uses their own disks. See the [Linux VM commands](docs/k8s-cluster.md#menjalankan-demo-dari-host-linux).
+
+Use three k3s nodes with distinct kernels and node disks. With the VirtualBox helper, set
+`VBOX_NODES="node-a node-b node-c"`. Specify `STORE_NODE_A`, `STORE_NODE_B`,
+and `STORE_NODE_C` for different node names. Keep the real Kubernetes context explicit.
+
+```bash
+K8S_STORAGE=sharded make k8s-up
+```
+
+The command labels the three storage slots and deploys three PostgreSQL groups with two
+members per shard on the k3s `local-path` StorageClass. Supply independent `CANONICAL_DB_ADMIN_PASSWORD` and
+`CANONICAL_DB_REPLICATION_PASSWORD` values in `.env` along with the regular application
+password. The default `K8S_STORAGE=single` remains available for the two-node environment.
+For an existing singleton store, run `K8S_STORAGE=sharded MIGRATE_CANONICAL=1 make k8s-up`
+in the maintenance window. It drains the Aggregator, copies and verifies data, switches the
+backend, and scales the old database down after rollout. Its PVC remains available for recovery.
+
+Set `SATELLITE_FEED_TOKEN` in `.env` to enable the elected Aggregator consumer.
+The `satellite-feed-credentials` Secret is mounted through `secretRef`.
+Use `SATELLITE_FEED_URL` for a fixture endpoint, `SATELLITE_LATENESS_SEC` for the local
+event-time window, and `SATELLITE_PROVINCES_PATH` for an alternate province table.
+Kubernetes uses the Aggregator ConfigMap for non-secret overrides.
+
+Run the remaining P1 and P4 demo checks with the [P1 report](docs/report/m2/01-p1.md)
+and [P4 report](docs/report/m2/04-p4.md). The Canonical Store importer consumes one BMKG
+`SeismicEvent` JSON object per line. Convert the assistant's catalog to the fields in
+`contracts/schemas/seismic-event.json`, retaining its original event IDs and UTC timestamps.
+
+```bash
+kubectl -n sistem-informasi-kebencanaan-bnpb exec -i deploy/aggregator -- \
+  /usr/local/bin/aggregator import-catalog < catalog.ndjson
+K8S_STORAGE=sharded bash scripts/demo/m2-p1.sh baseline
+K8S_STORAGE=sharded bash scripts/demo/m2-p4.sh
+```
 
 ## 1. Prasyarat
 
@@ -200,14 +261,20 @@ Aggregator tidak memiliki `depends_on` ke mock atau store: ia tetap berjalan dan
 docker-compose.yml   .env.example   Makefile
 contracts/           openapi/*.yaml, schemas/*.json   (kontrak yang divalidasi test)
 docs/                contracts.md, adapters.md, traceability.md, report/ (sumber laporan), evidence/, laporan PDF
-scripts/             lib.sh, wait-healthy.sh, check-secrets.sh, demo/*.sh
-pkg/obs/             utilitas teknis bersama: log JSON, correlation ID, klien HTTP ber-latensi, health, env
+scripts/             lib.sh, wait-healthy.sh, check-secrets.sh, demo/*.sh, k8s/*.sh, loadtest/ (k6 M1 + M2)
+pkg/obs/             utilitas teknis bersama: log JSON, correlation ID, klien HTTP ber-latensi, health, env,
+                     metrik Prometheus (/metrics) dan tracing W3C/OTLP - tanpa dependensi pihak ketiga
 services/
   bmkg-mock/  pvmbg-mock/  aggregator/
-  auth-service/  client-api/
-  consumer-hazard/   (dijalankan dua kali di compose: dashboard dan notifier)
+  auth-service/  client-api/   (client-api: juga POST /v1/field-reports, admisi berprioritas, /dashboard)
+  consumer-hazard/   (dijalankan dua kali: dashboard dan notifier; notifier = peringatan kritis Tim Lapangan)
+  field-reports/     pemroses laporan Tim Lapangan, exactly-once dengan transaksi Kafka (M2 P3 kriteria 6)
 tools/pvmbg-token/   pembuat token PVMBG
-deploy/kafka/        pembuat topic (kafka-init)
+deploy/kafka/        pembuat topic (kafka-init): hazard.events, field-reports, field-reports.processed
+deploy/k8s/          manifest M2 (+ sensor-pantai.yaml, field-reports.yaml, observability.yaml)
+deploy/grafana/      dashboard metrik (gen-dashboard.py -> argus-overview.json)
+deploy/hpa/          bonus autoscaling (tidak termasuk kustomization; scripts/k8s/hpa.sh)
+deploy/compose/      konfigurasi Prometheus/Grafana untuk docker compose --profile obs
 ```
 
 **Kode bersama.** Ketentuan melarang berbagi *library business-logic* lintas service. `pkg/obs` hanya berisi utilitas

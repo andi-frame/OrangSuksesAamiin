@@ -67,3 +67,26 @@ di node-b. Penyebaran replikanya ke beberapa node menjadi bagian P1 (Orang 3).
 ## Deklarasi topologi
 
 Lihat README §M2.1 (diisi dari cluster demo dengan `bash scripts/k8s/topology.sh` ditambah host fisik dan spesifikasinya).
+
+## Observabilitas (Orang 2)
+
+Setiap service BNPB memakai `pkg/obs`, sehingga ketiga syarat observabilitas berlaku seragam tanpa kode per service:
+
+1. **Metrik dalam satu dashboard.** Setiap service melayani `GET /metrics`, berisi jumlah, latensi (histogram), dan
+   status per route, panggilan keluar per tujuan, serta metrik domain (status sumber dan breaker, leader dan term,
+   outbox, DLQ, Sensor Pantai, admisi per peran, laporan lapangan, consumer). Prometheus menemukan setiap pod sendiri,
+   dan Grafana menampilkan satu dashboard "Argus / Observabilitas" (`:30030`).
+2. **Trace satu permintaan lintas service.** Konteks W3C `traceparent` dibawa lewat HTTP dan header Kafka, lalu diekspor
+   ke Jaeger (`:30686`). Durasi setiap langkah terlihat, misalnya:
+   - client-api → aggregator → store;
+   - client-api → Kafka → field-reports;
+   - poll → upstream → store → outbox → Kafka → consumer.
+
+   Trace yang dimulai tanpa `traceparent` diberi id dari `cid`, sehingga relay outbox (yang hanya tahu `cid`) masuk ke
+   trace yang sama.
+3. **Log terstruktur ber-correlation ID.** Format log M1 dipertahankan, dengan tambahan `trace_id`.
+
+`pkg/obs` tetap tanpa dependensi pihak ketiga: registry Prometheus dan exporter OTLP/HTTP JSON ditulis sendiri, sehingga
+tidak ada SDK yang menambah ukuran image atau memori pod (Lampiran B: 128–256 Mi). Ketiga komponen observabilitas
+di-deploy di Kubernetes dengan `role=other` dan 128/256 Mi (`deploy/k8s/observability.yaml`). Demo:
+`make demo-m2-observability`.

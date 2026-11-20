@@ -14,6 +14,16 @@ for _ in $(seq 1 40); do
   sleep 1
 done
 sleep 1
+for shard in contract0 contract1 contract2 contractlegacy; do
+  docker exec "$name" createdb -U postgres "$shard"
+done
+shard_urls=()
+for shard in contract0 contract1 contract2; do
+  shard_urls+=("postgres://postgres:test@127.0.0.1:$port/$shard?sslmode=disable")
+done
+export TEST_SHARD_DB_URLS
+TEST_SHARD_DB_URLS=$(IFS=,; echo "${shard_urls[*]}")
 cd services/aggregator
-TEST_CANONICAL_DB_URL="postgres://postgres:test@127.0.0.1:$port/contract?sslmode=disable" \
-  GOWORK=off go test -count=1 -race -v ./internal/adapters/postgres/ "$@"
+TEST_LEGACY_DB_URL="postgres://postgres:test@127.0.0.1:$port/contractlegacy?sslmode=disable" \
+  TEST_CANONICAL_DB_URL="postgres://postgres:test@127.0.0.1:$port/contract?sslmode=disable" \
+  GOWORK=off go test -count=1 -race -v ./internal/adapters/postgres/ ./internal/adapters/sharded/ "$@"

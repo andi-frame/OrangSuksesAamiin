@@ -12,6 +12,7 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -45,6 +46,8 @@ type Server struct {
 	Log        *slog.Logger
 	Now        func() time.Time
 	Version    string // build version, reported on /health
+
+	analytics Analytics
 }
 
 func (s *Server) now() time.Time {
@@ -66,7 +69,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /internal/hazards", s.auth(http.HandlerFunc(s.list)))
 	mux.Handle("GET /internal/hazards/{id}", s.auth(http.HandlerFunc(s.get)))
 	mux.Handle("GET /internal/sources/status", s.auth(http.HandlerFunc(s.status)))
+	mux.Handle("GET /internal/satellite/status", s.auth(http.HandlerFunc(s.satelliteStatus)))
 	mux.Handle("GET /internal/leader", s.auth(http.HandlerFunc(s.leader)))
+	s.analytics.Repo = s.Repo
+	mux.Handle("GET /internal/analytics/summary", s.auth(http.HandlerFunc(s.analytics.handler)))
 
 	mux.Handle("GET /internal/ops/unprocessed", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsList)))
 	mux.Handle("GET /internal/ops/unprocessed/{id}", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsGet)))
@@ -74,6 +80,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /internal/ops/schema-rules", s.bearer("ops", s.OpsToken, http.HandlerFunc(s.opsRules)))
 
 	mux.Handle("GET /internal/audit/unprocessed", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditUnprocessed)))
+	mux.Handle("GET /internal/audit/events", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditEvents)))
+	mux.Handle("GET /internal/audit/checksum", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditChecksum)))
+	mux.Handle("GET /internal/audit/location", s.bearer("audit", s.AuditToken, http.HandlerFunc(s.auditLocation)))
 	return obs.Middleware(s.Log, "/health", "/ready")(mux)
 }
 
@@ -140,19 +149,19 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	f := ports.ListFilter{Cursor: q.Get("cursor")}
 	if v := q.Get("hazard_type"); v != "" {
 		switch t := domain.HazardType(strings.ToUpper(v)); t {
-		case domain.HazardSeismic, domain.HazardVolcanic:
+		case domain.HazardSeismic, domain.HazardVolcanic, domain.HazardWildfire, domain.HazardCoastal:
 			f.HazardType = t
 		default:
-			obs.WriteError(w, http.StatusBadRequest, "bad_request", "hazard_type must be SEISMIC or VOLCANIC")
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "unsupported hazard_type")
 			return
 		}
 	}
 	if v := q.Get("source"); v != "" {
 		switch src := domain.Source(strings.ToUpper(v)); src {
-		case domain.SourceBMKG, domain.SourcePVMBG:
+		case domain.SourceBMKG, domain.SourcePVMBG, domain.SourceSatellite, domain.SourceCoastal:
 			f.Source = src
 		default:
-			obs.WriteError(w, http.StatusBadRequest, "bad_request", "source must be BMKG or PVMBG")
+			obs.WriteError(w, http.StatusBadRequest, "bad_request", "unsupported source")
 			return
 		}
 	}
@@ -180,7 +189,15 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Limit = n
 	}
-	page, err := s.Repo.List(r.Context(), f)
+	sctx, span := obs.StartSpan(r.Context(), "store list", obs.SpanInternal, "limit", f.Limit)
+	page, err := s.Repo.List(sctx, f)
+	span.RecordError(err)
+	span.SetAttr("items", len(page.Items))
+	span.SetAttr("partial", len(page.UnavailableUnits) > 0)
+	span.End()
+	if len(page.UnavailableUnits) > 0 {
+		partialReads.Inc("list")
+	}
 	if err != nil {
 		if f.Cursor != "" && err.Error() == "invalid cursor" {
 			obs.WriteError(w, http.StatusBadRequest, "bad_request", "invalid cursor")
@@ -196,13 +213,17 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	}
 	obs.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": items, "next_cursor": page.NextCursor, "freshness": s.freshness(r.Context()),
+		"partial": len(page.UnavailableUnits) > 0, "unavailable_units": unitNames(page.UnavailableUnits),
 	})
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
-	h, err := s.Repo.Get(r.Context(), r.PathValue("id"))
+	sctx, span := obs.StartSpan(r.Context(), "store get", obs.SpanInternal)
+	h, err := s.Repo.Get(sctx, r.PathValue("id"))
+	span.RecordError(err)
+	span.End()
 	switch {
-	case errors.Is(err, ports.ErrNotFound):
+	case errors.Is(err, ports.ErrNotFound) || (err == nil && h.Retired):
 		obs.WriteError(w, http.StatusNotFound, "not_found", "hazard not found")
 	case err != nil:
 		s.Log.ErrorContext(r.Context(), "get_failed", "error", err.Error())
@@ -227,3 +248,27 @@ func (s *Server) leader(w http.ResponseWriter, r *http.Request) {
 	}
 	obs.WriteJSON(w, http.StatusOK, map[string]any{"election": "kubernetes", "instance": s.Leader()})
 }
+
+func (s *Server) satelliteStatus(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Repo.ListSourceStatus(r.Context())
+	if err != nil {
+		obs.WriteError(w, 503, "store_unavailable", "canonical store unavailable")
+		return
+	}
+	for _, row := range rows {
+		if row.Source == string(domain.SourceSatellite) {
+			var status map[string]any
+			if err := json.Unmarshal(row.Doc, &status); err != nil {
+				obs.WriteError(w, 503, "store_unavailable", "invalid satellite status")
+				return
+			}
+			status["status_age_s"] = row.Age.Seconds()
+			obs.WriteJSON(w, 200, status)
+			return
+		}
+	}
+	obs.WriteError(w, 404, "not_found", "no satellite checkpoint")
+}
+
+var partialReads = obs.NewCounter("aggregator_partial_reads_total",
+	"Reads answered with partial=true because a storage unit was unreachable.", "endpoint")
