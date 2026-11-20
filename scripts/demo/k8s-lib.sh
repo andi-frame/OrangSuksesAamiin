@@ -22,26 +22,28 @@ trap cleanup_pf EXIT
 
 # forward <service> <local-port> <remote-port>: port-forward in the background until the demo ends.
 # A forward is bound to one pod; when that pod goes away (rollout, kill) ensure_forwards restarts it.
-declare -A PF_SPEC=()
-declare -A PF_PID=()
+# (indexed arrays only: the demos also run under the bash 3.2 of macOS)
+PF_LPORTS=() PF_SVCS=() PF_RPORTS=() PF_PIDOF=()
 forward() {
-  PF_SPEC[$2]="$1 $3"
+  local i idx=-1
+  for i in "${!PF_LPORTS[@]}"; do [ "${PF_LPORTS[$i]}" = "$2" ] && idx=$i; done
+  [ "$idx" -ge 0 ] || { idx=${#PF_LPORTS[@]}; PF_LPORTS[$idx]=$2; }
+  PF_SVCS[$idx]=$1 PF_RPORTS[$idx]=$3
   kn port-forward "svc/$1" "$2:$3" >/dev/null 2>&1 &
-  PF_PID[$2]=$!
+  PF_PIDOF[$idx]=$!
   PF_PIDS+=("$!")
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 150); do
     curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$2/health" && return 0
     sleep 0.2
   done
-  fail "port-forward to $1 did not come up"
+  fail "port-forward to $1 did not come up (30 s)"
 }
 ensure_forwards() {
-  local port svc rport
-  for port in "${!PF_SPEC[@]}"; do
-    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/health" && continue
-    kill "${PF_PID[$port]}" 2>/dev/null || true
-    read -r svc rport <<<"${PF_SPEC[$port]}"
-    forward "$svc" "$port" "$rport"
+  local i
+  for i in "${!PF_LPORTS[@]}"; do
+    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${PF_LPORTS[$i]}/health" && continue
+    kill "${PF_PIDOF[$i]}" 2>/dev/null || true
+    forward "${PF_SVCS[$i]}" "${PF_LPORTS[$i]}" "${PF_RPORTS[$i]}"
   done
 }
 
