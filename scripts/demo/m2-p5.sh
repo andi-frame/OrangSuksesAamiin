@@ -11,6 +11,7 @@
 #   OUTAGE_S=45
 . "$(dirname "${BASH_SOURCE[0]}")/k8s-lib.sh"
 OUTAGE_S="${OUTAGE_S:-45}"
+W="${P5_WINDOW:-6h}"
 API=http://127.0.0.1:18080
 AUTHU=http://127.0.0.1:18084
 NOTIF=http://127.0.0.1:18092
@@ -23,7 +24,10 @@ kn port-forward svc/prometheus 19090:9090 >/dev/null 2>&1 & PF_PIDS+=("$!")
 wait_until 30 "Prometheus reachable" curl -sf "$PROM/-/ready"
 token() { curl -sS --max-time 10 "$AUTHU/v1/token" -H 'Content-Type: application/json' \
   -d "{\"client_id\":\"$1\",\"client_secret\":\"$2\"}" | jqx -r .access_token; }
-promq() { curl -sS --max-time 10 --get "$PROM/api/v1/query" --data-urlencode "query=$1" | jqx -r '.data.result[0].value[1] // "0"'; }
+promq() {
+  curl -fsS --max-time 10 --get "$PROM/api/v1/query" --data-urlencode "query=$1" |
+    jqx -er 'select(.status == "success") | .data.result[0].value[1] | tonumber? | select(isfinite and . >= 0)'
+}
 source_state() { agg /internal/sources/status | jqx -r '.sources[] | select(.source=="SENSOR_PANTAI") | "\(.state) \(.breaker)"'; }
 EXPECTED_DIGEST=sha256:51fbd90d3891ad6e9f5768ad330ffb65205644cb29e50da65c7538f2e0b4397d
 
@@ -75,17 +79,31 @@ while read -r part off hid; do
 done <<<"$crit"
 alerts=$(curl -sS "$NOTIF/alerts")
 echo "$alerts" | jqx -r '(.alerts // [])[-5:][] | "   alert \(.notified_at) \(.hazard_id) \(.attributes.station_id) sea=\(.attributes.sea_level_anomaly_m) wave=\(.attributes.wave_height_m) \(.latency_ms | floor) ms"'
-p95=$(promq 'histogram_quantile(0.95, sum by (le) (increase(consumer_critical_alert_seconds_bucket{consumer="notifier"}[${P5_WINDOW:-6h}]))) * 1000')
-[ "$p95" = NaN ] && p95=$(echo "$alerts" | jqx '[(.alerts // [])[].latency_ms] | sort | if length == 0 then 0 else .[((length * 0.95) | ceil) - 1] end')
+if p95=$(promq "histogram_quantile(0.95, sum by (le) (increase(consumer_critical_alert_seconds_bucket{consumer=\"notifier\"}[$W]))) * 1000"); then
+  info "latency evidence: notifier histogram over $W"
+else
+  # /alerts is a bounded in-memory list. Use it only if it covers every critical Kafka ID under test.
+  ids=$(awk '{print $3}' <<<"$crit" | jqx -Rn '[inputs | select(length > 0)] | unique')
+  p95=$(jqx -er --argjson ids "$ids" '
+    INDEX(.alerts[] | select(.source == "SENSOR_PANTAI"); .hazard_id) as $alerts |
+    [$ids[] | $alerts[.].latency_ms] | select(length > 0 and all(.[]; type == "number" and isfinite and . >= 0)) |
+    sort | .[(length * 0.95 | ceil) - 1]' <<<"$alerts") ||
+    fail "no usable p95 from Prometheus or complete set of critical notifier samples"
+  info "latency evidence: exact notifier samples for all $n_crit critical Kafka IDs"
+fi
 info "critical events: $n_crit, delivered: $((n_crit - lost)), lost: $lost; p95 store -> notifier ${p95} ms"
-info "fetch -> store p95 (Aggregator): $(promq 'histogram_quantile(0.95, sum by (le) (increase(sensor_pantai_critical_ingest_seconds_bucket[${P5_WINDOW:-6h}])))') s; poll interval 1 s"
+if ingest_p95=$(promq "histogram_quantile(0.95, sum by (le) (increase(sensor_pantai_critical_ingest_seconds_bucket[$W])))"); then
+  info "fetch -> store p95 (Aggregator): ${ingest_p95} s; poll interval 1 s"
+else
+  info "fetch -> store p95 unavailable for $W"
+fi
 [ "$lost" = 0 ] || fail "$lost critical event(s) not delivered"
 awk -v p="$p95" 'BEGIN{exit !(p <= 5000)}' || fail "p95 ${p95} ms > 5 s"
 ok "every critical event was delivered to the notifier (0 lost), p95 ${p95} ms <= 5 s"
 
 step "4. Sensor unhealthy for ${OUTAGE_S}s (pod removed): isolation, fast answers, no request storm, self-recovery"
 TOK=$(token "$AUTH_PUSAT_CLIENT_ID" "$AUTH_PUSAT_CLIENT_SECRET")
-before=$(promq 'sum(http_client_requests_total{target="sensor-pantai"})')
+before=$(promq 'sum(http_client_requests_total{target="sensor-pantai"})') || fail "sensor request counter unavailable before the outage"
 show "kubectl scale deploy/sensor-pantai --replicas=0"
 kn scale deploy/sensor-pantai --replicas=0 >/dev/null
 t0=$(date +%s)
@@ -99,7 +117,10 @@ while [ $(($(date +%s) - t0)) -lt "$OUTAGE_S" ]; do
   curl -s -o /tmp/p5-coastal.$$ -w '%{time_total}\n' "$API/v1/hazards?source=SENSOR_PANTAI&limit=5" -H "Authorization: Bearer $TOK" >>"$CLAT"
   sleep 0.5
 done
-after=$(promq 'sum(http_client_requests_total{target="sensor-pantai"})')
+if ! after=$(promq 'sum(http_client_requests_total{target="sensor-pantai"})'); then
+  kn scale deploy/sensor-pantai --replicas=1 >/dev/null
+  fail "sensor request counter unavailable at the end of the outage"
+fi
 p95b=$(sort -n "$LAT" | awk '{a[NR]=$1} END{i=int(NR*0.95); if(i<1)i=1; print a[i]*1000}')
 p95c=$(sort -n "$CLAT" | awk '{a[NR]=$1} END{i=int(NR*0.95); if(i<1)i=1; print a[i]*1000}')
 stale=$(jqx -r '.freshness.SENSOR_PANTAI.stale_since // "null"' </tmp/p5-coastal.$$)
@@ -144,9 +165,10 @@ else
 fi
 
 step "6. SLO of the Tim Lapangan warning path: 99 % of critical alerts within 5 s"
-W="${P5_WINDOW:-6h}"
-ratio=$(promq "sum(increase(consumer_critical_alert_seconds_bucket{le=\"5\"}[$W])) / clamp_min(sum(increase(consumer_critical_alert_seconds_count[$W])), 1e-9)")
-total=$(promq "sum(increase(consumer_critical_alert_seconds_count[$W]))")
-info "alerts in the last ${P5_WINDOW:-6h}: $total, within 5 s: $(awk -v r="$ratio" 'BEGIN{printf "%.2f %%", r*100}'), error budget used: $(awk -v r="$ratio" 'BEGIN{printf "%.0f %%", (1-r)/0.01*100}')"
+if ratio=$(promq "sum(increase(consumer_critical_alert_seconds_bucket{consumer=\"notifier\",le=\"5\"}[$W])) / sum(increase(consumer_critical_alert_seconds_count{consumer=\"notifier\"}[$W]))"); then
+  info "alerts within 5 s over $W: $(awk -v r="$ratio" 'BEGIN{printf "%.2f %%", r*100}'), error budget used: $(awk -v r="$ratio" 'BEGIN{printf "%.0f %%", (1-r)/0.01*100}')"
+else
+  fail "SLO and error budget unavailable for $W (no usable notifier measurement)"
+fi
 info "Grafana: Argus / Observabilitas -> row 'P5 Sensor Pantai' (SLO, budget, critical sent vs delivered, requests to the sensor)"
 printf '\n%sP5 PASS%s\n' "$C_G$C_B" "$C_0"
