@@ -1,0 +1,4 @@
+Latihan "wipe-node": 1 langkah
+  - t+5s wipe_and_shutdown role=store nodes=any
+Permintaan ff312bd0a7e2 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+scenario did not finish in time

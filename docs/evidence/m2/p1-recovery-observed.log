@@ -1,0 +1,40 @@
+# P1 criteria 4-6: Tester Agent practice 'wipe-node' on the k3s demo cluster, 22 Nov 2026 (times UTC)
+
+## Tester run record (ConfigMap tester-run, saved before the stuck practice run was cleared)
+coordinator":"node-b"
+
+## node-b VirtualBox log: the guest powered itself off (Tester), 3 min after boot
+01:24:58.822302 ACPI: Entering S5 power state (power down)
+00:03:08.953754 ACPI: Entering S5 power state (power down)
+
+## Self-heal and rebalance (balance-shard, every shard member)
+{"time": "2026-11-22T14:23:55Z", "component": "balance-shard", "member": "shard-1-0", "msg": "reinitialize failed", "state": "stopped", "error": "timed out"}
+{"time": "2026-11-22T14:31:57Z", "component": "balance-shard", "member": "shard-2-0", "msg": "switchover requested", "candidate": "shard-2-1", "preferred_node": "node-a", "status": 200, "response": "Successfully switched over to \"shard-2-1\""}
+{"time": "2026-11-22T14:39:58Z", "component": "balance-shard", "member": "shard-0-0", "msg": "switchover requested", "candidate": "shard-0-1", "preferred_node": "node-a", "status": 200, "response": "Successfully switched over to \"shard-0-1\""}
+{"time": "2026-11-22T14:40:32Z", "component": "balance-shard", "member": "shard-2-0", "msg": "switchover requested", "candidate": "shard-2-1", "preferred_node": "node-a", "status": 200, "response": "Successfully switched over to \"shard-2-1\""}
+{"time": "2026-11-22T14:49:32Z", "component": "balance-shard", "member": "shard-1-1", "msg": "switchover requested", "candidate": "shard-1-0", "preferred_node": "node-b", "status": 200, "response": "Successfully switched over to \"shard-1-0\""}
+{"time": "2026-11-22T14:51:44Z", "component": "balance-shard", "member": "shard-0-0", "msg": "switchover requested", "candidate": "shard-0-1", "preferred_node": "node-a", "status": 200, "response": "Successfully switched over to \"shard-0-1\""}
+
+## Placement now: every shard has a replica on the other node; primaries on both nodes
+MEMBER      NODE     ROLE      RESTARTS
+shard-0-0   node-b   replica   1
+shard-0-1   node-a   primary   3
+shard-1-0   node-b   primary   2
+shard-1-1   node-a   replica   3
+shard-2-0   node-b   replica   1
+shard-2-1   node-a   primary   3
+
+## Audit checksum per source after recovery
+{"algorithm":"sha256","as_of":"2026-11-22T15:08:46.501707501Z","checksum":"f587b9924a674a221eebe7b22cd84556fb8ead2f8cf3d8b525a9fe27ed539143","count":8923,"partial":false,"source":"BMKG","unavailable_units":[]}
+
+{"algorithm":"sha256","as_of":"2026-11-22T15:08:46.809872291Z","checksum":"0b0b6cb8f4b3d5a279a18cfdcb0d561e66ddbb0f72a6c7fc9eb61e9e3e53fc25","count":2386,"partial":false,"source":"PVMBG","unavailable_units":[]}
+
+{"algorithm":"sha256","as_of":"2026-11-22T15:08:47.035625791Z","checksum":"54d66dfa037cde808b33aa90beabf4cd6736e8abfe9273649a842125ab52492a","count":400,"partial":false,"source":"SATELIT","unavailable_units":[]}
+
+{"algorithm":"sha256","as_of":"2026-11-22T15:08:47.391998809Z","checksum":"40efdbca1b3a8322533d18d9807677b878de15d5c7045019a1106c4ddb23b5d0","count":5107,"partial":false,"source":"SENSOR_PANTAI","unavailable_units":[]}
+
+
+## Captured earlier from shard-1-0 (container since restarted), kubectl logs at 13:17 UTC:
+{"time": "2026-11-22T13:17:05Z", "component": "balance-shard", "member": "shard-1-0", "msg": "reinitialize requested", "state": "start failed", "leader": "shard-1-1", "status": 200, "response": "reinitialize started"}
+## shard-1-0 before the self-heal: PANIC could not locate a valid checkpoint record (data directory half deleted by wipe-node)
+## node-b data directories after wipe-node (ls /var/lib/rancher/k3s/storage at 12:04 UTC): data-shard-0-0 and auth-data emptied at 11:07-11:08 UTC

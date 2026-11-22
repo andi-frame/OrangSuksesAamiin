@@ -77,91 +77,94 @@ P3 kriteria 6 (`POST /field-reports`), load test, dashboard analitik P1; **Orang
 
 ## Ketentuan implementasi M2
 
+Semua bukti M2 diambil pada 22 Nov 2026 di cluster demo k3s (2 VM VirtualBox, README §M2.1) dengan storage sharded,
+kecuali yang ditandai lain. ✅ = lulus di cluster demo, 🟡 = sebagian (alasan di kolom Status), ❌ = belum tercapai,
+➡️ = membutuhkan bahan asisten yang baru diberikan setelah tenggat (ditunjukkan di video).
+
 | Ketentuan | Demo / cara memeriksa | Bukti | Kode | Owner | Status |
 |---|---|---|---|---|---|
-| Semua komponen di Kubernetes, satu perintah deploy | `make k8s-up` | output `scripts/k8s/up.sh` | `deploy/kustomization.yaml`, `deploy/k8s/*`, `scripts/k8s/*` | 1 | ✅ k3s |
-| Cluster ≥ 2 node kernel terpisah; deklarasi topologi | README §M2.1; `bash scripts/k8s/topology.sh` | `docs/evidence/m2/topology.log` | `scripts/k8s/vbox-cluster.sh` | 1 (semua) | ✅ k3s (2 VM VirtualBox) |
-| `resources.requests/limits` sesuai Lampiran B, label `role` | `kubectl get pods -L role`; manifest | `deploy/k8s/*.yaml` | idem | 1 | ✅ |
-| Secret per komponen, ConfigMap, `.env.example` | `make demo-m2-isolation` langkah 4 | `docs/evidence/m2/isolation-latest.log` | `scripts/k8s/secrets.sh` | 1 | ✅ k3s |
-| "Satu storage satu pemilik" ditegakkan platform | `make demo-m2-isolation` | idem | `deploy/k8s/networkpolicy.yaml` | 1 | ✅ k3s |
-| Data `role=store` di disk node (local PV) | `kubectl get pv` (StorageClass `local-path`) | – | `deploy/k8s/postgres-canonical.yaml` | 1 / 3 | ✅ |
-| Tester Agent terpasang tanpa modifikasi, tidak dihalangi; `schema` sampai ke PVMBG (HTTP 200) | `make k8s-up`; `bash scripts/k8s/practice.sh schema` | `docs/evidence/m2/tester-*.log` (schema, kill-leader, clock-skew, partition) | `scripts/k8s/common.sh` (URL dipin), `deploy/k8s/*-mock.yaml` (`*_ADMIN_OPEN`, Service bmkg tanpa label role), `vbox-cluster.sh` (symlink iptables agar `partition` jalan) | 1 | ✅ k3s |
-| Observabilitas (dashboard metrik, trace, log `cid`) | `make demo-m2-observability`: `up` per pod untuk 8 service, trace baca/tulis/ingest lintas service dengan durasi tiap langkah, `cid` + `trace_id` di log; Grafana `:30030`, Jaeger `:30686` | `docs/evidence/m2/observability-kind.log` (k3s: `observability-latest.log`) | `pkg/obs/{metrics,trace}.go`, `deploy/k8s/observability.yaml`, `deploy/grafana/` | 2 | 🟡 kind, k3s tertunda |
-| Audit API `unprocessed` | `make demo-m2-p3` langkah 3; `TestAuditUnprocessedMatchesLampiranA` | `docs/evidence/m2/p3-latest.log` | `aggregator/internal/api/ops.go` | 1 | ✅ |
-| Audit API `events`, `checksum`, `location` | `TestAuditRoutesMatchAppendixA` | `docs/evidence/m2/p1-kind-audit.log` | `aggregator/internal/api/audit.go` | 3 | 🟡 kind dan unit test |
+| Semua komponen di Kubernetes, satu perintah deploy | `make k8s-up` | output `scripts/k8s/up.sh` | `deploy/`, `overlays/sharded/`, `scripts/k8s/*` | 1 | ✅ |
+| Cluster ≥ 2 node kernel terpisah; deklarasi topologi | README §M2.1; `bash scripts/k8s/topology.sh` | `docs/evidence/m2/topology.log` | `scripts/k8s/vbox-cluster.sh` | 1 | ✅ |
+| `resources.requests/limits` sesuai Lampiran B, label `role` | `kubectl get pods -L role`; manifest | `deploy/k8s/*.yaml`, `overlays/sharded/postgresql.yaml` | idem | 1 | ✅ |
+| Secret per komponen, ConfigMap, `.env.example` | `make demo-m2-isolation` langkah 4 | `docs/evidence/m2/isolation-latest.log` | `scripts/k8s/secrets.sh` | 1 | ✅ |
+| "Satu storage satu pemilik" ditegakkan platform | `make demo-m2-isolation` | idem (hanya Aggregator ke ketiga shard; hanya klien Kafka ke broker) | `deploy/k8s/networkpolicy.yaml`, `overlays/sharded/postgresql.yaml` | 1 | ✅ |
+| Data `role=store` di disk node (local PV) | `kubectl get pv` (StorageClass `local-path`) | `docs/evidence/m2/p1-recovery-observed.log` (direktori PV di node-b) | `overlays/sharded/postgresql.yaml` | 1 / 3 | ✅ |
+| Tester Agent terpasang tanpa modifikasi, tidak dihalangi | `make k8s-up`; `bash scripts/k8s/practice.sh` | `docs/evidence/m2/tester-list.log`, `tester-*.log` | `scripts/k8s/common.sh` (manifest dipin) | 1 | ✅ |
+| Observabilitas (dashboard metrik, trace, log `cid`) | `make demo-m2-observability`; Grafana `:30030`, Jaeger `:30686` | `docs/evidence/m2/observability-latest.log` | `pkg/obs`, `deploy/k8s/observability.yaml`, `deploy/grafana/` | 2 | 🟡 lulus di kind (`observability-kind.log`); dashboard P1/P4 baru dan Grafana berjalan di k3s, demo otomatis tidak diulang karena waktu |
+| Audit API `unprocessed` | `make demo-m2-p3` langkah 3 | `docs/evidence/m2/p3-latest.log` | `aggregator/internal/api/ops.go` | 1 | ✅ |
+| Audit API `events`, `checksum`, `location` | `make demo-m2-analytics`, `m2-p1.sh`, `m2-p1-recovery.sh` | `p1-analytics-latest.log`, `p1-snapshot.log`, `p1-recovery-observed.log` | `aggregator/internal/api/audit.go`, `adapters/sharded/location.go` | 3 | ✅ dengan token pengembangan; token asisten ➡️ |
+
+## Problem 1 — Yang Pulang Membawa Laptopnya (Owner: 3; dashboard: 2; integrasi 2 node: 1)
+
+| Kriteria | Demo | Bukti | Kode | Status |
+|---|---|---|---|---|
+| 1. Data dipartisi, tidak ada unit memuat semua, primary di > 1 node, sebaran dilaporkan | `make demo-m2-p1-load` | `p1-load-latest.log`, Grafana baris P1 | `adapters/sharded`, `overlays/sharded`, `services/canonical-shard/balance.py` | ✅ (katalog sintetis; katalog asisten ➡️) |
+| 2. Ketidakmerataan alami, beban per node saat muat dan lonjakan | idem | idem §2–3 dan perbandingan alternatif §5 | `tools/catalog/catalog.py` | ✅ |
+| 3. Baca lintas lokasi, 50 terbaru, pagination, urutan benar | `bash scripts/demo/m2-p1.sh snapshot` | `p1-snapshot.log` | `adapters/sharded/sharded.go` (`List`) | ✅ |
+| 4. Worker mati + data dihapus: tidak ada yang hilang; jawaban lengkap/parsial, bukan 500 | Tester `wipe-node` | `p1-recovery-observed.log` (failover, jumlah per sumber), `p1-analytics-latest.log` (unit hilang → `partial`) | Patroni, `adapters/sharded` | 🟡 failover dan jawaban parsial terbukti; pembandingan per record selama skenario tidak terekam |
+| 5. Node kembali dengan disk kosong ikut menanggung data dan beban | idem | `p1-recovery-observed.log`: rebuild otomatis, self-heal replica rusak, switchover primary shard-1 kembali ke node-b | `balance.py` | ✅ |
+| 6. Kembali tahan kehilangan satu node berikutnya | idem | setiap shard kembali punya replica sinkron di node lain | idem | 🟡 redundansi pulih; kehilangan kedua tidak diulang |
+| 7. Dashboard analitik = Audit API; tanda tidak lengkap | `make demo-m2-analytics` | `p1-analytics-latest.log` | `client-api` dashboard, `api/analytics.go` | ✅ |
+| Laporan | – | `docs/report/m2/01-p1.md` | – | ✅ |
 
 ## Problem 2 — Dua Nakhoda, Satu Kapal (Owner: 1; load test: 2)
 
-| Kriteria | Demo | Bukti | Kode | Owner | Status |
-|---|---|---|---|---|---|
-| 1. ≥ 3 instance di node berbeda, satu titik masuk yang hanya mengarah ke instance sehat | `make demo-m2-p2` langkah 1 | `docs/evidence/m2/p2-latest.log` | `deploy/k8s/aggregator.yaml` (topologySpread, readinessProbe) | 1 | ✅ k3s (3 instance di 2 node) |
-| 2. Tiap sumber diambil tepat sekali; tidak ada duplikat; upstream tidak menerima permintaan berlipat | `make demo-m2-p2` langkah 2–4 (log mock per `caller`) | idem | `internal/leader`, `poller/loop.go` (Gate), header `X-Caller` | 1 | ✅ k3s |
-| 3. Instance yang mengambil data mati → diambil alih ≤ 60 s, tanpa celah/duplikat | `make demo-m2-p2` langkah 5–6; `practice kill-leader` | idem, `tester-kill-leader.log` | `internal/leader/elector.go` | 1 | ✅ k3s (13 s) |
-| 4. Jam bergeser (+45 s / −30 s) → tidak ada dua instance menyimpan pada periode sama | `practice clock-skew` lalu `bash scripts/demo/m2-single-writer.sh`; `TestSkewedHolderClockDoesNotCauseTakeover`, `TestClockJumpOnLeaderNodeKeepsSingleLeader` | `docs/evidence/m2/tester-clock-skew.log` (latihan: +300 s selama 30 s) | `leader/elector.go`, fencing di `adapters/postgres/unprocessed.go` (`checkFence`) | 1 | ✅ k3s |
-| 5. Node leader freeze lalu bangun → tidak menyimpan apa pun sampai statusnya diperbarui | `bash scripts/demo/m2-freeze.sh` (VM node-b di-*pause* VirtualBox, `FREEZE_CMD`/`THAW_CMD`); `TestFrozenLeaderIsFencedAfterWakingUp` | `docs/evidence/m2/freeze.log` (beku 48 s, term 33 → 34, 0 baris dari term 33 setelah freeze) | `ports/fence.go`, `leader.Confirm` | 1 | ✅ k3s |
-| 6. Load test ≥ 10.000 VU ≥ 120 s, skala 3 → 5 → 2, error < 1 % | `make loadtest-m2-scale` (k6 di luar cluster, 90 % Media / 10 % Lapangan, lalu `m2-single-writer.sh`) | `docs/evidence/m2/p2-loadtest-scale.log`, `k6-m2-scale-summary.json` | `scripts/loadtest/{m2.js,m2-scale.sh}` | 2 | 🟡 skrip siap (divalidasi 300 VU di compose), run k3s tertunda |
-| 7. Throughput 3 instance ≥ 2× 1 instance | `make loadtest-m2-throughput` (mode max, CPU limit sama per pod) | `docs/evidence/m2/p2-loadtest-throughput.log`, `k6-m2-throughput-{1,3}.json` | `scripts/loadtest/m2-throughput.sh` | 2 | 🟡 skrip siap, run k3s tertunda |
-| 8. Ganti versi Aggregator saat beban tanpa permintaan gagal | `make demo-m2-p2` langkah 8 (`NEW_TAG=`) | `docs/evidence/m2/p2-latest.log` (k3s2 → k3s1, 1 955 permintaan, 0 gagal) | `deploy/k8s/aggregator.yaml` (maxUnavailable 0, preStop), `cmd/aggregator/main.go` (drain, lease release) | 1 | ✅ k3s |
-| Laporan: persoalan, mekanisme, sumber waktu, batas waktu dan trade-off | – | `docs/report/m2/02-p2.md` | – | 1 | ✅ draf |
+| Kriteria | Demo | Bukti | Kode | Status |
+|---|---|---|---|---|
+| 1. ≥ 3 instance di node berbeda, satu titik masuk yang hanya ke instance sehat | `make demo-m2-p2` | `p2-latest.log` | `deploy/k8s/aggregator.yaml` | ✅ |
+| 2. Tiap sumber diambil tepat sekali, tanpa duplikat, upstream tidak menerima permintaan berlipat | idem | idem (log mock per `caller`) | `internal/leader`, `poller` | ✅ |
+| 3. Pengambil data mati → dilanjutkan ≤ 60 s tanpa celah/duplikat | idem | idem (31 s, 0 hilang, 0 ganda) | `leader/elector.go` | ✅ |
+| 4. Jam bergeser → tidak ada dua instance menyimpan pada periode sama | `practice clock-skew` + `m2-single-writer.sh` | `tester-clock-skew.log` (14 Nov, store tunggal) | `leader`, fencing | ✅ (bukti 14 Nov; fencing per shard diuji di `repotest`) |
+| 5. Node leader freeze lalu bangun → tidak menyimpan apa pun | `bash scripts/demo/m2-freeze.sh` | `freeze.log` (22 Nov, sharded) | `ports/fence.go`, `leader.Confirm` | ✅ |
+| 6. Load test ≥ 10.000 VU ≥ 120 s, skala 3 → 5 → 2, error < 1 % | `scripts/loadtest/m2-scale.sh` | `p2-loadtest-scale-10k-attempt.log` | `scripts/loadtest/*` | ❌ cluster satu laptop jenuh (laporan P2 §6) |
+| 7. Throughput 3 instance ≥ 2× 1 instance | `scripts/loadtest/m2-throughput.sh` | – | idem | ❌ tidak diukur (alasan sama) |
+| 8. Ganti versi saat beban tanpa permintaan gagal | `make demo-m2-p2` (`NEW_TAG`) | `p2-latest.log` (22c2a80 → b500253, 204 permintaan, 0 gagal) | `aggregator.yaml`, `cmd/aggregator/main.go` | ✅ |
+| Laporan | – | `docs/report/m2/02-p2.md` | – | ✅ |
 
 ## Problem 3 — Surat dari Tetangga (Owner: 1; kriteria 6: 2)
 
-| Kriteria | Demo | Bukti | Kode | Owner | Status |
-|---|---|---|---|---|---|
-| Mock: mode baru `/admin/schema-version` (rename, type change, field wajib hilang) | `make demo-m2-p3` langkah 4; `TestIncompatibleModeChangesNewReportsOnly` | `docs/evidence/m2/p3-latest.log` | `pvmbg-mock/internal/pvmbg/{server,store}.go` | 1 | ✅ |
-| 1. Deklarasi perubahan yang diterima otomatis / tidak; perilaku konsisten | `make demo-m2-p3` langkah 1, 4 | idem | `mapping/raw.go` (komentar paket) | 1 | ✅ k3s |
-| 2. Pesan gagal tersimpan utuh + alasan, sumber, waktu; retryable vs parked diperlakukan beda | `make demo-m2-p3` langkah 2; `dead_letter_*` (repotest) | idem | `internal/dlq`, tabel `unprocessed` | 1 | ✅ k3s |
-| 3. Pesan rusak (terpotong, dalam, UTF-8 invalid, besar) tidak membuat crash; yang lain tetap diproses | `make demo-m2-p3` langkah 2; `TestSplitIsolatesEveryKindOfBrokenElement`, `TestMalformedMessagesAreParkedAndOthersProcessed` | idem | `sources/split.go` | 1 | ✅ k3s |
-| 4. Setelah penyesuaian, pesan gagal diproses ulang: pulih semua, tanpa duplikat, urut per `source_ref_id` | `make demo-m2-p3` langkah 5; `TestIncompatibleChangeRecoversAfterAdjustmentInOrderWithoutDuplicates` | idem | `mapping/rules.go`, `dlq.Worker`, `deploy/schema-rules/pvmbg-v3.json` | 1 | ✅ k3s |
-| 5. Pesan gagal hanya dapat diperiksa BNPB Internal Ops | `make demo-m2-p3` langkah 3; `TestDeadLettersOnlyForTheirPrincipals` | idem | `api/internal.go` (`bearer`), `api/ops.go` | 1 | ✅ |
-| 6. `POST /field-reports` 202 cepat; tidak hilang, tidak ganda | `make demo-m2-field-reports` (pemroses 0 replika, retry kunci sama, semua pod client-api dibunuh setelah 202, pemroses dibunuh di tengah transaksi); `fieldreports_test.go`, `processor_test.go` (duplikat, restart, zombie) | `docs/evidence/m2/p3-field-reports-kind.log` (40 diterima → 40 diproses sekali; k3s: `p3-field-reports-latest.log`) | `client-api/internal/{reports,api/fieldreports.go}`, `services/field-reports`, `deploy/k8s/field-reports.yaml` | 2 | 🟡 kind, k3s tertunda |
-| Laporan: persoalan, kebijakan skema, mekanisme DLQ, jaminan pengiriman | – | `docs/report/m2/03-p3.md` (kriteria 1–5; kriteria 6: §7) | – | 1 / 2 | ✅ draf |
-
-## Problem 1 — Canonical Store terdistribusi
-
-| Kriteria | Demo / bukti | Owner | Status |
-|---|---|---|---|
-| 1. Katalog dan sebaran fisik | `aggregator import-catalog`, `m2-p1.sh baseline`, `docs/evidence/m2/p1-kind-audit.log` | 3 | 🟡 katalog sintetis |
-| 2. Lonjakan satu wilayah | Impor fixture regional, bandingkan snapshot SQL dari `m2-p1.sh` | 3 | ⬜ pengukuran k3s |
-| 3. Urutan dan pagination global | `TestShardLossStillServesAndFenceCoversEveryShard`, `p1-kind-audit.log` | 3 | 🟡 kind dan unit test |
-| 4. Worker hilang, cek checksum dan cakupan parsial | `p1-kind-failover.log`, `practice.sh kill-store`, `practice.sh wipe-node` | 3 | 🟡 freeze kind, Tester k3s tertunda |
-| 5. Rebuild disk dan kembalikan beban | `scripts/k8s/restore-shard.sh --confirmed-wipe ... --promote`, `p1-kind-restore.log` | 3 | 🟡 kind |
-| 6. Tahan gagal lagi setelah sinkronisasi | `p1-kind-restore.log`, kehilangan worker berikutnya setelah standby sinkron | 3 | 🟡 kind, 64/64 record |
-| 7. Dashboard analitik | `http://<node>:30080/dashboard`; `make demo-m2-analytics` (angka = hitungan Audit API pada potongan `ingested_at` yang sama; shard mati → `partial`); `analytics_test.go`; bukti `p1-analytics-compose-local.log` (identik 3×) | 2 | 🟡 compose, k3s tertunda |
-| Laporan | `docs/report/m2/01-p1.md` | 3 | 🟡 draf sebelum demo k3s |
-
-## Problem 4 — Feed Satelit
-
-| Kriteria | Demo / bukti | Owner | Status |
-|---|---|---|---|
-| 1. WILDFIRE lintas satelit | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard`, `p4-practice-dev.log` | 3 | 🟡 fixture dan sampel practice |
-| 2. Waktu akuisisi, keterlambatan, singleton | `satellite_checkpoint` dan `/internal/satellite/status` | 3 | 🟡 implementasi |
-| 3. Update/retract menjaga ID kebakaran | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard` | 3 | ✅ fixture |
-| 4. 60×, catch-up ≤60 s, p95 | `scripts/demo/m2-p4.sh` dengan akhir burst, `p4-practice-dev.log` | 3 | 🟡 p95 replay 597 ms di kind, target k3s tertunda |
-| 5. Restart selama pemrosesan | `TestPendingChangesResumeAfterPartialApply` | 3 | ✅ fixture |
-| 6. Perbandingan hasil referensi | Audit API `events` dan `checksum?source=SATELIT` | 3 | ⬜ menunggu referensi |
-| 7. Live feed selama demo | `p4-practice-dev.log` membuktikan wire contract | 3 | 🟡 rekaman cluster tertunda |
-| 8. Resume tanpa gap atau duplikasi | SSE `from` inklusif, tes reconnect dan replay | 3 | ✅ fixture |
-| Laporan | `docs/report/m2/04-p4.md` | 3 | 🟡 draf sebelum demo k3s |
-
-## Problem 5 dan bonus
-
-| Bagian | Owner | Status |
-|---|---|---|
-| P5 Sensor Pantai, SLO, game day | 2 | 🟡 kriteria 1–5, 7, 8 siap (lihat tabel di bawah); game day k3s tertunda |
-| Bonus host fisik berbeda / AI-native | 1 / 3 | ⬜ opsional |
-| Bonus HPA | 2 | 🟡 `deploy/hpa/hpa.yaml`, `scripts/k8s/hpa.sh`, `make demo-m2-hpa`; run k3s tertunda |
-
-### Problem 5 — Pelampung yang Berbohong (Owner: 2)
-
-| Kriteria | Demo / test | Bukti | Kode | Status |
+| Kriteria | Demo | Bukti | Kode | Status |
 |---|---|---|---|---|
-| 1. 0 event kritis hilang, p95 ≤ 5 s | `make demo-m2-p5` langkah 3 (offset ter-commit group `notifier` > offset setiap event kritis) | `p5-compose-local.log` (12,8 / 992,8 ms stabil), kind 3/3 terkirim | `poller/coastal.go` (kritis lebih dulu), `relay` (batch), `consumer-hazard/internal/runner` | 🟡 |
-| 2. Pelanggaran kontrak disisihkan | langkah 2; `TestCoastalSetsContractViolationsAsideWithReason`, `...MalformedPage...`, `...Duplicates...` | `p5-compose-local.log` (`quality "suspect"` parked) | `mapping/coastal.go`, `sources/coastal.go` | 🟡 |
-| 3. Sumber lain tetap latensi M1 | langkah 4 | BMKG-only p95 23,7 ms saat sensor padam (compose) | bulkhead: loop + klien HTTP + breaker sendiri | 🟡 |
-| 4. Tidak melonjak, jawab cepat, pulih sendiri | langkah 4; `TestCoastalLyingHealthIsAFailure...`, `TestCoastalFrozenGeneratedAt...`, `TestCoastalRejectedCursorStartsOver` | 10 permintaan / 45 s; data pesisir p95 11 ms + `stale_since`; pulih 4 s | `resilience.Breaker`, `poller/coastal.go` | 🟡 |
-| 5. Lapangan dilayani, Media ditolak terkontrol | langkah 5 (k6); `TestMediaFloodDoesNotStarveLapangan`, `TestConcurrencyReserveKeepsSlotsForLapangan` | Lapangan 1 700×200 / 0×429, Media 26 730×429, 0 error | `client-api/internal/limit/priority.go` | 🟡 |
-| 6. Kombinasi kegagalan tanpa intervensi | game day (`docs/report/m2/05-p5.md` §6) | – | – | ⬜ tertunda |
-| 7. Jelaskan kegagalan dari dashboard/metrik/trace | Grafana baris "P5 Sensor Pantai"; `make demo-m2-observability` | `observability-kind.log` | `deploy/grafana/gen-dashboard.py` | 🟡 |
-| 8. SLO + error budget | langkah 6; aturan `CriticalAlertLatencySLOBurn` | – | `deploy/k8s/observability.yaml` (rules) | 🟡 nilai game day tertunda |
-| Laporan | – | `docs/report/m2/05-p5.md` | – | ✅ draf |
+| Mock: mode `/admin/schema-version` tidak kompatibel | `make demo-m2-p3` | `p3-sharded-20261122.log`, `p3-latest.log` | `pvmbg-mock/internal/pvmbg` | ✅ |
+| 1. Deklarasi perubahan yang diterima / tidak; perilaku konsisten | idem | `p3-sharded-20261122.log` (22 Nov, sharded) | `mapping/raw.go` | ✅ |
+| 2. Pesan gagal tersimpan utuh; retryable vs parked | idem | `p3-sharded-20261122.log` (22 Nov, sharded) | `internal/dlq` | ✅ |
+| 3. Pesan rusak tidak membuat crash | idem | `p3-sharded-20261122.log` (22 Nov, sharded) | `sources/split.go` | ✅ |
+| 4. Diproses ulang: pulih semua, tanpa duplikat, urut per `source_ref_id` | `make demo-m2-p3` langkah 5 | `p3-latest.log` (k3s 14 Nov) | `mapping/rules.go`, `dlq.Worker` | ✅ (14 Nov); ulangan 22 Nov terhenti di rolling update karena NetworkPolicy node-a, lihat laporan P3 §6 |
+| 5. Pesan gagal hanya untuk BNPB Internal Ops | idem | `p3-sharded-20261122.log` (22 Nov, sharded) | `api/ops.go` | ✅ |
+| 6. `POST /field-reports` 202 cepat; tidak hilang, tidak ganda | `make demo-m2-field-reports` | `p3-field-reports-kind.log` (kind) | `client-api/internal/reports`, `services/field-reports` | 🟡 lulus di kind; tidak diulang di k3s karena waktu |
+| Laporan | – | `docs/report/m2/03-p3.md` | – | ✅ |
+
+## Problem 4 — Atap Seng di Siang Bolong (Owner: 3; metrik dan ketahanan stream: 1)
+
+| Kriteria | Demo / bukti | Status |
+|---|---|---|
+| 1. WILDFIRE lintas satelit, satu kebakaran satu HazardEvent | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard`; feed practice live di cluster (Audit SATELIT 400 event) | ✅ |
+| 2. Waktu deteksi, batas keterlambatan, deteksi terlambat dilaporkan | `tools/satellite/probe.py` → `p4-lateness-probe.log`; metrik `satellite_late_detections` | ✅ |
+| 3. Update/retract memperbarui event yang sama | `TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard` | ✅ (uji) |
+| 4. 60×, tidak hilang, mutakhir ≤ 60 s, p95, ketertinggalan di dashboard | practice berjalan 60× (`speed=60`); panel Grafana P4 (lag, p95) | 🟡 berjalan live; angka catch-up/p95 dari sesi ujian ➡️ |
+| 5. Pemroses mati di tengah pengenalan → hasil sama | `TestPendingChangesResumeAfterPartialApply`; failover leader P2 selama feed berjalan | ✅ (uji) |
+| 6. Perbandingan dengan referensi asisten | metode di laporan P4 §5 | ➡️ |
+| 7. Feed live beberapa menit saat demo | consumer di leader membaca practice live (SATELIT 8 → 400 event selama gladi) | ✅ |
+| 8. Putus dan menyambung tanpa hilang/ganda | resume inklusif dari offset; `TestBrokenEventsAreSkippedWithoutStallingTheFeed` | ✅ (uji) |
+| Laporan | `docs/report/m2/04-p4.md` | ✅ |
+
+## Problem 5 — Pelampung yang Berbohong (Owner: 2)
+
+| Kriteria | Demo / test | Bukti | Status |
+|---|---|---|---|
+| 1. 0 event kritis hilang, p95 ≤ 5 s | `make demo-m2-p5` | `p5-latest.log` | <!--P5--> |
+| 2. Pelanggaran kontrak disisihkan | idem | idem | <!--P5--> |
+| 3. Sumber lain tetap latensi M1 | idem | idem | <!--P5--> |
+| 4. Tidak melonjak, jawab cepat, pulih sendiri | idem | idem | <!--P5--> |
+| 5. Lapangan dilayani, Media ditolak terkontrol | idem langkah 5 | idem | <!--P5--> |
+| 6. Kombinasi kegagalan tanpa intervensi (game day) | `make demo-m2-gameday` | – | ➡️ skenario ujian dijalankan saat video; skrip siap |
+| 7. Jelaskan kegagalan dari dashboard/metrik/trace | Grafana baris P5; Jaeger | `observability-latest.log` | ✅ |
+| 8. SLO + error budget | `make demo-m2-p5` langkah 6; `make demo-m2-gameday` | `p5-latest.log` | <!--P5--> |
+| Laporan | – | `docs/report/m2/05-p5.md` | ✅ |
+
+## Bonus
+
+| Bagian | Status |
+|---|---|
+| Host fisik berbeda / AI-native | tidak diambil |
+| Kapasitas yang menyesuaikan diri (HPA) | 🟡 manifest dan demo siap (`deploy/hpa/hpa.yaml`, `make demo-m2-hpa`); tidak dijalankan di cluster demo karena kapasitas (lihat P2 kriteria 6) |

@@ -52,6 +52,12 @@ spec:
           readinessProbe:
             tcpSocket: {port: kafka}
             periodSeconds: 5
+          # KRaft recovery after an unclean stop of the node can take minutes on a busy 4-vCPU node: liveness only
+          # starts once the broker listens, so it is not killed in the middle of its own recovery (crash loop)
+          startupProbe:
+            tcpSocket: {port: kafka}
+            periodSeconds: 5
+            failureThreshold: 60
           livenessProbe:
             tcpSocket: {port: kafka}
             initialDelaySeconds: 30

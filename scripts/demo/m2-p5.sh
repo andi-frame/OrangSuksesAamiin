@@ -55,11 +55,11 @@ step "3. Critical events reach the Tim Lapangan notifier: 0 lost, p95 <= 5 s"
 # Kafka keeps the committed offsets. Every critical event in hazard.events below the committed offset of the
 # group "notifier" has therefore been delivered. Latency: the notifier's histogram (Prometheus).
 KAFKA_BIN=/opt/kafka/bin
-crit=$(kn exec kafka-0 -- "$KAFKA_BIN/kafka-console-consumer.sh" --bootstrap-server localhost:9092 --topic hazard.events \
+crit=$(MSYS_NO_PATHCONV=1 kn exec kafka-0 -- "$KAFKA_BIN/kafka-console-consumer.sh" --bootstrap-server localhost:9092 --topic hazard.events \
   --from-beginning --timeout-ms 15000 --property print.partition=true --property print.offset=true 2>/dev/null |
   tr -d '\r' | grep '"source":"SENSOR_PANTAI"' | grep '"critical":true' |
   sed -E 's/^Partition:([0-9]+)[[:space:]]+Offset:([0-9]+)[[:space:]]+.*"hazard_id":"([^"]+)".*/\1 \2 \3/' | sort -u -k3,3)
-committed=$(kn exec kafka-0 -- "$KAFKA_BIN/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 --describe --group notifier 2>/dev/null |
+committed=$(MSYS_NO_PATHCONV=1 kn exec kafka-0 -- "$KAFKA_BIN/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 --describe --group notifier 2>/dev/null |
   tr -d '\r' | awk '$2=="hazard.events"{print $3, $4}')
 n_crit=$(echo "$crit" | grep -c . || true)
 [ "$n_crit" -gt 0 ] || fail "no critical event in hazard.events yet (the practice profile flags its first one a few minutes after the sensor starts)"

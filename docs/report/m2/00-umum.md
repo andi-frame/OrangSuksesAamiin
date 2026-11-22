@@ -169,4 +169,8 @@ Setiap service BNPB memakai `pkg/obs`, sehingga ketiga syarat observabilitas ber
 SDK yang menambah memori pod (Lampiran B). Komponen observabilitas di-deploy dengan `role=other` dan 128/256 Mi. Demo:
 `make demo-m2-observability`.
 
-<!--OBS-EVIDENCE-->
+**Bukti.** Demo otomatis `make demo-m2-observability` lulus di cluster pengembangan kind (`docs/evidence/m2/observability-kind.log`):
+metrik setiap service ter-scrape, satu trace lintas service dengan durasi tiap langkah, serta `cid` dan `trace_id` di log.
+Di cluster demo k3s, Grafana (`:30030`, NIC host-only `192.168.56.11`), Prometheus, dan Jaeger berjalan dan menampilkan
+baris dashboard baru untuk penempatan storage (P1) dan ketertinggalan Feed Satelit (P4). Demo otomatisnya tidak diulang
+di k3s karena waktu. Tampilan langsung ditunjukkan di video.

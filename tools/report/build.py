@@ -82,6 +82,19 @@ def main():
         sys.exit("no Chrome/Edge found; open docs/report/m2/report.html and print to PDF")
     subprocess.run([browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--virtual-time-budget=20000",
                     f"--print-to-pdf={OUT}", out_html.as_uri()], check=True)
+    # the signed AI-use declaration (scanned PDF, signed by all members) is appended when it is present
+    signed = SRC / "IF4031_Surat-Pernyataan-AI_M2_OrangSuksesAamiin.pdf"
+    if signed.exists():
+        from pypdf import PdfReader, PdfWriter
+        w = PdfWriter()
+        for f in (OUT, signed):
+            for page in PdfReader(str(f)).pages:
+                w.add_page(page)
+        with open(OUT, "wb") as fh:
+            w.write(fh)
+        print("appended", signed.name)
+    else:
+        print("note: signed AI declaration not found:", signed.name)
     print("wrote", OUT)
 
 
