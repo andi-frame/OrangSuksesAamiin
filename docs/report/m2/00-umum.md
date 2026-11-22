@@ -86,28 +86,21 @@ Ringkasannya ada di Lampiran A. Intinya: `bash scripts/k8s/vbox-cluster.sh up`, 
 ## Diagram deployment
 
 ```mermaid
-flowchart TB
-  subgraph H["Laptop Acer Nitro AN515-58 · Windows 11 · i5-12500H / 24 GB · VirtualBox NAT Network 10.77.0.0/24"]
-    subgraph A["node-a 10.77.0.11 (VM, 4 vCPU / 4,5 GiB) · control plane + worker"]
-      API[k3s server<br/>Lease aggregator-ingest, leader key Patroni]
-      S0P[(shard-0 primary)]; S2P[(shard-2 primary)]; S1R[(shard-1 replica)]
-      KF[(kafka-0)]
-      AGa[aggregator]; CAa[client-api]; FRa[field-reports]; SPa[sensor-pantai]; GR[grafana]; PVa[pvmbg-mock]
-      TA1[tester-agent]
-    end
-    subgraph B["node-b 10.77.0.12 (VM, 4 vCPU / 4,5 GiB) · worker"]
-      S1P[(shard-1 primary)]; S0R[(shard-0 replica)]; S2R[(shard-2 replica)]
-      AGb[aggregator ×2]; AU[auth-service]; BMb[bmkg-mock]; CON[consumer-dashboard / notifier]
-      PR[prometheus]; JG[jaeger]
-      TA2[tester-agent]
-    end
+flowchart LR
+  CL([klien, k6, peramban]) -->|"NodePort lewat 127.0.0.1 atau host-only 192.168.56.x"| A1
+  subgraph A["node-a 10.77.0.11 · VM 4 vCPU / 4,5 GiB · control plane + worker"]
+    direction TB
+    A1["k3s server: API, Lease aggregator-ingest, leader key Patroni"]
+    A2[("shard-0 primary<br/>shard-2 primary<br/>shard-1 replica")]
+    A3["kafka-0, aggregator, client-api, field-reports,<br/>sensor-pantai, grafana, pvmbg-mock, tester-agent"]
   end
-  CL([klien, k6, peramban]) -->|"NodePort 30080/30083/30084/30030/30686/30090<br/>diteruskan dari 127.0.0.1 host"| A
-  S0P -->|WAL sinkron antar-node| S0R
-  S2P -->|WAL sinkron antar-node| S2R
-  S1P -->|WAL sinkron antar-node| S1R
-  AGa & AGb -->|Service shard-N → primary| S0P & S1P & S2P
-  AGa & AGb -.->|Lease get/renew| API
+  subgraph B["node-b 10.77.0.12 · VM 4 vCPU / 4,5 GiB · worker"]
+    direction TB
+    B2[("shard-1 primary<br/>shard-0 replica<br/>shard-2 replica")]
+    B3["aggregator ×2, auth-service, bmkg-mock, consumer-dashboard,<br/>consumer-notifier, prometheus, jaeger, tester-agent"]
+  end
+  A2 <-->|"WAL sinkron antar-node"| B2
+  B3 -.->|"Lease, Service shard-N"| A1
 ```
 
 Penempatan stateless (aggregator, client-api, consumer, observabilitas) ditentukan scheduler dan dapat berbeda di setiap
