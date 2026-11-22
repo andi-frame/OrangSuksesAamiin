@@ -36,7 +36,7 @@ sample_top() { while :; do kn top pods -l app=canonical-shard --no-headers 2>/de
 import() { # file label
   info "importing $(wc -l <"$1" | tr -d ' ') events ($2)"
   local t0=$SECONDS
-  kn exec -i deploy/aggregator -c aggregator -- /usr/local/bin/aggregator import-catalog <"$1" 2>&1 | tail -n 2 | sed 's/^/   /'
+  MSYS_NO_PATHCONV=1 kn exec -i deploy/aggregator -c aggregator -- /usr/local/bin/aggregator import-catalog <"$1" 2>&1 | tail -n 2 | sed 's/^/   /'
   info "$2 imported in $((SECONDS - t0)) s"
 }
 

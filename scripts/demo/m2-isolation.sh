@@ -31,7 +31,9 @@ ok "only the Aggregator reaches the Canonical Store"
 step "Broker (kafka:9092): producer and consumers only"
 expect aggregator kafka 9092 open
 expect consumer-notifier kafka 9092 open
-for app in client-api auth-service pvmbg-mock; do
+# client-api is a producer since P3 criterion 6 (POST /v1/field-reports is acknowledged once Kafka has it)
+expect client-api kafka 9092 open
+for app in auth-service pvmbg-mock bmkg-mock; do
   expect "$app" kafka 9092 blocked
 done
 ok "the broker only accepts its clients"
