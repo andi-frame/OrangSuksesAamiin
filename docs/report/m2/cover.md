@@ -1,6 +1,6 @@
 <div class="cover" markdown="1">
 
-IF4031 Arsitektur Aplikasi Terdistribusi — Tugas Besar Milestone 2: Sistem Terdistribusi Skalabel
+IF4031 Arsitektur Aplikasi Terdistribusi, Tugas Besar Milestone 2: Sistem Terdistribusi Skalabel
 
 <p class="title">ARGUS</p>
 <p class="sub">Aggregated Real-time Geohazard Unified System</p>

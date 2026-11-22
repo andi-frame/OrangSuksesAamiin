@@ -4,16 +4,16 @@
 
 | Anggota | Perancangan | Implementasi | Penulisan laporan |
 |---|---|---|---|
-| 13523128 – Andi Farhan Hidayat (Orang 1) | Platform Kubernetes, satu penulis ber-fencing, kebijakan skema dan DLQ, integrasi akhir | Manifest k8s dan satu perintah deploy, cluster VirtualBox, leader election + fencing (P2), DLQ dan mode skema tidak kompatibel (P3 kriteria 1–5), Audit `unprocessed`; integrasi M2: storage sharded di 2 node, `balance-shard`, metrik penempatan dan feed, demo P1/P5 game day, gladi penuh di k3s | Bagian umum, P2, P3 (1–5), penyuntingan P1 dan P4, penyusunan PDF |
+| 13523128 – Andi Farhan Hidayat (Orang 1) | Platform Kubernetes, satu penulis ber-fencing, kebijakan skema dan DLQ, integrasi akhir | Manifest k8s dan satu perintah deploy, cluster VirtualBox, leader election + fencing (P2), DLQ dan mode skema tidak kompatibel (P3 kriteria 1–5), Audit `unprocessed`, integrasi M2: storage sharded di 2 node, `balance-shard`, metrik penempatan dan feed, demo P1/P5 game day, gladi penuh di k3s | Bagian umum, P2, P3 (1–5), penyuntingan P1 dan P4, penyusunan PDF |
 | 13523164 – Muhammad Rizain Firdaus (Orang 2) | Observabilitas, jalur laporan Tim Lapangan, ketahanan Sensor Pantai, admisi per peran | `pkg/obs` (metrik Prometheus, trace W3C), Grafana/Prometheus/Jaeger, `POST /v1/field-reports` + pemroses exactly-once (P3 kriteria 6), Sensor Pantai (P5), dashboard analitik (P1 kriteria 7), load test k6, HPA | Observabilitas, P3 kriteria 6, P5, P1 kriteria 7, konfigurasi load test |
 | 13523152 – Muhammad Kinan Arkansyaddad (Orang 3) | Canonical Store terdistribusi (Patroni per shard), Audit API, pemrosesan aliran satelit | Adapter `sharded`, migrasi store tunggal → sharded, Audit `events`/`checksum`/`location`, consumer SSE Feed Satelit dan pengelompokan kebakaran (P4), cluster QEMU 3 node | Draf P1 dan P4 |
 
 ## Deskripsi umum sistem
 
 ARGUS adalah gateway kebencanaan BNPB yang menyatukan beberapa sumber ke satu format **HazardEvent**:
-- BMKG (gempa, peringatan tsunami);
-- PVMBG (gunung api);
-- Feed Satelit (titik panas → kebakaran hutan);
+- BMKG (gempa, peringatan tsunami)
+- PVMBG (gunung api)
+- Feed Satelit (titik panas → kebakaran hutan)
 - Sensor Pantai (pengamatan pesisir).
 
 Setiap HazardEvent disimpan di **Canonical Store**, yang hanya dimiliki Aggregator. Event diterbitkan ke Kafka lewat
@@ -59,8 +59,8 @@ flowchart LR
 | Bagian | Teknologi | Alasan singkat |
 |---|---|---|
 | Bahasa service | Go 1.25 (`net/http`, `log/slog`) | Biner statis kecil, cocok dengan limit memori Lampiran B |
-| Orkestrasi | k3s v1.37 di 2 VM VirtualBox (Ubuntu 24.04) | Ringan; NetworkPolicy, Lease, local-path PV bawaan |
-| Canonical Store | PostgreSQL 16 + JSONB, Patroni 4.1 per shard (DCS = API Kubernetes) | Transaksi untuk outbox + fence; replikasi sinkron dan failover tanpa etcd tambahan |
+| Orkestrasi | k3s v1.37 di 2 VM VirtualBox (Ubuntu 24.04) | Ringan, NetworkPolicy, Lease, local-path PV bawaan |
+| Canonical Store | PostgreSQL 16 + JSONB, Patroni 4.1 per shard (DCS = API Kubernetes) | Transaksi untuk outbox + fence, replikasi sinkron dan failover tanpa etcd tambahan |
 | Broker | Kafka (KRaft), transaksi untuk field reports | Log berurutan, consumer group, exactly-once producer |
 | Koordinasi leader | Lease `coordination.k8s.io` + fencing token di store | Jam kebenaran = API server, bukan jam node |
 | Observabilitas | Prometheus, Grafana, Jaeger (OTLP), log JSON ber-`cid` | Satu dashboard, trace lintas service |
@@ -71,11 +71,11 @@ flowchart LR
 
 - Semua node berada dalam satu jaringan dengan latensi rendah (VirtualBox NAT Network). Bonus host fisik berbeda tidak
   diambil.
-- Data `role=store` cukup disimpan di disk lokal node (local-path PV); tidak ada backup ke luar cluster.
+- Data `role=store` cukup disimpan di disk lokal node (local-path PV), tidak ada backup ke luar cluster.
 - Katalog gempa dari asisten belum diterima saat bukti diambil. P1 memakai katalog sintetis yang meniru kemiringan
   wilayah (`tools/catalog/catalog.py`). Katalog asli dapat dimuat tanpa perubahan kode.
 - `AUDIT_TOKEN`, kunci skenario ujian, dan token sesi ujian baru diberikan setelah tenggat. Bukti di laporan ini memakai
-  token pengembangan dan skenario practice; hasil ujian ditunjukkan di video.
+  token pengembangan dan skenario practice, hasil ujian ditunjukkan di video.
 
 ## Petunjuk menjalankan
 
@@ -120,16 +120,16 @@ migrasi) membuka koneksi ke store, dan hanya klien Kafka berlabel yang boleh ke 
 
 | Keputusan M1 | M2 | Alasan |
 |---|---|---|
-| `docker compose`, satu host | **Diubah**: Kubernetes (k3s), manifest `deploy/`, satu perintah `make k8s-up`; compose tetap untuk pengembangan | Ketentuan M2; banyak node, rolling update, self-healing |
-| Satu PostgreSQL sebagai Canonical Store | **Diubah**: 3 shard Patroni × 2 salinan di node berbeda, hash `hazard_id`; migrasi online `MIGRATE_CANONICAL=1` | P1: tidak muat di satu tempat, harus tahan kehilangan node |
+| `docker compose`, satu host | **Diubah**: Kubernetes (k3s), manifest `deploy/`, satu perintah `make k8s-up`, compose tetap untuk pengembangan | Ketentuan M2, banyak node, rolling update, self-healing |
+| Satu PostgreSQL sebagai Canonical Store | **Diubah**: 3 shard Patroni × 2 salinan di node berbeda, hash `hazard_id`, migrasi online `MIGRATE_CANONICAL=1` | P1: tidak muat di satu tempat, harus tahan kehilangan node |
 | Isolasi storage lewat jaringan Docker internal | **Diubah**: NetworkPolicy + Secret per komponen | Ditegakkan platform di cluster |
-| Satu Aggregator yang polling | **Diubah**: ≥ 3 instance; satu leader (Lease) yang ingest, semua melayani baca; fencing token di setiap shard | P2: tanpa ini tiap kejadian diambil tiga kali |
-| Polling untuk semua sumber | **Dipertahankan** untuk BMKG/PVMBG/Sensor Pantai; **tidak dipakai** untuk Feed Satelit (SSE + offset) | P4 §2 |
+| Satu Aggregator yang polling | **Diubah**: ≥ 3 instance, satu leader (Lease) yang ingest, semua melayani baca, fencing token di setiap shard | P2: tanpa ini tiap kejadian diambil tiga kali |
+| Polling untuk semua sumber | **Dipertahankan** untuk BMKG/PVMBG/Sensor Pantai, **tidak dipakai** untuk Feed Satelit (SSE + offset) | P4 §2 |
 | Status sumber di memori Aggregator | **Diubah**: disimpan leader di store, dibaca semua instance | Freshness yang sama di setiap instance |
 | Karantina di memori | **Diganti**: dead-letter store persisten (raw bytes, retrying/parked), hanya untuk Internal Ops | P3 |
 | Parser JSON standar | **Diganti**: pemecah array streaming per elemen dengan batas ukuran/kedalaman | P3: satu pesan rusak tidak menjatuhkan batch |
 | Kebijakan skema additive-only, perubahan tak didukung dikarantina | **Dipertahankan**, ditambah aturan penyesuaian deklaratif (`rename`, `coerce`) | Tetap tidak menebak |
-| Outbox transaksional + relay, Kafka at-least-once | **Dipertahankan**; outbox ikut shard hazard-nya, relay hanya di leader | Audit siapa menulis apa per term |
+| Outbox transaksional + relay, Kafka at-least-once | **Dipertahankan**, outbox ikut shard hazard-nya, relay hanya di leader | Audit siapa menulis apa per term |
 | Client API hanya baca | **Diubah**: `POST /v1/field-reports` (202 setelah Kafka mengonfirmasi), admisi per peran | P3 kriteria 6, P5 kriteria 5 |
 | Log JSON ber-`cid` | **Dipertahankan**, ditambah metrik Prometheus dan trace W3C | Observabilitas M2 |
 | Admin mock wajib `X-Admin-Token` | **Diubah di k8s**: boleh tanpa token (`*_ADMIN_OPEN`), Service mock hanya ClusterIP | Tester Agent memanggil `/admin/*` tanpa kredensial |

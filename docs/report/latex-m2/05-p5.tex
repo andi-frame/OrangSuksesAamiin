@@ -1,4 +1,4 @@
-\chapter{Problem 5 --- Pelampung yang Berbohong (Orang 2)}
+\chapter{Problem 5: Pelampung yang Berbohong (Orang 2)}
 
 > Draf bagian laporan M2. > > - Demo k3s: \texttt{make demo-\allowbreak{}m2-\allowbreak{}p5} (\texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}p5-\allowbreak{}latest.\allowbreak{}log}). > - Run integrasi lokal dengan image yang sama: \texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}p5-\allowbreak{}compose-\allowbreak{}local.\allowbreak{}log}. > - Kode: \texttt{services/\allowbreak{}aggregator/\allowbreak{}internal/\allowbreak{}\{sources/\allowbreak{}coastal.\allowbreak{}go,\allowbreak{} mapping/\allowbreak{}coastal.\allowbreak{}go,\allowbreak{} poller/\allowbreak{}coastal.\allowbreak{}go\}}, >   \texttt{services/\allowbreak{}client-\allowbreak{}api/\allowbreak{}internal/\allowbreak{}limit/\allowbreak{}priority.\allowbreak{}go}, \texttt{services/\allowbreak{}consumer-\allowbreak{}hazard/\allowbreak{}internal/\allowbreak{}runner}. > - Test: \texttt{poller/\allowbreak{}coastal\_\allowbreak{}test.\allowbreak{}go}, \texttt{limit/\allowbreak{}priority\_\allowbreak{}test.\allowbreak{}go}.
 
@@ -13,10 +13,10 @@
 \endhead
 2 & Sumber mengirim data yang melanggar kontrak (nilai tak masuk akal, tipe salah, stasiun tak dikenal, kualitas ``suspect'', halaman JSON rusak, ID sama dengan isi berbeda) & \emph{Input validation at the trust boundary}, \emph{anti-corruption layer} (Evans), \emph{dead letter channel}, \emph{poison message} \\
 3 & Sensor yang lambat atau mati tidak boleh menyeret sumber lain & \emph{Bulkhead} (Nygard, \emph{Release It!}), \emph{failure isolation}, \emph{head-of-line blocking} \\
-4 & Selama sensor tidak sehat, permintaan ke sensor tidak boleh melonjak (retry storm), dan klien harus dijawab cepat, bukan menunggu timeout & \emph{Circuit breaker} (Nygard; Fowler), \emph{fail fast}, \emph{retry storm / thundering herd}, \emph{graceful degradation} dengan \emph{stale data} (\emph{serve-stale}) \\
+4 & Selama sensor tidak sehat, permintaan ke sensor tidak boleh melonjak (retry storm), dan klien harus dijawab cepat, bukan menunggu timeout & \emph{Circuit breaker} (Nygard, Fowler), \emph{fail fast}, \emph{retry storm / thundering herd}, \emph{graceful degradation} dengan \emph{stale data} (\emph{serve-stale}) \\
 4 & Sensor ``mengaku sehat'' (\texttt{/\allowbreak{}healthz} 200) padahal tidak melayani atau datanya kedaluwarsa & \emph{Gray failure} (Huang et al., HotOS 2017), \emph{shallow vs deep health check} \\
 5 & Beban melebihi kapasitas: yang penting (Tim Lapangan) harus tetap dilayani & \emph{Load shedding}, \emph{admission control}, \emph{priority-based shedding} / \emph{criticality} (Google SRE Book, bab ``Handling Overload'') \\
-1, 8 & Peringatan kritis harus sampai cepat; keandalannya perlu target yang terukur & \emph{SLI / SLO / error budget} (Google SRE), \emph{priority lane} \\
+1, 8 & Peringatan kritis harus sampai cepat, keandalannya perlu target yang terukur & \emph{SLI / SLO / error budget} (Google SRE), \emph{priority lane} \\
 \bottomrule
 \end{longtable}
 }
@@ -40,14 +40,14 @@ client ── client-api [admisi berprioritas] ── aggregator /internal/hazar
 \textbf{Bulkhead}: loop, goroutine, \texttt{http.\allowbreak{}Client} (pool koneksi), dan breaker sendiri untuk sensor & \texttt{SENSOR\_\allowbreak{}*} terpisah dari \texttt{SOURCE\_\allowbreak{}*} & Sensor yang menggantung hanya menghabiskan sumber dayanya sendiri. BMKG/PVMBG tidak berbagi antrean atau koneksi dengannya. \\
 \textbf{Timeout} per permintaan & \texttt{SENSOR\_\allowbreak{}TIMEOUT\_\allowbreak{}SEC=\allowbreak{}2} & Satu halaman $\le$ 500 observasi (\textasciitilde{}100 KB) dijawab sensor sehat dalam milidetik. 2 s memberi ruang jitter jaringan VM tanpa membiarkan siklus 1 s menumpuk. \\
 \textbf{Circuit breaker} & gagal berturut-turut 3 $\rightarrow$ buka \texttt{SENSOR\_\allowbreak{}BREAKER\_\allowbreak{}OPEN\_\allowbreak{}SEC=\allowbreak{}10} $\rightarrow$ satu probe (half-open) & Pada interval 1 s, sensor mati tanpa breaker menerima \textasciitilde{}60 permintaan/menit dari kita. Dengan breaker: 3 gagal lalu 1 probe per 10 s ($\approx$ 6/menit). Terukur 10 permintaan dalam 45 s padam. 10 s juga batas waktu deteksi pulih: sensor kembali dipakai paling lambat 10 s setelah sehat (terukur 4 s). \\
-**Health dari data, bukan \texttt{/\allowbreak{}healthz}** & \texttt{SENSOR\_\allowbreak{}FREEZE\_\allowbreak{}AFTER\_\allowbreak{}SEC=\allowbreak{}15}; \texttt{generated\_\allowbreak{}at} mundur $\rightarrow$ gagal + reset cursor & \texttt{generated\_\allowbreak{}at} maju \textasciitilde{}60 s per detik nyata (kecepatan 60$\times$, diukur sebagai \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}clock\_\allowbreak{}speed}). Diam 15 s berarti \textasciitilde{}15 menit waktu sensor tanpa kemajuan, jelas basi tetapi bukan jeda jaringan sesaat. \\
-\textbf{Validasi kontrak + DLQ} & \texttt{mapping/\allowbreak{}coastal.\allowbreak{}go}; batas $\pm$20 m anomali, 0..30 m gelombang, \texttt{quality=\allowbreak{}=\allowbreak{}"ok"} & Batas fisik yang longgar (tsunami ekstrem tercatat < 20 m) hanya menolak nilai yang mustahil. \texttt{quality !=\allowbreak{} "ok"} adalah pernyataan sensor sendiri bahwa bacaannya tak dapat dipercaya. Semua penolakan generik, tidak bergantung pada ID, seed, atau urutan. \\
+**Health dari data, bukan \texttt{/\allowbreak{}healthz}** & \texttt{SENSOR\_\allowbreak{}FREEZE\_\allowbreak{}AFTER\_\allowbreak{}SEC=\allowbreak{}15}, \texttt{generated\_\allowbreak{}at} mundur $\rightarrow$ gagal + reset cursor & \texttt{generated\_\allowbreak{}at} maju \textasciitilde{}60 s per detik nyata (kecepatan 60$\times$, diukur sebagai \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}clock\_\allowbreak{}speed}). Diam 15 s berarti \textasciitilde{}15 menit waktu sensor tanpa kemajuan, jelas basi tetapi bukan jeda jaringan sesaat. \\
+\textbf{Validasi kontrak + DLQ} & \texttt{mapping/\allowbreak{}coastal.\allowbreak{}go}, batas $\pm$20 m anomali, 0..30 m gelombang, \texttt{quality=\allowbreak{}=\allowbreak{}"ok"} & Batas fisik yang longgar (tsunami ekstrem tercatat < 20 m) hanya menolak nilai yang mustahil. \texttt{quality !=\allowbreak{} "ok"} adalah pernyataan sensor sendiri bahwa bacaannya tak dapat dipercaya. Semua penolakan generik, tidak bergantung pada ID, seed, atau urutan. \\
 \textbf{Kedaluwarsa} & \texttt{SENSOR\_\allowbreak{}MAX\_\allowbreak{}LAG\_\allowbreak{}SEC=\allowbreak{}7200} + (waktu sensor yang lewat selama kita tidak membaca) & Data ``expired berjam-jam'' ditolak. Backlog yang kita baca terlambat karena \emph{kita} sempat padam (failover, breaker) tidak ikut ditolak, karena toleransinya ditambah sebesar celah itu $\times$ kecepatan jam sensor. \\
-\textbf{Burst} & sampai \texttt{SENSOR\_\allowbreak{}MAX\_\allowbreak{}PAGES=\allowbreak{}20} $\times$ \texttt{SENSOR\_\allowbreak{}PAGE\_\allowbreak{}SIZE=\allowbreak{}500} per siklus; observasi kritis disimpan \textbf{lebih dulu} & ``Mengirim semuanya sekaligus'' dibaca habis dalam satu siklus. Peringatan tidak menunggu di belakang ribuan observasi biasa. \\
+\textbf{Burst} & sampai \texttt{SENSOR\_\allowbreak{}MAX\_\allowbreak{}PAGES=\allowbreak{}20} $\times$ \texttt{SENSOR\_\allowbreak{}PAGE\_\allowbreak{}SIZE=\allowbreak{}500} per siklus, observasi kritis disimpan \textbf{lebih dulu} & ``Mengirim semuanya sekaligus'' dibaca habis dalam satu siklus. Peringatan tidak menunggu di belakang ribuan observasi biasa. \\
 \textbf{Relay batch} & satu round-trip Kafka per batch outbox (100), hanya prefix yang dikonfirmasi ditandai terkirim & Sebelumnya satu round-trip \texttt{acks=\allowbreak{}all} per event: burst 600 observasi menunda peringatan > 5 s. Sesudahnya peringatan tiba dalam $\le$ 1 s pada kondisi stabil. \\
-\textbf{Serve-stale} & baca selalu dari store; \texttt{freshness.\allowbreak{}SENSOR\_\allowbreak{}PANTAI =\allowbreak{} \{state,\allowbreak{} stale\_\allowbreak{}since\}} & Klien yang bergantung pada sensor dijawab dalam milidetik dengan data terakhir dan penanda basi (terukur p95 11 ms selama sensor padam), bukan menunggu timeout ke sensor. \\
+\textbf{Serve-stale} & baca selalu dari store, \texttt{freshness.\allowbreak{}SENSOR\_\allowbreak{}PANTAI =\allowbreak{} \{state,\allowbreak{} stale\_\allowbreak{}since\}} & Klien yang bergantung pada sensor dijawab dalam milidetik dengan data terakhir dan penanda basi (terukur p95 11 ms selama sensor padam), bukan menunggu timeout ke sensor. \\
 \textbf{Admisi berprioritas} & \texttt{CLIENT\_\allowbreak{}MAX\_\allowbreak{}IN\_\allowbreak{}FLIGHT=\allowbreak{}64}, \texttt{CLIENT\_\allowbreak{}PRIORITY\_\allowbreak{}RESERVE=\allowbreak{}0.\allowbreak{}3}, \texttt{CLIENT\_\allowbreak{}RATE\_\allowbreak{}LIMIT\_\allowbreak{}RPS=\allowbreak{}500} per pod & Batas \emph{in-flight} mengikuti hukum Little: $\pm$40 req bersamaan $\approx$ kapasitas terukur \textasciitilde{}400 req/s $\times$ target latensi 100 ms. 30 \% slot dan token dicadangkan untuk Lapangan/Pusat. Media mendapat 429 + \texttt{Retry-\allowbreak{}After} lebih dulu. \\
-\textbf{Pulih sendiri} & consumer dan field-reports menunggu broker (tanpa CrashLoop); breaker half-open; reset cursor saat sensor restart; leader election (P2) & Selama jendela pemulihan game day tidak boleh ada intervensi. \\
+\textbf{Pulih sendiri} & consumer dan field-reports menunggu broker (tanpa CrashLoop), breaker half-open, reset cursor saat sensor restart, leader election (P2) & Selama jendela pemulihan game day tidak boleh ada intervensi. \\
 \bottomrule
 \end{longtable}
 }
@@ -58,8 +58,8 @@ client ── client-api [admisi berprioritas] ── aggregator /internal/hazar
 
 
 \begin{itemize}
-\item probe 10 menit terhadap image asisten (polling \texttt{/\allowbreak{}healthz} dan \texttt{/\allowbreak{}v1/\allowbreak{}observations} dengan cursor tiap 1 s, mencatat kode, latensi, tipe setiap field, duplikat, dan kemajuan \texttt{generated\_\allowbreak{}at});
-\item metrik \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}anomalies\_\allowbreak{}total\{kind\}} dan \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}observations\_\allowbreak{}rejected\_\allowbreak{}total\{reason\}};
+\item probe 10 menit terhadap image asisten (polling \texttt{/\allowbreak{}healthz} dan \texttt{/\allowbreak{}v1/\allowbreak{}observations} dengan cursor tiap 1 s, mencatat kode, latensi, tipe setiap field, duplikat, dan kemajuan \texttt{generated\_\allowbreak{}at})
+\item metrik \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}anomalies\_\allowbreak{}total\{kind\}} dan \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}observations\_\allowbreak{}rejected\_\allowbreak{}total\{reason\}}
 \item log \texttt{sensor\_\allowbreak{}observation\_\allowbreak{}set\_\allowbreak{}aside}.
 \end{itemize}
 
@@ -69,12 +69,12 @@ client ── client-api [admisi berprioritas] ── aggregator /internal/hazar
 \textbf{Perilaku} & \textbf{Ditemukan lewat} & \textbf{Penanganan} \\
 \midrule
 \endhead
-\texttt{/\allowbreak{}healthz} 200 sementara \texttt{/\allowbreak{}v1/\allowbreak{}observations} 503 \texttt{\{"code":"unavailable",\allowbreak{}"message":"sensor sedang tidak melayani"\}} selama $\pm$5 s & probe (5 $\times$ 503 dengan health 200) & 503 dihitung sebagai kegagalan sumber; breaker terbuka; status \texttt{down} dengan \texttt{stale\_\allowbreak{}since}; \texttt{/\allowbreak{}healthz} tidak dipakai untuk menilai kesehatan \\
+\texttt{/\allowbreak{}healthz} 200 sementara \texttt{/\allowbreak{}v1/\allowbreak{}observations} 503 \texttt{\{"code":"unavailable",\allowbreak{}"message":"sensor sedang tidak melayani"\}} selama $\pm$5 s & probe (5 $\times$ 503 dengan health 200) & 503 dihitung sebagai kegagalan sumber, breaker terbuka, status \texttt{down} dengan \texttt{stale\_\allowbreak{}since}, \texttt{/\allowbreak{}healthz} tidak dipakai untuk menilai kesehatan \\
 Observasi \texttt{quality: "suspect"} ($\pm$1 dari 100) & log \texttt{sensor\_\allowbreak{}observation\_\allowbreak{}set\_\allowbreak{}aside}, DLQ & disisihkan (parked) dengan alasan \texttt{contract\_\allowbreak{}violation: field 'quality'}, tidak menjadi HazardEvent \\
-Waktu sensor berjalan 60$\times$ (\texttt{generated\_\allowbreak{}at} maju $\pm$1 jam per menit) & probe, \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}clock\_\allowbreak{}speed} & ambang basi dan kedaluwarsa dinyatakan dalam waktu sensor; latensi peringatan diukur dari waktu simpan, bukan \texttt{observed\_\allowbreak{}at} \\
-Sensor restart (pod dihapus, emptyDir) memulai ulang aliran dari awal; \texttt{generated\_\allowbreak{}at} mundur & demo langkah 4 (kind) & \texttt{generated\_\allowbreak{}at} mundur $\rightarrow$ anomali \texttt{generated\_\allowbreak{}at\_\allowbreak{}backwards}, cursor di-reset; penyimpanan idempoten (ID sama $\rightarrow$ diabaikan) \\
+Waktu sensor berjalan 60$\times$ (\texttt{generated\_\allowbreak{}at} maju $\pm$1 jam per menit) & probe, \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}clock\_\allowbreak{}speed} & ambang basi dan kedaluwarsa dinyatakan dalam waktu sensor, latensi peringatan diukur dari waktu simpan, bukan \texttt{observed\_\allowbreak{}at} \\
+Sensor restart (pod dihapus, emptyDir) memulai ulang aliran dari awal, \texttt{generated\_\allowbreak{}at} mundur & demo langkah 4 (kind) & \texttt{generated\_\allowbreak{}at} mundur $\rightarrow$ anomali \texttt{generated\_\allowbreak{}at\_\allowbreak{}backwards}, cursor di-reset, penyimpanan idempoten (ID sama $\rightarrow$ diabaikan) \\
 Backlog besar sekaligus saat sistem pertama kali membaca ($\pm$600 observasi) & run compose dari awal & paging 20 $\times$ 500, kritis lebih dulu, relay batch \\
-Profil ujian (belum diketahui): halaman rusak, nilai mustahil, stasiun tak dikenal, ID sama berisi beda, data basi & --- (dipersiapkan generik) & halaman disimpan utuh + item yang terbaca diproses + lanjut dari \texttt{next\_\allowbreak{}cursor}; validasi kontrak; \texttt{conflicting\_\allowbreak{}duplicate}; freeze/backwards detection. Tabel ini dilengkapi setelah game day. \\
+Profil ujian (belum diketahui): halaman rusak, nilai mustahil, stasiun tak dikenal, ID sama berisi beda, data basi & belum ada (dipersiapkan generik) & halaman disimpan utuh + item yang terbaca diproses + lanjut dari \texttt{next\_\allowbreak{}cursor}, validasi kontrak, \texttt{conflicting\_\allowbreak{}duplicate}, freeze/backwards detection. Tabel ini dilengkapi setelah game day. \\
 \bottomrule
 \end{longtable}
 }
@@ -84,7 +84,7 @@ Profil ujian (belum diketahui): halaman rusak, nilai mustahil, stasiun tak diken
 Ulangan di cluster demo k3s pada 22 Nov (\texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}p5-\allowbreak{}k3s-\allowbreak{}20261122.\allowbreak{}log}) membuktikan langkah 1 dan 2:
 
 \begin{itemize}
-\item image asisten dipin per digest;
+\item image asisten dipin per digest
 \item observasi \texttt{quality "suspect"} disisihkan dengan alasannya, dan tidak ada yang menjadi HazardEvent.
 \end{itemize}
 
@@ -99,13 +99,13 @@ Langkah 3 berhenti karena topik \texttt{hazard.\allowbreak{}events} kosong setel
 \midrule
 \endhead
 1. 0 event kritis hilang, p95 $\le$ 5 s & Demo langkah 3 membuktikan lewat offset Kafka: setiap event kritis di \texttt{hazard.\allowbreak{}events} berada di bawah offset yang sudah di-commit group \texttt{notifier}, padahal notifier hanya meng-commit setelah peringatan dikirim. Hasil di kind: 3/3 terkirim. Latensi simpan $\rightarrow$ notifier kondisi stabil: 12,8 ms dan 992,8 ms (compose). Dashboard: panel ``Kritis: dari sensor vs sampai notifier''. \\
-2. Pelanggaran kontrak disisihkan & demo langkah 2; \texttt{TestCoastalSetsContractViolationsAsideWithReason} (quality, tipe, field hilang, rentang, waktu di masa depan, stasiun tak dikenal, JSON rusak), \texttt{TestCoastalMalformedPageIsKeptAndStreamContinues}, \texttt{TestCoastalDuplicatesIgnoredConflictsSetAside} \\
-3. Sumber lain tetap memenuhi latensi M1 & Sensor padam 45 s: BMKG-only p95 23,7 ms (< 300 ms), n = 77 (compose); demo langkah 4 di k3s \\
-4. Permintaan tidak melonjak; jawaban cepat; pulih sendiri & 10 permintaan ke sensor dalam 45 s padam (tanpa breaker \textasciitilde{}45); baca data pesisir p95 11 ms dengan \texttt{state=\allowbreak{}down}, \texttt{stale\_\allowbreak{}since}; kembali \texttt{up} 4 s setelah sensor hidup tanpa intervensi; \texttt{TestCoastalLyingHealthIsAFailureAndCursorStays}, \texttt{TestCoastalFrozenGeneratedAtMarksSourceStale} \\
-5. Lapangan dilayani, Media ditolak terkontrol & k6 300 VU mode max, 90 \% Media: Lapangan 1 700 $\times$ 200, 0 ditolak; Media 4 189 $\times$ 200, 26 730 $\times$ 429; 0 error; \texttt{TestMediaFloodDoesNotStarveLapangan}, \texttt{TestConcurrencyReserveKeepsSlotsForLapangan} \\
-6. Kombinasi kegagalan, pulih sendiri & game day formal di video video (kunci ujian); insiden nyata selama gladi dan pemulihannya: §6 \\
-7. Menjelaskan kegagalan dari dashboard & Grafana ``Argus / Observabilitas'': status sumber, breaker, data basi, permintaan ke sensor, anomali per jenis, penolakan per alasan, SLO; trace per alur di Jaeger; log ber-\texttt{cid}/\texttt{trace\_\allowbreak{}id} (\texttt{make demo-\allowbreak{}m2-\allowbreak{}observability}) \\
-8. Target keandalan dan pemakaian & §5; demo langkah 6 \\
+2. Pelanggaran kontrak disisihkan & demo langkah 2, \texttt{Test\allowbreak{}Coastal\allowbreak{}Sets\allowbreak{}Contract\allowbreak{}Violations\allowbreak{}Aside\allowbreak{}With\allowbreak{}Reason} (quality, tipe, field hilang, rentang, waktu di masa depan, stasiun tak dikenal, JSON rusak), \texttt{Test\allowbreak{}Coastal\allowbreak{}Malformed\allowbreak{}Page\allowbreak{}Is\allowbreak{}Kept\allowbreak{}And\allowbreak{}Stream\allowbreak{}Continues}, \texttt{Test\allowbreak{}Coastal\allowbreak{}Duplicates\allowbreak{}Ignored\allowbreak{}Conflicts\allowbreak{}Set\allowbreak{}Aside} \\
+3. Sumber lain tetap memenuhi latensi M1 & Sensor padam 45 s: BMKG-only p95 23,7 ms (< 300 ms), n = 77 (compose), demo langkah 4 di k3s \\
+4. Permintaan tidak melonjak, jawaban cepat, pulih sendiri & 10 permintaan ke sensor dalam 45 s padam (tanpa breaker \textasciitilde{}45), baca data pesisir p95 11 ms dengan \texttt{state=\allowbreak{}down}, \texttt{stale\_\allowbreak{}since}, kembali \texttt{up} 4 s setelah sensor hidup tanpa intervensi, \texttt{Test\allowbreak{}Coastal\allowbreak{}Lying\allowbreak{}Health\allowbreak{}Is\allowbreak{}AFailure\allowbreak{}And\allowbreak{}Cursor\allowbreak{}Stays}, \texttt{Test\allowbreak{}Coastal\allowbreak{}Frozen\allowbreak{}Generated\allowbreak{}At\allowbreak{}Marks\allowbreak{}Source\allowbreak{}Stale} \\
+5. Lapangan dilayani, Media ditolak terkontrol & k6 300 VU mode max, 90 \% Media: Lapangan 1 700 $\times$ 200, 0 ditolak, Media 4 189 $\times$ 200, 26 730 $\times$ 429, 0 error, \texttt{Test\allowbreak{}Media\allowbreak{}Flood\allowbreak{}Does\allowbreak{}Not\allowbreak{}Starve\allowbreak{}Lapangan}, \texttt{Test\allowbreak{}Concurrency\allowbreak{}Reserve\allowbreak{}Keeps\allowbreak{}Slots\allowbreak{}For\allowbreak{}Lapangan} \\
+6. Kombinasi kegagalan, pulih sendiri & game day formal di video (kunci ujian), insiden nyata selama gladi dan pemulihannya: §6 \\
+7. Menjelaskan kegagalan dari dashboard & Grafana ``Argus / Observabilitas'': status sumber, breaker, data basi, permintaan ke sensor, anomali per jenis, penolakan per alasan, SLO, trace per alur di Jaeger, log ber-\texttt{cid}/\texttt{trace\_\allowbreak{}id} (\texttt{make demo-\allowbreak{}m2-\allowbreak{}observability}) \\
+8. Target keandalan dan pemakaian & §5, demo langkah 6 \\
 \bottomrule
 \end{longtable}
 }
@@ -119,8 +119,8 @@ Langkah 3 berhenti karena topik \texttt{hazard.\allowbreak{}events} kosong setel
 \midrule
 \endhead
 \textbf{SLI} & Proporsi event kritis Sensor Pantai yang sampai ke notifier Tim Lapangan dalam $\le$ 5 s sejak tersimpan: \texttt{consumer\_\allowbreak{}critical\_\allowbreak{}alert\_\allowbreak{}seconds\_\allowbreak{}bucket\{le=\allowbreak{}"5"\} /\allowbreak{} consumer\_\allowbreak{}critical\_\allowbreak{}alert\_\allowbreak{}seconds\_\allowbreak{}count}. Event kritis yang hilang dihitung sebagai di luar target (pembanding: \texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}critical\_\allowbreak{}total\{outcome=\allowbreak{}"stored"\}} vs \texttt{consumer\_\allowbreak{}critical\_\allowbreak{}alerts\_\allowbreak{}total}). \\
-\textbf{SLO} & \textbf{99 \%} peringatan kritis $\le$ 5 s per jendela evaluasi (game day: seluruh jendela; operasi: 30 hari). 0 event kritis hilang adalah syarat terpisah, tanpa budget. \\
-\textbf{Error budget} & 1 \% peringatan boleh melewati 5 s. Budget terpakai = (1 -- SLI) / 0,01, ditampilkan di panel gauge dashboard. Aturan Prometheus \texttt{CriticalAlertLatencySLOBurn} menyala bila rasio 5 menit < 99 \% selama 2 menit. \\
+\textbf{SLO} & \textbf{99 \%} peringatan kritis $\le$ 5 s per jendela evaluasi (game day: seluruh jendela, operasi: 30 hari). 0 event kritis hilang adalah syarat terpisah, tanpa budget. \\
+\textbf{Error budget} & 1 \% peringatan boleh melewati 5 s. Budget terpakai = (1 -- SLI) / 0,01, ditampilkan di panel gauge dashboard. Aturan Prometheus \texttt{Critical\allowbreak{}Alert\allowbreak{}Latency\allowbreak{}SLOBurn} menyala bila rasio 5 menit < 99 \% selama 2 menit. \\
 \textbf{Pemakaian saat game day} & \emph{(diisi dari dashboard setelah game day di k3s: SLI, budget terpakai, insiden penyebab)} \\
 \bottomrule
 \end{longtable}
@@ -129,15 +129,15 @@ Langkah 3 berhenti karena topik \texttt{hazard.\allowbreak{}events} kosong setel
 Alasan memilih 5 s: angka ini adalah batas kriteria 1. Rantai normalnya $\le$ 1 s poll + \textasciitilde{}0,5 s relay + milidetik broker dan notifier, sehingga ada ruang untuk satu failover leader yang cepat. Failover leader penuh ($\le$ 20 s) akan memakan budget, dan memang itulah yang ingin terlihat.
 
 
-\section{Game day dan post-mortem (kriteria 6; butir ``Di laporan'' 4)}
+\section{Game day dan post-mortem (kriteria 6, butir ``Di laporan'' 4)}
 
 \textbf{Rencana game day.} Tanpa intervensi selama jendela pemulihan, gangguan berikut dijalankan:
 
 
 \begin{itemize}
-\item profil ujian Sensor Pantai (\texttt{scripts/\allowbreak{}k8s/\allowbreak{}sensor-\allowbreak{}exam.\allowbreak{}sh exam <key>});
-\item skenario Tester Agent (\texttt{kill-\allowbreak{}leader}, \texttt{partition}, \texttt{clock-\allowbreak{}skew}, \texttt{kill-\allowbreak{}store});
-\item PVMBG outage (\texttt{/\allowbreak{}admin});
+\item profil ujian Sensor Pantai (\texttt{scripts/\allowbreak{}k8s/\allowbreak{}sensor-\allowbreak{}exam.\allowbreak{}sh exam <key>})
+\item skenario Tester Agent (\texttt{kill-\allowbreak{}leader}, \texttt{partition}, \texttt{clock-\allowbreak{}skew}, \texttt{kill-\allowbreak{}store})
+\item PVMBG outage (\texttt{/\allowbreak{}admin})
 \item lonjakan beban (\texttt{make loadtest-\allowbreak{}m2-\allowbreak{}scale}).
 \end{itemize}
 
@@ -157,11 +157,11 @@ Yang diamati hanya dashboard, trace, dan log.
 \midrule
 \endhead
 Ringkasan & Skenario practice \texttt{wipe-\allowbreak{}node} mematikan node-b dan menghapus datanya (11:07). Node-b berulang kali mati lagi setelah dinyalakan, dan kernel VM sempat macet saat boot. Setelah node-a di-reset paksa, Kafka crash-loop dan pod baru di node-a tidak dapat menjangkau Kafka. \\
-Deteksi & \texttt{kubectl get nodes} (node-b NotReady, \emph{heartbeat} terakhir 13:50:51 UTC); log VirtualBox \texttt{ACPI: Entering S5} (tamu mematikan dirinya); konsol \texttt{RCU stall \ldots{} io\_\allowbreak{}serial\_\allowbreak{}out}; log Patroni \texttt{PANIC: could not locate a valid checkpoint record}; log Aggregator \texttt{lookup kafka: i/\allowbreak{}o timeout}; Kafka \texttt{CrashLoopBackOff} (24 restart). \\
+Deteksi & \texttt{kubectl get nodes} (node-b NotReady, \emph{heartbeat} terakhir 13:50:51 UTC), log VirtualBox \texttt{ACPI: Entering S5} (tamu mematikan dirinya), konsol \texttt{RCU stall \ldots{} io\_\allowbreak{}serial\_\allowbreak{}out}, log Patroni \texttt{PANIC: could not locate a valid checkpoint record}, log Aggregator \texttt{lookup kafka: i/\allowbreak{}o timeout}, Kafka \texttt{Crash\allowbreak{}Loop\allowbreak{}Back\allowbreak{}Off} (24 restart). \\
 Dampak & Selama node-b mati, ketiga primary shard berjalan di node-a, dan pembacaan serta ingest terus dilayani. Tidak ada HazardEvent yang hilang: jumlah per sumber pada Audit API tidak berkurang (\texttt{p1-\allowbreak{}recovery-\allowbreak{}observed.\allowbreak{}log}). Penerbitan ke Kafka tertahan selama Kafka crash-loop, tetapi event menunggu di outbox (tidak hilang). Demo P3 kriteria 4 dan load test P2 tidak dapat diselesaikan di cluster yang sama. \\
-Mitigasi otomatis & Failover primary shard (Patroni, standby sinkron); rebuild anggota berdisk kosong (base backup); self-heal replica rusak oleh \texttt{balance-\allowbreak{}shard} (\texttt{reinitialize}, 13:17:05); primary dikembalikan ke node-b (\texttt{switchover}, 14:49:32); outbox menahan event selama broker tidak ada. \\
+Mitigasi otomatis & Failover primary shard (Patroni, standby sinkron), rebuild anggota berdisk kosong (base backup), self-heal replica rusak oleh \texttt{balance-\allowbreak{}shard} (\texttt{reinitialize}, 13:17:05), primary dikembalikan ke node-b (\texttt{switchover}, 14:49:32), outbox menahan event selama broker tidak ada. \\
 Akar masalah & (1) Skenario dijalankan lewat \texttt{kubectl exec daemonset/\allowbreak{}tester-\allowbreak{}agent}, sehingga koordinatornya agen di node-b, yaitu korban sendiri. Status \texttt{go} di ConfigMap \texttt{tester-\allowbreak{}run} membuat agen itu mengulang skenario setiap boot. (2) Konsol serial VirtualBox membuat kernel tamu macet saat boot di bawah beban. (3) Kafka hanya punya liveness probe 90 s, sehingga pemulihan KRaft setelah stop paksa dibunuh sebelum selesai. (4) Setelah reset paksa, kontroler NetworkPolicy node-a lambat menerima IP pod baru. \\
-Perbaikan & \texttt{practice.\allowbreak{}sh} selalu menjalankan skenario dari agen di node control plane; port serial dimatikan (\texttt{vbox-\allowbreak{}cluster.\allowbreak{}sh resize}); \texttt{startupProbe} 5 menit untuk Kafka; replica rusak dipulihkan otomatis (\texttt{balance.\allowbreak{}py}); timing Patroni standar (ttl 30 s / loop 10 s) dan NIC virtio mengurangi beban API server dan softirq. Masih terbuka: kontroler NetworkPolicy setelah reset paksa control plane (butuh restart node-a yang bersih), dan load test butuh generator beban di mesin lain. \\
+Perbaikan & \texttt{practice.\allowbreak{}sh} selalu menjalankan skenario dari agen di node control plane, port serial dimatikan (\texttt{vbox-\allowbreak{}cluster.\allowbreak{}sh resize}), \texttt{startup\allowbreak{}Probe} 5 menit untuk Kafka, replica rusak dipulihkan otomatis (\texttt{balance.\allowbreak{}py}), timing Patroni standar (ttl 30 s / loop 10 s) dan NIC virtio mengurangi beban API server dan softirq. Masih terbuka: kontroler NetworkPolicy setelah reset paksa control plane (butuh restart node-a yang bersih), dan load test butuh generator beban di mesin lain. \\
 \bottomrule
 \end{longtable}
 }
@@ -175,7 +175,7 @@ Perbaikan & \texttt{practice.\allowbreak{}sh} selalu menjalankan skenario dari a
 \midrule
 \endhead
 Percaya \texttt{/\allowbreak{}healthz} & Gagal pada \emph{gray failure} yang memang sengaja ditunjukkan sensor ini (health 200, data 503 atau basi). \\
-Retry segera dengan backoff eksponensial tanpa breaker & Mengurangi tetapi tidak menghentikan permintaan ke sensor yang mati; tiap siklus tetap menunggu timeout. Breaker memutus panggilan sepenuhnya kecuali satu probe. \\
+Retry segera dengan backoff eksponensial tanpa breaker & Mengurangi tetapi tidak menghentikan permintaan ke sensor yang mati, tiap siklus tetap menunggu timeout. Breaker memutus panggilan sepenuhnya kecuali satu probe. \\
 Kirim peringatan langsung dari poller ke notifier (melewati store) & Lebih cepat beberapa ratus ms, tetapi kehilangan outbox (peringatan bisa hilang bila Kafka padam) dan fencing leader. Dengan relay batch, jalur outbox sudah $\le$ 1 s. \\
 Simpan semua observasi, tandai yang buruk & Melanggar kriteria 2 (``tidak tersimpan sebagai HazardEvent'') dan mencemari analitik. \\
 Shedding berdasarkan laju saja (token bucket global, M1) & Overload karena hilir lambat tidak terdeteksi (laju tetap, latensi naik). Batas \emph{in-flight} bereaksi pada kapasitas nyata, dan cadangan per peran mencegah Media menghabiskannya. \\
@@ -188,7 +188,7 @@ Shedding berdasarkan laju saja (token bucket global, M1) & Overload karena hilir
 \begin{itemize}
 \item Latensi peringatan diukur dari waktu simpan di Aggregator ke notifier, ditambah paling lama 1 s interval poll. Waktu sensor (60$\times$) tidak dapat dipakai sebagai titik awal. Jam antar-node bisa bergeser (skenario \texttt{clock-\allowbreak{}skew}) dan mempengaruhi angka ini.
 \item Daftar peringatan notifier (\texttt{GET /\allowbreak{}alerts}) ada di memori. Pengirimannya at-least-once lewat offset Kafka (bukti ``0 hilang'' memakai offset ter-commit), tetapi notifier yang restart sebelum commit dapat mengirim peringatan yang sama dua kali.
-\item Event kritis yang \textbf{melanggar kontrak} disisihkan dan tidak diperingatkan sebagai HazardEvent. Ia terlihat di dashboard (\texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}critical\_\allowbreak{}total\{outcome=\allowbreak{}"rejected"\}}, alert \texttt{CriticalObservationRejected}) dan di DLQ untuk Internal Ops. Ini pilihan sadar antara kriteria 1 dan 2.
+\item Event kritis yang \textbf{melanggar kontrak} disisihkan dan tidak diperingatkan sebagai HazardEvent. Ia terlihat di dashboard (\texttt{sensor\_\allowbreak{}pantai\_\allowbreak{}critical\_\allowbreak{}total\{outcome=\allowbreak{}"rejected"\}}, alert \texttt{Critical\allowbreak{}Observation\allowbreak{}Rejected}) dan di DLQ untuk Internal Ops. Ini pilihan sadar antara kriteria 1 dan 2.
 \item Saat deployment pertama, event yang tersimpan sebelum topic Kafka atau consumer siap tercatat dengan latensi besar (compose: 48 s untuk event kritis pertama). SLO dievaluasi sejak sistem siap.
 \item Admisi bersifat per pod: kapasitas total = jumlah replika client-api $\times$ batas per pod.
 \end{itemize}
