@@ -1,0 +1,10 @@
+# P1 criterion 7 - analytics numbers vs a direct count over the Audit API (docker compose, 2026-11-20T09:35:10Z)
+# Same comparison as scripts/demo/m2-analytics.sh: every page of GET /internal/audit/events with ingested_at < cut,
+# counted per category (SEISMIC with a tsunami warning = TSUNAMI), severity and area_name, against
+# GET /v1/analytics/summary?ingested_before=cut. Ingestion (Sensor Pantai, BMKG, PVMBG) kept running.
+run 1 IDENTICAL total=1429
+run 2 IDENTICAL total=1437
+run 3 IDENTICAL total=1455
+first attempt (string comparison of timestamps with fractions) differed by 4 COASTAL events inside the cut second;
+fixed by comparing whole seconds on both sides (the server compares instants: not Before(cut) is excluded).
+k3s run (incl. one shard down -> partial=true): make demo-m2-analytics

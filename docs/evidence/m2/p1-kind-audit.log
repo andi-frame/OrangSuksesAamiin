@@ -1,0 +1,11 @@
+Development only: three-node kind, real PostgreSQL shard groups, synthetic corpus.
+Import catalog.ndjson: input_records=64, inserted=64.
+Repeat the same input: input_records=64, inserted=0.
+GET /ready: 200, canonical_store=ok.
+GET /internal/hazards?limit=50: 50 items, partial=false, next_cursor present.
+GET /internal/audit/checksum?source=BMKG: count=64, partial=false, unavailable_units=[].
+Digest equals independent sort/join/SHA-256 of original input IDs:
+d7fce900f519643b72e199cc036209c1720dac80d982a817d3c5fce892c020fe
+GET /internal/audit/location?hazard_id=bmkg-catalog-7: partial=false.
+  shard-2-0 on argus-orang3-worker2: primary
+  shard-2-1 on argus-orang3-control-plane: replica

@@ -6,27 +6,56 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/client-api/internal/aggregator"
 	"github.com/andi-frame/orangsuksesaamiin/services/client-api/internal/auth"
+	"github.com/andi-frame/orangsuksesaamiin/services/client-api/internal/limit"
 	"github.com/andi-frame/orangsuksesaamiin/services/client-api/internal/policy"
+	"github.com/andi-frame/orangsuksesaamiin/services/client-api/internal/reports"
 )
 
 type Server struct {
 	Agg *aggregator.Client
 	Log *slog.Logger
+
+	// Limit, when set, is the priority admission control (M2 P5 criterion 5).
+	// It runs after authentication because it needs the client's role.
+	Limit *limit.Priority
+
+	// Field reports (M2 P3 criterion 6). Reports nil = POST answers 503.
+	Reports          reports.Publisher
+	ReportAckTimeout time.Duration
+	ReportsURL       string // the processor (services/field-reports), for GET status
+	reportsClient    *http.Client
+
+	// AuthURL lets the analytics dashboard log in from the same origin.
+	AuthURL string
 }
 
 func (s *Server) Handler(jwtSecret []byte) http.Handler {
+	s.reportsClient = obs.NewHTTPClient(s.Log, "field-reports", 3*time.Second)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", obs.LivenessHandler("client-api", nil))
 	mux.HandleFunc("GET /ready", obs.LivenessHandler("client-api", nil))
 
-	secured := auth.Middleware(jwtSecret)
+	authn := auth.Middleware(jwtSecret)
+	secured := func(h http.Handler) http.Handler {
+		if s.Limit != nil {
+			h = s.Limit.Middleware(h)
+		}
+		return authn(h)
+	}
 	mux.Handle("GET /v1/hazards", secured(http.HandlerFunc(s.listHazards)))
 	mux.Handle("GET /v1/hazards/{id}", secured(http.HandlerFunc(s.getHazard)))
 	mux.Handle("GET /v1/sources/status", secured(http.HandlerFunc(s.sourcesStatus)))
+	mux.Handle("POST /v1/field-reports", secured(http.HandlerFunc(s.postFieldReport)))
+	mux.Handle("GET /v1/field-reports/{id}", secured(http.HandlerFunc(s.getFieldReport)))
+	mux.Handle("GET /v1/analytics/summary", secured(http.HandlerFunc(s.analyticsSummary)))
+	mux.HandleFunc("GET /dashboard", s.dashboard)
+	mux.HandleFunc("POST /dashboard/login", s.dashboardLogin)
+	mux.HandleFunc("POST /dashboard/refresh", s.dashboardRefresh)
 
 	return mux
 }
@@ -58,6 +87,7 @@ func (s *Server) listHazards(w http.ResponseWriter, r *http.Request) {
 
 	obs.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": items, "next_cursor": page.NextCursor, "freshness": page.Freshness,
+		"partial": page.Partial, "unavailable_units": page.UnavailableUnits,
 	})
 }
 

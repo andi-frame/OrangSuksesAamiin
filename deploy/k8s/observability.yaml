@@ -1,0 +1,279 @@
+# Observability (Orang 2, M2 "Observabilitas"), for every service:
+#   1. metrics in ONE dashboard  -> every Go service serves /metrics (pkg/obs); Prometheus finds the pods
+#      itself (any container port named "http" in this namespace) and Grafana shows the provisioned
+#      dashboard "Argus / Observabilitas" (latency, error rate, throughput per service + ingest, P5 SLO).
+#   2. one request traced across every service it passes, with the duration of each step
+#      -> pkg/obs spans (W3C traceparent over HTTP and Kafka headers) exported as OTLP/HTTP JSON to Jaeger.
+#   3. structured logs with correlation ID -> JSON logs with "cid" and "trace_id" (kubectl logs).
+#
+# UIs (any node IP): Grafana :30030, Jaeger :30686, Prometheus :30090.
+# All three are "Komponen lain" in Lampiran B (128Mi / 256Mi), role=other; storage is emptyDir on purpose
+# (observability data is not system data; Prometheus keeps 6 h, Jaeger the last 3000 traces).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-config
+  labels: {app: observability, role: other}
+data:
+  # every Go service reads these (envFrom, optional) - pkg/obs/trace.go
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  # 1 = every flow is traced; the load test lowers it (scripts/loadtest/m2-run.sh) so the exporter
+  # queue does not drop spans under 10 000 VU
+  OTEL_TRACES_SAMPLER_ARG: "1"
+---
+# ------------------------------------------------------------------------------------------- Jaeger ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  labels: {app: jaeger, role: other}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: jaeger}}
+  template:
+    metadata:
+      labels: {app: jaeger, role: other}
+    spec:
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.62.0
+          args: ["--memory.max-traces=3000"]
+          env:
+            - {name: COLLECTOR_OTLP_ENABLED, value: "true"}
+            - {name: GOMEMLIMIT, value: "200MiB"}
+          ports:
+            - {name: ui, containerPort: 16686}
+            - {name: otlp-http, containerPort: 4318}
+            - {name: admin, containerPort: 14269}
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /, port: admin}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /, port: admin}, periodSeconds: 10, failureThreshold: 6}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  labels: {app: jaeger, role: other}
+spec:
+  type: NodePort
+  selector: {app: jaeger}
+  ports:
+    - {name: ui, port: 16686, targetPort: ui, nodePort: 30686}
+    - {name: otlp-http, port: 4318, targetPort: otlp-http}
+---
+# --------------------------------------------------------------------------------------- Prometheus ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  labels: {app: prometheus, role: other}
+---
+# read-only pod discovery in this namespace only
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-discovery
+  labels: {app: prometheus, role: other}
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, endpoints]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-discovery
+  labels: {app: prometheus, role: other}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: prometheus-discovery}
+subjects: [{kind: ServiceAccount, name: prometheus}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels: {app: prometheus, role: other}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 15s
+    rule_files: [/etc/prometheus/rules.yml]
+    scrape_configs:
+      - job_name: argus
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: {own_namespace: true}
+        relabel_configs:
+          # our services: every container port named "http" serves /metrics (pkg/obs)
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: http
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_role]
+            target_label: role
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+  rules.yml: |
+    groups:
+      - name: argus-slo
+        rules:
+          # P5 criterion 8: SLO of the Tim Lapangan warning path - 99 % of critical alerts delivered within 5 s
+          - record: argus:critical_alerts_within_5s:ratio_5m
+            expr: |
+              sum(rate(consumer_critical_alert_seconds_bucket{le="5"}[5m]))
+              / clamp_min(sum(rate(consumer_critical_alert_seconds_count[5m])), 1e-9)
+          # "or ... * 0": a service without any 5xx shows 0 instead of no data
+          - record: argus:http_error_ratio:rate1m
+            expr: |
+              (sum by (app) (rate(http_server_requests_total{code=~"5.."}[1m]))
+                or sum by (app) (rate(http_server_requests_total[1m])) * 0)
+              / clamp_min(sum by (app) (rate(http_server_requests_total[1m])), 1e-9)
+          - alert: CriticalAlertLatencySLOBurn
+            expr: argus:critical_alerts_within_5s:ratio_5m < 0.99
+            for: 2m
+            labels: {severity: page}
+            annotations: {summary: "Critical coastal alerts slower than 5 s for more than 1 % of alerts"}
+          - alert: CriticalObservationRejected
+            expr: increase(sensor_pantai_critical_total{outcome="rejected"}[5m]) > 0
+            labels: {severity: page}
+            annotations: {summary: "A critical observation from Sensor Pantai violated the contract and was set aside"}
+          - alert: SourceDown
+            expr: max by (source) (aggregator_source_breaker_open) == 1
+            for: 30s
+            labels: {severity: warn}
+            annotations: {summary: "Circuit breaker of {{ $labels.source }} is open"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels: {app: prometheus, role: other}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: prometheus}}
+  template:
+    metadata:
+      labels: {app: prometheus, role: other}
+      annotations:
+        # restart on config change (kustomize does not hash a plain ConfigMap)
+        argus/config-version: "2"
+    spec:
+      serviceAccountName: prometheus
+      securityContext: {runAsUser: 65534, runAsNonRoot: true, fsGroup: 65534}
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.55.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=6h
+            - --web.enable-lifecycle
+          ports: [{name: web, containerPort: 9090}]
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /-/ready, port: web}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /-/healthy, port: web}, periodSeconds: 10, failureThreshold: 6}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: prometheus-config}
+        - name: data
+          emptyDir: {sizeLimit: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels: {app: prometheus, role: other}
+spec:
+  type: NodePort
+  selector: {app: prometheus}
+  ports: [{name: web, port: 9090, targetPort: web, nodePort: 30090}]
+---
+# ------------------------------------------------------------------------------------------ Grafana ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  labels: {app: grafana, role: other}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - {name: Prometheus, uid: prometheus, type: prometheus, access: proxy, url: "http://prometheus:9090", isDefault: true,
+         jsonData: {timeInterval: 5s}}
+      - {name: Jaeger, uid: jaeger, type: jaeger, access: proxy, url: "http://jaeger:16686"}
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - {name: argus, folder: Argus, type: file, disableDeletion: true, allowUiUpdates: false,
+         options: {path: /var/lib/grafana/dashboards}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels: {app: grafana, role: other}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata:
+      labels: {app: grafana, role: other}
+    spec:
+      securityContext: {runAsUser: 472, fsGroup: 472}
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.3.0
+          env:
+            - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}   # read-only viewing for the demo
+            - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer}
+            - {name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/argus-overview.json}
+            - {name: GF_ANALYTICS_REPORTING_ENABLED, value: "false"}
+            - {name: GF_ANALYTICS_CHECK_FOR_UPDATES, value: "false"}
+            - {name: GF_PLUGINS_PREINSTALL_DISABLED, value: "true"}
+            - {name: GOMEMLIMIT, value: "200MiB"}
+          envFrom:
+            - secretRef: {name: grafana-credentials}   # GF_SECURITY_ADMIN_USER / _PASSWORD (scripts/k8s/secrets.sh)
+          ports: [{name: web, containerPort: 3000}]
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /api/health, port: web}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /api/health, port: web}, periodSeconds: 10, failureThreshold: 6}
+          volumeMounts:
+            - {name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml}
+            - {name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml}
+            - {name: dashboards, mountPath: /var/lib/grafana/dashboards}
+            - {name: data, mountPath: /var/lib/grafana}
+      volumes:
+        - name: provisioning
+          configMap: {name: grafana-provisioning}
+        - name: dashboards
+          configMap: {name: grafana-dashboards}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels: {app: grafana, role: other}
+spec:
+  type: NodePort
+  selector: {app: grafana}
+  ports: [{name: web, port: 3000, targetPort: web, nodePort: 30030}]

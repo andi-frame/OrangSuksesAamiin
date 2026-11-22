@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS hazards (
   version       integer NOT NULL,
   attributes    jsonb NOT NULL DEFAULT '{}'
 );
+ALTER TABLE hazards ADD COLUMN IF NOT EXISTS retired boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS hazards_audit_idx ON hazards (ingested_at, hazard_id) WHERE NOT retired;
 CREATE INDEX IF NOT EXISTS hazards_list_idx ON hazards (hazard_type, occurred_at DESC, hazard_id DESC);
 CREATE INDEX IF NOT EXISTS hazards_time_idx ON hazards (occurred_at DESC, hazard_id DESC);
 
@@ -109,6 +111,8 @@ CREATE INDEX IF NOT EXISTS unprocessed_due_idx ON unprocessed (next_attempt_at) 
 CREATE INDEX IF NOT EXISTS unprocessed_key_idx ON unprocessed (source, kind, record_key, seq) WHERE status <> 'resolved';
 
 -- M2 P2: the leader's view of each upstream, read by every instance
+CREATE TABLE IF NOT EXISTS satellite_checkpoint (name text PRIMARY KEY, doc bytea NOT NULL);
+
 CREATE TABLE IF NOT EXISTS source_status (
   source     text PRIMARY KEY,
   doc        jsonb NOT NULL,
@@ -161,7 +165,7 @@ func (r *Repo) migrate(ctx context.Context) error {
 
 // Reset empties every table. Test helper only.
 func (r *Repo) Reset(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `TRUNCATE hazards, outbox, poll_cursor, fence, unprocessed, source_status RESTART IDENTITY`)
+	_, err := r.pool.Exec(ctx, `TRUNCATE hazards, outbox, poll_cursor, fence, unprocessed, source_status, satellite_checkpoint RESTART IDENTITY`)
 	return err
 }
 
@@ -171,13 +175,13 @@ func (r *Repo) Ping(ctx context.Context) error {
 }
 
 const hazardCols = `hazard_id, source, source_ref_id, hazard_type, severity, area_name, latitude, longitude,
-  occurred_at, ingested_at, updated_at, version, attributes`
+  occurred_at, ingested_at, updated_at, version, attributes, retired`
 
 func scanHazard(row pgx.Row) (*domain.HazardEvent, error) {
 	var h domain.HazardEvent
 	var attrs []byte
 	if err := row.Scan(&h.HazardID, &h.Source, &h.SourceRefID, &h.HazardType, &h.Severity, &h.AreaName,
-		&h.Latitude, &h.Longitude, &h.OccurredAt, &h.IngestedAt, &h.UpdatedAt, &h.Version, &attrs); err != nil {
+		&h.Latitude, &h.Longitude, &h.OccurredAt, &h.IngestedAt, &h.UpdatedAt, &h.Version, &attrs, &h.Retired); err != nil {
 		return nil, err
 	}
 	h.OccurredAt, h.IngestedAt, h.UpdatedAt = h.OccurredAt.UTC(), h.IngestedAt.UTC(), h.UpdatedAt.UTC()
@@ -228,9 +232,9 @@ func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out
 	}
 
 	if expected == 0 {
-		_, err = tx.Exec(ctx, `INSERT INTO hazards (`+hazardCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		_, err = tx.Exec(ctx, `INSERT INTO hazards (`+hazardCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 			h.HazardID, string(h.Source), h.SourceRefID, string(h.HazardType), string(h.Severity), h.AreaName,
-			h.Latitude, h.Longitude, h.OccurredAt, h.IngestedAt, h.UpdatedAt, h.Version, attrJSON)
+			h.Latitude, h.Longitude, h.OccurredAt, h.IngestedAt, h.UpdatedAt, h.Version, attrJSON, h.Retired)
 		if isUniqueViolation(err) {
 			return ports.ErrVersionConflict
 		}
@@ -239,10 +243,10 @@ func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out
 		}
 	} else {
 		tag, err := tx.Exec(ctx, `UPDATE hazards SET source=$2, source_ref_id=$3, hazard_type=$4, severity=$5, area_name=$6,
-			latitude=$7, longitude=$8, occurred_at=$9, ingested_at=$10, updated_at=$11, version=$12, attributes=$13
-			WHERE hazard_id=$1 AND version=$14`,
+			latitude=$7, longitude=$8, occurred_at=$9, ingested_at=$10, updated_at=$11, version=$12, attributes=$13, retired=$14
+			WHERE hazard_id=$1 AND version=$15`,
 			h.HazardID, string(h.Source), h.SourceRefID, string(h.HazardType), string(h.Severity), h.AreaName,
-			h.Latitude, h.Longitude, h.OccurredAt, h.IngestedAt, h.UpdatedAt, h.Version, attrJSON, expected)
+			h.Latitude, h.Longitude, h.OccurredAt, h.IngestedAt, h.UpdatedAt, h.Version, attrJSON, h.Retired, expected)
 		if err != nil {
 			return err
 		}
@@ -273,7 +277,11 @@ func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, out
 
 func (r *Repo) List(ctx context.Context, f ports.ListFilter) (ports.Page, error) {
 	f.Normalize()
-	var where []string
+	where := []string{"NOT retired"}
+	timestamp, direction, comparison := "occurred_at", "DESC", "<"
+	if f.AuditOrder {
+		timestamp, direction, comparison = "ingested_at", "ASC", ">"
+	}
 	var args []any
 	add := func(cond string, v any) {
 		args = append(args, v)
@@ -289,7 +297,7 @@ func (r *Repo) List(ctx context.Context, f ports.ListFilter) (ports.Page, error)
 		add("severity = ?", string(f.Severity))
 	}
 	if f.Since != nil {
-		add("occurred_at >= ?", *f.Since)
+		add(timestamp+" >= ?", *f.Since)
 	}
 	if f.Cursor != "" {
 		ct, cid, err := ports.DecodeCursor(f.Cursor)
@@ -297,14 +305,14 @@ func (r *Repo) List(ctx context.Context, f ports.ListFilter) (ports.Page, error)
 			return ports.Page{}, err
 		}
 		args = append(args, ct, cid)
-		where = append(where, fmt.Sprintf("(occurred_at, hazard_id) < ($%d, $%d)", len(args)-1, len(args)))
+		where = append(where, fmt.Sprintf("(%s, hazard_id) %s ($%d, $%d)", timestamp, comparison, len(args)-1, len(args)))
 	}
 	q := `SELECT ` + hazardCols + ` FROM hazards`
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, " AND ")
 	}
 	args = append(args, f.Limit+1) // one extra row tells whether another page exists
-	q += fmt.Sprintf(` ORDER BY occurred_at DESC, hazard_id DESC LIMIT $%d`, len(args))
+	q += fmt.Sprintf(" ORDER BY %s %s, hazard_id %s LIMIT $%d", timestamp, direction, direction, len(args))
 
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -325,7 +333,7 @@ func (r *Repo) List(ctx context.Context, f ports.ListFilter) (ports.Page, error)
 	if len(page.Items) > f.Limit {
 		page.Items = page.Items[:f.Limit]
 		last := page.Items[f.Limit-1]
-		page.NextCursor = ports.EncodeCursor(last.OccurredAt, last.HazardID)
+		page.NextCursor = ports.EncodeCursor(f.Position(last), last.HazardID)
 	}
 	return page, nil
 }
@@ -374,6 +382,8 @@ func (r *Repo) MarkPublished(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	_, err := r.pool.Exec(ctx, `UPDATE outbox SET published_at = now() WHERE event_id = ANY($1) AND published_at IS NULL`, ids)
-	return err
+	return r.inTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE outbox SET published_at = now() WHERE event_id = ANY($1) AND published_at IS NULL`, ids)
+		return err
+	})
 }

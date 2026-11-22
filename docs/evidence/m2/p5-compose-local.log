@@ -1,0 +1,25 @@
+# P5 Sensor Pantai - local integration run (docker compose on one laptop, practice profile, 2026-11-20T09:33:39Z)
+# Same images as the cluster. k3s run: make demo-m2-p5 (transcript docs/evidence/m2/p5-latest.log)
+
+== Contract violations seen in the practice profile (set aside, not HazardEvents) ==
+   parked  obs-000108  contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   (kind run of the same images: 89 observations with quality "suspect" in ~9 400; none stored)
+
+== "Healthy but not serving": /healthz 200 while /v1/observations answers 503 ==
+   aggregator: SENSOR_PANTAI down / breaker open, last_error "sensor-pantai: HTTP 503: {"error":{"code":"unavailable","message":"sensor sedang tidak melayani"}}"
+
+== Critical events -> Tim Lapangan notifier (fresh start) ==
+   2026-11-20T09:28:19.502869333Z  sensor-pantai-obs-000120  sea=1.46 wave=1.11  store->notifier 48190.1 ms
+   2026-11-20T09:28:30.406941422Z  sensor-pantai-obs-000362  sea=-0.13 wave=5.3  store->notifier 12.8 ms
+   2026-11-20T09:29:31.607180172Z  sensor-pantai-obs-000601  sea=1.3 wave=5.76  store->notifier 992.8 ms
+   note: obs-000120 was stored before the broker topic and the consumers existed (compose start order);
+         steady state: 12.8 ms and 992.8 ms (relay interval 500 ms + batch publish)
+
+== Sensor stopped for 45 s (docker compose stop sensor-pantai) ==
+   requests sent to the sensor during the outage: 10 (poll interval 1 s would be ~45; breaker probes once per 10 s)
+   BMKG-only reads (client-api, hazard_type=SEISMIC) during the outage: p50 6.8 ms, p95 23.7 ms, n=77   (baseline sensor up: p95 72 ms)
+   coastal reads during the outage: p95 11.0 ms, 5 items (last data), freshness SENSOR_PANTAI state=down, stale_since set
+   after docker compose start sensor-pantai: SENSOR_PANTAI up again after 4 s, no intervention
+
+== Overload (k6 max mode, 300 VUs, 90 % Media / 10 % Tim Lapangan, CLIENT_MAX_IN_FLIGHT=64) ==
+    {"media": {"ok_200": 4189, "shed_429": 26730, "errors": 0}, "lapangan": {"ok_200": 1700, "shed_429": 0, "errors": 0}} errors 0 ok_rps 290.1

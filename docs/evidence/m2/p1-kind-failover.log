@@ -1,0 +1,20 @@
+Development only: three-node kind storage freeze/rejoin
+shard-0 synchronized, old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+shard-1 synchronized, old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+shard-2 synchronized, old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+Paused development worker: argus-orang3-worker
+shard-1 promoted on surviving worker in 25s
+shard-0 preserved old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+shard-1 preserved old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+shard-2 preserved old row SHA-256 66bf56f9121516b453966ccf330ea25d027389cdf0e70b86925613e0072c1a25
+Resumed development worker
+shard-0 restored synchronous standby, logical rows 2
+shard-1 restored synchronous standby, logical rows 2
+shard-2 restored synchronous standby, logical rows 2
+NAME        READY   STATUS    RESTARTS   AGE     IP           NODE                         NOMINATED NODE   READINESS GATES   DB-ROLE
+shard-0-0   1/1     Running   0          6m52s   10.244.2.5   argus-orang3-worker          <none>           <none>            replica
+shard-0-1   1/1     Running   0          6m52s   10.244.0.6   argus-orang3-control-plane   <none>           <none>            primary
+shard-1-0   1/1     Running   0          6m52s   10.244.1.4   argus-orang3-worker2         <none>           <none>            primary
+shard-1-1   1/1     Running   0          6m52s   10.244.2.4   argus-orang3-worker          <none>           <none>            replica
+shard-2-0   1/1     Running   0          6m52s   10.244.1.5   argus-orang3-worker2         <none>           <none>            primary
+shard-2-1   1/1     Running   0          6m52s   10.244.0.8   argus-orang3-control-plane   <none>           <none>            replica

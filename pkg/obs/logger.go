@@ -16,6 +16,9 @@ func (h ctxHandler) Handle(ctx context.Context, r slog.Record) error {
 	if id := CorrelationID(ctx); id != "" {
 		r.AddAttrs(slog.String("cid", id))
 	}
+	if id := TraceID(ctx); id != "" {
+		r.AddAttrs(slog.String("trace_id", id))
+	}
 	return h.Handler.Handle(ctx, r)
 }
 
@@ -29,8 +32,10 @@ func (h ctxHandler) WithGroup(n string) slog.Handler {
 
 // NewLogger builds a JSON logger writing to stdout. Level comes from
 // LOG_LEVEL (debug|info|warn|error, default info). Every line carries
-// "service" and (when logged with a context) "cid".
+// "service" and (when logged with a context) "cid" and "trace_id".
+// It also names the process in metrics and traces (SetServiceName).
 func NewLogger(service string) *slog.Logger {
+	SetServiceName(service)
 	var lvl slog.Level
 	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
 	case "debug":

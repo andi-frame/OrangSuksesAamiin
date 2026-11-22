@@ -26,7 +26,7 @@ step "Store: write periods per leadership term (store clock)"
 term_periods
 [ "$(term_overlaps)" = 0 ] || fail "two terms stored results in the same period"
 ok "no two instances ever stored results in the same period"
-[ "$(psql_q "SELECT count(*) - count(DISTINCT (source, source_ref_id)) FROM hazards")" = 0 ] || fail "duplicate HazardEvent"
+[ "$(duplicate_hazards)" = 0 ] || fail "duplicate HazardEvent"
 ok "no duplicate HazardEvent"
 
 step "Aggregator logs: leadership changes and refused writes (last $SINCE)"

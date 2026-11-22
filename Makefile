@@ -12,7 +12,9 @@ COMPOSE ?= $(RUN) docker compose
 
 .PHONY: help env up down wipe reset ps logs wait test test-race vet fmt lint secrets pvmbg-token \
         demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence test-postgres \
-        k8s-up k8s-down k8s-images k8s-status demo-m2-p2 demo-m2-p3 demo-m2-isolation
+        k8s-up k8s-down k8s-images k8s-status demo-m2-p2 demo-m2-p3 demo-m2-isolation \
+        demo-m2-observability demo-m2-field-reports demo-m2-p5 demo-m2-analytics demo-m2-hpa \
+        loadtest-m2-scale loadtest-m2-throughput
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -121,6 +123,33 @@ demo-m2-p3: ## M2 P3: incompatible schema parked, malformed messages, Ops-only i
 demo-m2-isolation: ## M2: the platform (NetworkPolicy) keeps every pod but the Aggregator off the Canonical Store
 	@mkdir -p docs/evidence/m2
 	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-isolation.sh 2>&1 | tee docs/evidence/m2/isolation-latest.log'
+
+# ------------------------------------------------------- M2: Orang 2 (obs, P3-6, P5, P1-7, P2-6/7) ---
+demo-m2-observability: ## M2 observability: /metrics of every service, one trace across services, cid in the logs
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-observability.sh 2>&1 | tee docs/evidence/m2/observability-latest.log'
+
+demo-m2-field-reports: ## M2 P3-6: POST /v1/field-reports 202 fast, receiver/processor killed, none lost, none twice
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-field-reports.sh 2>&1 | tee docs/evidence/m2/p3-field-reports-latest.log'
+
+demo-m2-p5: ## M2 P5: Sensor Pantai contract, critical alerts, outage isolation/breaker/recovery, priorities, SLO
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-p5.sh 2>&1 | tee docs/evidence/m2/p5-latest.log'
+
+demo-m2-analytics: ## M2 P1-7: analytics dashboard numbers = Audit API count; unit down -> flagged partial
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-analytics.sh 2>&1 | tee docs/evidence/m2/p1-analytics-latest.log'
+
+demo-m2-hpa: ## M2 bonus: HPA adds and removes instances with the load
+	@mkdir -p docs/evidence/m2
+	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-hpa.sh 2>&1 | tee docs/evidence/m2/hpa-latest.log'
+
+loadtest-m2-scale: ## M2 P2-6: >= 10 000 VU >= 120 s, Aggregator 3 -> 5 -> 2, error < 1 % (k6 runs on THIS machine)
+	@$(RUN) bash scripts/loadtest/m2-scale.sh
+
+loadtest-m2-throughput: ## M2 P2-7: throughput 3 instances >= 2 x 1 instance
+	@$(RUN) bash scripts/loadtest/m2-throughput.sh
 
 demo-isolation: ## prove the Canonical Store / broker are unreachable from other containers
 	@mkdir -p docs/evidence/p4

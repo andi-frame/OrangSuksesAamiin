@@ -11,8 +11,10 @@ import (
 type Source string
 
 const (
-	SourceBMKG  Source = "BMKG"
-	SourcePVMBG Source = "PVMBG"
+	SourceBMKG      Source = "BMKG"
+	SourcePVMBG     Source = "PVMBG"
+	SourceSatellite Source = "SATELIT"
+	SourceCoastal   Source = "SENSOR_PANTAI"
 )
 
 type HazardType string
@@ -20,6 +22,8 @@ type HazardType string
 const (
 	HazardSeismic  HazardType = "SEISMIC"
 	HazardVolcanic HazardType = "VOLCANIC"
+	HazardWildfire HazardType = "WILDFIRE"
+	HazardCoastal  HazardType = "COASTAL"
 )
 
 type Severity string
@@ -70,6 +74,7 @@ type HazardEvent struct {
 	IngestedAt  time.Time      `json:"ingested_at"`
 	Attributes  map[string]any `json:"attributes"`
 	Version     int            `json:"version"`
+	Retired     bool           `json:"retired,omitempty"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
@@ -85,6 +90,10 @@ func HazardID(src Source, refID string) string {
 	switch src {
 	case SourceBMKG:
 		return "bmkg-" + refID
+	case SourceSatellite:
+		return "satelit-" + refID
+	case SourceCoastal:
+		return "sensor-pantai-" + refID
 	default:
 		return "pvmbg-" + refID
 	}
@@ -107,7 +116,7 @@ func eqFloatPtr(a, b *float64) bool {
 // which makes re-polling an unchanged source record a no-op.
 func SameContent(a, b HazardEvent) bool {
 	return a.HazardID == b.HazardID &&
-		a.Source == b.Source &&
+		a.Source == b.Source && a.Retired == b.Retired &&
 		a.SourceRefID == b.SourceRefID &&
 		a.HazardType == b.HazardType &&
 		a.Severity == b.Severity &&
@@ -137,6 +146,7 @@ type Envelope struct {
 const (
 	KindCreated = "created"
 	KindUpdated = "updated"
+	KindRetired = "retired"
 	SchemaName  = "hazard-event/v1"
 )
 

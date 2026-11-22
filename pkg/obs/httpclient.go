@@ -1,8 +1,10 @@
 package obs
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -16,13 +18,20 @@ type loggingTransport struct {
 
 func (t loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
+	ctx, span := StartSpan(ctx, req.Method+" "+t.target, SpanClient,
+		"peer.service", t.target, "http.method", req.Method, "http.url", req.URL.Scheme+"://"+req.URL.Host+req.URL.Path)
+	defer span.End()
+	req = req.Clone(ctx)
 	if id := CorrelationID(ctx); id != "" && req.Header.Get(HeaderCorrelationID) == "" {
-		req = req.Clone(ctx)
 		req.Header.Set(HeaderCorrelationID, id)
 	}
+	req.Header.Set(HeaderTraceparent, span.SpanContext().Traceparent())
 	start := time.Now()
 	resp, err := t.base.RoundTrip(req)
-	ms := float64(time.Since(start).Microseconds()) / 1000
+	took := time.Since(start)
+	ms := float64(took.Microseconds()) / 1000
+	svc := serviceName()
+	clientDuration.Observe(took.Seconds(), svc, t.target)
 	attrs := []any{
 		"target", t.target,
 		"method", req.Method,
@@ -30,12 +39,17 @@ func (t loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		"latency_ms", ms,
 	}
 	if err != nil {
+		clientRequests.Inc(svc, t.target, "error")
+		span.RecordError(err)
 		t.log.WarnContext(ctx, "outbound_call", append(attrs, "error", err.Error())...)
 		return nil, err
 	}
+	clientRequests.Inc(svc, t.target, strconv.Itoa(resp.StatusCode))
+	span.SetAttr("http.status_code", resp.StatusCode)
 	lvl := slog.LevelInfo
 	if resp.StatusCode >= 500 {
 		lvl = slog.LevelWarn
+		span.RecordError(fmt.Errorf("HTTP %d", resp.StatusCode))
 	}
 	t.log.Log(ctx, lvl, "outbound_call", append(attrs, "status", resp.StatusCode)...)
 	return resp, nil

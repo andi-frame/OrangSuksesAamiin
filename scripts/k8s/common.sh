@@ -13,7 +13,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NS=sistem-informasi-kebencanaan-bnpb
 TESTER_MANIFEST=https://raw.githubusercontent.com/susTuna/if4031-tester-agent/ebb55261711123a9a211739ffbf140a275caa6da/manifest.yaml
-SERVICES=(aggregator bmkg-mock pvmbg-mock auth-service client-api consumer-hazard)
+SERVICES=(aggregator bmkg-mock pvmbg-mock auth-service client-api consumer-hazard field-reports)
+K8S_STORAGE="${K8S_STORAGE:-single}"
+K8S_MANIFESTS="$ROOT/deploy"
+if [ "$K8S_STORAGE" = sharded ]; then
+  K8S_MANIFESTS="$ROOT/overlays/sharded"
+  SERVICES+=(canonical-shard)
+fi
 
 KUBE_CONTEXT="${KUBE_CONTEXT:-$(kubectl config current-context)}"
 kc() { kubectl --context "$KUBE_CONTEXT" "$@"; }
@@ -26,6 +32,7 @@ if [ -z "${IMAGE_TAG:-}" ]; then
   fi
 fi
 IMAGE_PREFIX="${IMAGE_REGISTRY:+${IMAGE_REGISTRY%/}/}"
+export IMAGE_TAG KUBE_CONTEXT K8S_STORAGE
 
 if [ -z "${K8S_IMAGE_MODE:-}" ]; then
   case "$KUBE_CONTEXT" in kind-*) K8S_IMAGE_MODE=kind ;; *) K8S_IMAGE_MODE=ssh ;; esac
@@ -36,17 +43,24 @@ say() { printf '\033[1;36m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # load_env exports every variable of .env (credentials included) for the scripts only.
+# ENV_FILE=<path> uses another file (e.g. one per cluster); default: .env of this checkout.
+ENV_FILE="${ENV_FILE:-$ROOT/.env}"
 load_env() {
-  [ -f "$ROOT/.env" ] || die ".env missing: cp .env.example .env"
-  set -a
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE missing: cp .env.example .env"
+  local tmp
+  tmp="$(mktemp)"
   # tr: a .env saved with Windows line endings must not put '\r' into credentials
+  # (a temporary file, not ". <(...)": sourcing a pipe does nothing in the bash 3.2 of macOS)
+  tr -d '\r' <"$ENV_FILE" >"$tmp"
+  set -a
   # shellcheck disable=SC1090
-  . <(tr -d '\r' <"$ROOT/.env")
+  . "$tmp"
   set +a
+  rm -f "$tmp"
 }
 
 # render prints the manifests with the image names/tags of this deployment.
 render() {
-  kc kustomize "$ROOT/deploy" |
+  kc kustomize "$K8S_MANIFESTS" |
     sed -E "s#image: argus/([a-z-]+):dev#image: ${IMAGE_PREFIX}argus/\1:${IMAGE_TAG}#"
 }

@@ -17,11 +17,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters/sharded"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/api"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/config"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/dlq"
@@ -33,6 +35,7 @@ import (
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/ports"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/relay"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/resilience"
+	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/satellite"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/sources"
 )
 
@@ -40,6 +43,25 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "import-catalog":
+			runCatalog()
+			return
+		case "migrate-single":
+			ctx, stop := obs.SignalContext()
+			defer stop()
+			log := obs.NewLogger("canonical-migration")
+			source, destinations := os.Getenv("CANONICAL_DB_URL"), os.Getenv("CANONICAL_SHARD_URLS")
+			if source == "" || destinations == "" {
+				fatal(log, "canonical_migration", errors.New("CANONICAL_DB_URL and CANONICAL_SHARD_URLS are required"))
+			}
+			if err := sharded.MigrateSingle(ctx, source, destinations, log); err != nil {
+				fatal(log, "canonical_migration", err)
+			}
+			return
+		}
+	}
 	cfg := config.Load()
 	log := obs.NewLogger("aggregator").With("instance", cfg.Identity)
 	ctx, stop := obs.SignalContext()
@@ -64,6 +86,24 @@ func main() {
 	defer pub.Close()
 
 	ing := &ingestion{cfg: cfg, log: log, repo: repo, pub: pub, rules: rules, volcanoes: volcanoes}
+	if cfg.SatelliteToken != "" && !strings.HasPrefix(cfg.SatelliteToken, "example-") {
+		body, err := os.ReadFile(cfg.ProvinceTablePath)
+		if err != nil {
+			fatal(log, "province_table", err)
+		}
+		provinces, err := satellite.LoadProvinces(body)
+		if err != nil {
+			fatal(log, "province_table", err)
+		}
+		store, ok := repo.(ports.SatelliteStore)
+		if !ok {
+			fatal(log, "satellite", errors.New("repository lacks satellite checkpoints"))
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.ResponseHeaderTimeout = 5 * time.Second
+		ing.satellite = &satellite.Runner{Repo: repo, Store: store, Client: &http.Client{Transport: transport},
+			URL: cfg.SatelliteURL, Token: cfg.SatelliteToken, Lateness: cfg.SatelliteLateness, Provinces: provinces, Log: log}
+	}
 
 	// background work ends (and the lease is released) before the process exits
 	bgDone := make(chan struct{})
@@ -89,15 +129,23 @@ func main() {
 		fatal(log, "config", errors.New("LEADER_ELECTION must be none or kubernetes"))
 	}
 
+	activeSources := []string{"BMKG", "PVMBG"}
+	if ing.satellite != nil {
+		activeSources = append(activeSources, string(domain.SourceSatellite))
+	}
+	if ing.coastalEnabled() {
+		activeSources = append(activeSources, string(domain.SourceCoastal))
+	}
 	apiSrv := &api.Server{
 		Repo:   repo,
-		Status: &api.StoreStatus{Repo: repo, Sources: []string{"BMKG", "PVMBG"}, MaxAge: cfg.StatusMaxAge, Log: log},
+		Status: &api.StoreStatus{Repo: repo, Sources: activeSources, MaxAge: cfg.StatusMaxAge, Log: log},
 		Rules:  rules.Summary(), ServiceKey: cfg.ServiceKey, OpsToken: cfg.OpsToken, AuditToken: cfg.AuditToken, Log: log,
 		Version: version,
 	}
 	if elector != nil {
 		apiSrv.Leader = elector.Status
 	}
+	go exportGauges(ctx, apiSrv.Status, repo, apiSrv.Leader)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           apiSrv.Handler(),
@@ -128,6 +176,7 @@ type ingestion struct {
 	pub       ports.Publisher
 	rules     mapping.SchemaRules
 	volcanoes mapping.VolcanoTable
+	satellite *satellite.Runner
 	gate      func(context.Context) error // nil when there is no election
 }
 
@@ -170,18 +219,37 @@ func (g *ingestion) run(ctx context.Context) {
 		{Source: bmkg, Breaker: bmkgBreaker, Tracker: bmkgTracker},
 		{Source: pvmbg, Breaker: pvmbgBreaker, Tracker: pvmbgTracker},
 	}
-	worker := &dlq.Worker{Queue: queue, Log: log, Handlers: map[string]dlq.Handler{
+	handlers := map[string]dlq.Handler{
 		poller.KindPVMBGReport:   pvmbg.Reprocess,
 		poller.KindBMKGEvent:     bmkg.ReprocessEvent,
 		poller.KindBMKGWarning:   bmkg.ReprocessWarning,
 		poller.KindPVMBGFragment: poller.FragmentHandler(repo, domain.SourcePVMBG),
 		poller.KindBMKGFragment:  poller.FragmentHandler(repo, domain.SourceBMKG),
-	}}
+	}
+	if coastal := g.coastal(ing, queue); coastal != nil {
+		// Sensor Pantai: own loop, own HTTP client and own breaker (bulkhead), a
+		// short timeout and a fast interval (critical alerts: p95 <= 5 s end to end)
+		br := resilience.NewBreaker(cfg.BreakerThreshold, cfg.SensorBreakerOpen)
+		tr := resilience.NewTracker(coastal.Name(), br)
+		g.restore(ctx, tr)
+		loops = append(loops, &poller.Loop{Source: coastal, Breaker: br, Tracker: tr,
+			Interval: cfg.SensorPollInterval, CycleTimeout: time.Duration(cfg.SensorMaxPages+2) * cfg.SensorTimeout})
+		handlers[poller.KindCoastalObservation] = coastal.Reprocess
+	}
+	worker := &dlq.Worker{Queue: queue, Log: log, Handlers: handlers}
 	rel := &relay.Relay{Repo: repo, Pub: g.pub, Log: log, Interval: cfg.RelayInterval, Batch: cfg.RelayBatch, MaxBackoff: cfg.RelayBackoff}
 
 	var wg sync.WaitGroup
+	if g.satellite != nil {
+		runner := *g.satellite
+		runner.Gate = g.gate
+		wg.Go(func() { runner.Run(ctx) })
+	}
 	for _, l := range loops {
-		l.Interval, l.CycleTimeout, l.Log, l.Gate, l.Publish = cfg.PollInterval, cycleTimeout, log, g.gate, g.publish
+		if l.Interval == 0 {
+			l.Interval, l.CycleTimeout = cfg.PollInterval, cycleTimeout
+		}
+		l.Log, l.Gate, l.Publish = log, g.gate, g.publish
 		wg.Add(1)
 		go func() { defer wg.Done(); l.Run(ctx) }()
 	}
@@ -267,4 +335,29 @@ func connect[T any](ctx context.Context, log *slog.Logger, what string, build fu
 func fatal(log *slog.Logger, what string, err error) {
 	log.Error("fatal", "what", what, "error", err.Error())
 	os.Exit(1)
+}
+
+func (g *ingestion) coastalEnabled() bool {
+	return g.cfg.SensorToken != "" && !strings.HasPrefix(g.cfg.SensorToken, "example-")
+}
+
+// coastal builds the Sensor Pantai poller (nil when it is not configured).
+func (g *ingestion) coastal(ing *ingest.Ingestor, queue *dlq.Queue) *poller.CoastalSource {
+	if !g.coastalEnabled() {
+		return nil
+	}
+	store, ok := g.repo.(ports.SatelliteStore)
+	if !ok {
+		g.log.Error("sensor_pantai_disabled", "reason", "repository lacks checkpoint documents")
+		return nil
+	}
+	cfg := g.cfg
+	// NewHTTPClient clones the transport: this client has its own connection pool
+	client := obs.NewHTTPClient(g.log, "sensor-pantai", cfg.SensorTimeout)
+	return &poller.CoastalSource{
+		Client: &sources.Coastal{HTTP: client, BaseURL: cfg.SensorURL, Token: cfg.SensorToken, Caller: cfg.Identity},
+		Repo:   g.repo, Store: store, Ingestor: ing, DLQ: queue, Log: g.log,
+		PageSize: cfg.SensorPageSize, MaxPages: cfg.SensorMaxPages,
+		FreezeAfter: cfg.SensorFreezeAfter, MaxLag: cfg.SensorMaxLag,
+	}
 }
