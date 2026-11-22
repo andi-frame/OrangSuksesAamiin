@@ -51,9 +51,9 @@ func reportServer(t *testing.T, b reports.Publisher, processor string) *httptest
 	return ts
 }
 
-func post(t *testing.T, ts *httptest.Server, tok, key, body string) (int, map[string]any) {
+func post(t *testing.T, url, tok, key, body string) (int, map[string]any) {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/field-reports", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)
@@ -73,7 +73,7 @@ const validReport = `{"area_name":"Padang","description":"air laut surut tiba-ti
 func TestFieldReportIsAcceptedOnlyOnceDurable(t *testing.T) {
 	b := &fakeBroker{}
 	ts := reportServer(t, b, "")
-	code, body := post(t, ts, token(t, "lapangan"), "k-1", validReport)
+	code, body := post(t, ts.URL+"/field-reports", token(t, "lapangan"), "k-1", validReport)
 	if code != http.StatusAccepted || body["status"] != "accepted" {
 		t.Fatalf("got %d %v", code, body)
 	}
@@ -90,9 +90,17 @@ func TestFieldReportIsAcceptedOnlyOnceDurable(t *testing.T) {
 func TestFieldReportRetryKeepsTheSameReportID(t *testing.T) {
 	b := &fakeBroker{}
 	ts := reportServer(t, b, "")
-	_, first := post(t, ts, token(t, "lapangan"), "same-key", validReport)
-	_, again := post(t, ts, token(t, "lapangan"), "same-key", validReport)
-	_, other := post(t, ts, token(t, "lapangan"), "other-key", validReport)
+	accepted := func(path, key string) map[string]any {
+		t.Helper()
+		code, body := post(t, ts.URL+path, token(t, "lapangan"), key, validReport)
+		if code != http.StatusAccepted || body["report_id"] == nil {
+			t.Fatalf("POST %s: got %d %v", path, code, body)
+		}
+		return body
+	}
+	first := accepted("/v1/field-reports", "same-key")
+	again := accepted("/field-reports", "same-key")
+	other := accepted("/field-reports", "other-key")
 	if first["report_id"] != again["report_id"] || first["report_id"] == other["report_id"] {
 		t.Fatalf("report ids: %v %v %v", first["report_id"], again["report_id"], other["report_id"])
 	}
@@ -115,7 +123,7 @@ func TestFieldReportRejections(t *testing.T) {
 		{"unknown hazard type", "lapangan", "k", `{"area_name":"x","description":"y","hazard_type":"ALIEN"}`, 400},
 		{"too large", "lapangan", "k", `{"area_name":"x","description":"` + strings.Repeat("a", 70000) + `"}`, 400},
 	} {
-		if code, _ := post(t, ts, token(t, c.role), c.key, c.body); code != c.want {
+		if code, _ := post(t, ts.URL+"/field-reports", token(t, c.role), c.key, c.body); code != c.want {
 			t.Errorf("%s: got %d want %d", c.name, code, c.want)
 		}
 	}
@@ -127,13 +135,13 @@ func TestFieldReportRejections(t *testing.T) {
 func TestFieldReportBrokerDownIs503NotA202(t *testing.T) {
 	b := &fakeBroker{fail: true}
 	ts := reportServer(t, b, "")
-	code, body := post(t, ts, token(t, "lapangan"), "k", validReport)
+	code, body := post(t, ts.URL+"/field-reports", token(t, "lapangan"), "k", validReport)
 	if code != http.StatusServiceUnavailable {
 		t.Fatalf("a report that is not durable must not get 202: %d %v", code, body)
 	}
 	var nilBroker reports.Publisher
 	ts2 := reportServer(t, nilBroker, "")
-	if code, _ := post(t, ts2, token(t, "lapangan"), "k", validReport); code != http.StatusServiceUnavailable {
+	if code, _ := post(t, ts2.URL+"/field-reports", token(t, "lapangan"), "k", validReport); code != http.StatusServiceUnavailable {
 		t.Fatalf("unconfigured: %d", code)
 	}
 }

@@ -61,6 +61,8 @@ paths:
         "401": {description: missing, invalid or expired token}
         "403": {description: role not allowed (Media)}
   # ---- M2 additions (nothing above changed) ------------------------------------------------------
+  /field-reports:
+    $ref: '#/paths/~1v1~1field-reports'
   /v1/field-reports:
     post:
       summary: Tim Lapangan submits a field report (M2 P3 criterion 6)
