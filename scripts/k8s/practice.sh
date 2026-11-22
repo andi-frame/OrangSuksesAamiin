@@ -17,7 +17,10 @@ pods=$(kc get pods -n tester-agent -l app=tester-agent -o name)
 declare -A base=()
 for p in $pods; do base[$p]=$(kc logs -n tester-agent "$p" 2>/dev/null | wc -l); done
 new_logs() { for p in $pods; do kc logs -n tester-agent "$p" 2>/dev/null | tail -n +$((base[$p] + 1)) | sed "s|^|[${p#pod/}] |"; done; }
-MSYS_NO_PATHCONV=1 kc exec -n tester-agent daemonset/tester-agent -- /app run practice "$1" 2>&1 | tee "$out"
+# run it from the agent on the control-plane node: a scenario that powers a worker off must not cut its own exec
+cp_node=$(kc get nodes -l node-role.kubernetes.io/control-plane -o jsonpath='{.items[0].metadata.name}')
+agent=$(kc get pods -n tester-agent -l app=tester-agent --field-selector "spec.nodeName=$cp_node" -o jsonpath='{.items[0].metadata.name}')
+MSYS_NO_PATHCONV=1 kc exec -n tester-agent "${agent:-daemonset/tester-agent}" -- /app run practice "$1" 2>&1 | tee "$out"
 # the agent runs the scenario asynchronously; its log ends with "pemulihan akhir selesai" (final recovery done)
 say "waiting for the scenario to finish (max ${PRACTICE_TIMEOUT_SEC:-900} s)"
 deadline=$((SECONDS + ${PRACTICE_TIMEOUT_SEC:-900}))

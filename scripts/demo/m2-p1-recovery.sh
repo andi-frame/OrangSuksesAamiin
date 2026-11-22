@@ -17,7 +17,7 @@ SCENARIO="${SCENARIO:-wipe-node}" SECOND_LOSS="${SECOND_LOSS:-1}" RECOVER_TIMEOU
 API="${API:-http://127.0.0.1:30080}" AGG_URL="${AGG_URL:-http://127.0.0.1:30083}" AUTHU="${AUTHU:-http://127.0.0.1:30084}"
 evidence="$ROOT/docs/evidence/m2/p1-recovery-latest.log"
 work=$(mktemp -d)
-trap 'kill "${reader:-}" 2>/dev/null || true; rm -rf "$work"; cleanup_pf' EXIT
+trap '[ -n "${reader:-}" ] && { pkill -P "$reader" 2>/dev/null; kill "$reader" 2>/dev/null; }; rm -rf "$work"; cleanup_pf' EXIT
 exec > >(tee "$evidence") 2>&1
 
 placement() { kn get pods -l app=canonical-shard -o wide -L shard,db-role --no-headers |
@@ -65,7 +65,7 @@ token=$(curl -sS --max-time 10 "$AUTHU/v1/token" -H 'Content-Type: application/j
   -d "{\"client_id\":\"$AUTH_LAPANGAN_CLIENT_ID\",\"client_secret\":\"$AUTH_LAPANGAN_CLIENT_SECRET\"}" | jqx -r .access_token)
 [ -n "$token" ] && [ "$token" != null ] || fail "no Tim Lapangan token from $AUTHU"
 read_loop() { # one line per request: epoch http_code time_total partial unavailable_units
-  while :; do
+  while [ -d "$work" ]; do
     curl -s -o "$work/body" -w '%{http_code} %{time_total}' --max-time 5 -H "Authorization: Bearer $token" \
       "$API/v1/hazards?limit=50" >"$work/meta" 2>/dev/null || true
     printf '%s %s %s\n' "$(date +%s)" "$(cat "$work/meta" 2>/dev/null || echo '000 5')" \
@@ -85,7 +85,14 @@ summarize_reads() {
 lose_worker() { # $1: reads file
   read_loop "$1" &
   reader=$!
-  bash "$ROOT/scripts/k8s/practice.sh" "$SCENARIO" | sed 's/^/   tester: /' | tail -n 25
+  bash "$ROOT/scripts/k8s/practice.sh" "$SCENARIO" | sed 's/^/   tester: /' | tail -n 25 || true
+  # A powered-off worker comes back with its disk wiped (criterion 5: "node yang sama dengan disk kosong"); starting the
+  # VM is the one thing that cannot be done from inside the cluster. Everything after that happens without an operator.
+  local down
+  for down in $(kc get nodes --no-headers | awk '$2 != "Ready" {print $1}'); do
+    info "$down is down; starting it again (NODE_START_CMD)"
+    eval "${NODE_START_CMD:-\"/c/Program Files/Oracle/VirtualBox/VBoxManage.exe\" startvm \$down --type headless}" || true
+  done
   info "waiting until the storage is redundant again (max ${RECOVER_TIMEOUT_S}s, no operator action)"
   local t0=$SECONDS
   until healthy; do
