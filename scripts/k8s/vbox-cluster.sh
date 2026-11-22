@@ -19,6 +19,9 @@ VB="${VBOXMANAGE:-$(command -v VBoxManage || echo "/c/Program Files/Oracle/Virtu
 read -r -a NODES <<<"${VBOX_NODES:-node-a node-b}"
 MEM="${VBOX_MEM:-4608}" CPUS="${VBOX_CPUS:-4}"
 NET=argus-k3s NET_PREFIX=10.77.0
+# second NIC on the host-only network: the host (k6, browser) reaches the NodePorts through the kernel instead of the
+# user-space NAT forwarder, which cannot hold the 10 000 connections of the P2 load test
+HOSTONLY_IF="${VBOX_HOSTONLY_IF:-VirtualBox Host-Only Ethernet Adapter}" HOSTONLY_PREFIX="${VBOX_HOSTONLY_PREFIX:-192.168.56}"
 WORK="${ARGUS_K3S_DIR:-$HOME/.argus-k3s}"
 KEY="$HOME/.ssh/argus_k3s"
 SSH_CONFIG="$HOME/.ssh/argus-k3s.config"
@@ -85,10 +88,13 @@ seed_iso() { # <index> -> path of the cloud-init seed ISO of that node
 version: 2
 ethernets:
   nic:
-    match: {name: "en*"}
+    match: {name: enp0s3}
     addresses: [$(ip_of "$i")/24]
     routes: [{to: default, via: $NET_PREFIX.1}]
     nameservers: {addresses: [$NET_PREFIX.1, 1.1.1.1, 8.8.8.8]}
+  hostonly:
+    match: {name: enp0s8}
+    addresses: [$HOSTONLY_PREFIX.$((11 + i))/24]
 EOF
   cat >"$dir/user-data" <<EOF
 #cloud-config
@@ -122,7 +128,7 @@ create() { # <index>
   # the cloud image's console is ttyS0: without a serial port the boot stalls; the port writes to a log file,
   # which is also where cloud-init's progress can be read
   vb modifyvm "$name" --nic1 natnetwork --nat-network1 "$NET" --nictype1 virtio --audio-enabled off \
-    --uart1 0x3F8 4 --uart-mode1 file "$(winpath "$WORK/$name-console.log")"
+    --uart1 0x3F8 4 --uart-mode1 file "$(winpath "$WORK/$name-console.log")"     --nic2 hostonly --hostonlyadapter2 "$HOSTONLY_IF" --nictype2 virtio
 }
 
 # attach_seed: give the VM its cloud-init seed ISO (idempotent: a VM created by an interrupted run gets it too)
@@ -189,7 +195,9 @@ case "${1:-}" in
       for _ in $(seq 1 60); do vm_running "$n" || break; sleep 3; done
       vm_running "$n" && die "$n did not shut down within 3 minutes"
       say "$n: ${MEM} MiB, ${CPUS} vCPU"
-      vb modifyvm "$n" --memory "$MEM" --cpus "$CPUS" --nictype1 virtio   # virtio-net: far less softirq than e1000
+      # virtio-net: far less softirq than e1000; the serial console (only needed to watch the first boot) is switched
+      # off: writes to it stalled the guest kernel (RCU stall in io_serial_out) under load
+      vb modifyvm "$n" --memory "$MEM" --cpus "$CPUS" --nictype1 virtio --uart1 off
     done
     for n in "${NODES[@]}"; do vb startvm "$n" --type headless >/dev/null; done
     prepare   # idempotent: also adds port forwards that are missing on an older NAT network

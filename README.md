@@ -25,6 +25,8 @@ di bawah) tetap berfungsi untuk pengembangan satu mesin.
 | node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
 | node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
 
+Setiap node juga punya NIC kedua di jaringan host-only VirtualBox (node-a `192.168.56.11`, node-b `192.168.56.12`). Lewat NIC ini host menjangkau NodePort langsung, misalnya k6 untuk load test atau peramban untuk dashboard. Forwarder NAT `127.0.0.1` tidak sanggup menahan 10.000 koneksi.
+
 Kedua node berjalan di satu host fisik, dengan kernel terpisah (boot id berbeda; `docs/evidence/m2/topology.log`) dan
 saling terhubung lewat VirtualBox NAT Network `10.77.0.0/24`. Cluster ini dibuat dengan `bash scripts/k8s/vbox-cluster.sh up`.
 
