@@ -14,6 +14,7 @@
 #     - SLO (99 % of critical alerts within 5 s) and error budget used during the game day (Prometheus)
 #   Env: GD_VUS (2000) GD_SCENARIO_1 GD_SCENARIO_2 GD_RECOVERY_S (300) SENSOR_EXAM_KEY (file: exam profile)
 . "$(dirname "${BASH_SOURCE[0]}")/k8s-lib.sh"
+export MSYS_NO_PATHCONV=1   # Git Bash: keep /tmp/patroni.yaml and /usr/local/bin paths for kubectl exec as they are
 GD_VUS="${GD_VUS:-2000}" GD_SCENARIO_1="${GD_SCENARIO_1:-kill-leader}" GD_SCENARIO_2="${GD_SCENARIO_2:-wipe-node}"
 GD_RECOVERY_S="${GD_RECOVERY_S:-300}"
 API="${API:-http://127.0.0.1:30080}" AUTHU="${AUTHU:-http://127.0.0.1:30084}" PROM="${PROM:-http://127.0.0.1:30090}"

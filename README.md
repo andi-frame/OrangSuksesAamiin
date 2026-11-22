@@ -22,8 +22,8 @@ di bawah) tetap berfungsi untuk pengembangan satu mesin.
 
 | Node | Peran | Jenis | vCPU / RAM node | OS / kernel | Host fisik | CPU / RAM host |
 |---|---|---|---|---|---|---|
-| node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
-| node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
+| node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
+| node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
 
 Kedua node berjalan di satu host fisik, dengan kernel terpisah (boot id berbeda; `docs/evidence/m2/topology.log`) dan
 saling terhubung lewat VirtualBox NAT Network `10.77.0.0/24`. Cluster ini dibuat dengan `bash scripts/k8s/vbox-cluster.sh up`.
@@ -34,7 +34,7 @@ bahwa setiap node punya kernel sendiri). Cara menyiapkan VM dan k3s: [`docs/k8s-
 ### M2.2 Satu perintah
 
 ```bash
-bash scripts/k8s/vbox-cluster.sh up      # 2 VM VirtualBox (node-a, node-b; 5 GiB / 4 vCPU), k3s, konteks argus-k3s
+bash scripts/k8s/vbox-cluster.sh up      # 2 VM VirtualBox (node-a, node-b; 4,5 GiB / 4 vCPU), k3s, konteks argus-k3s
 cp .env.example .env                      # isi token dari asisten: AUDIT_TOKEN, SATELLITE_FEED_TOKEN
 export KUBE_CONTEXT=<konteks-cluster>     # default: konteks kubectl saat ini
 export K8S_SSH_NODES="ubuntu@<ip-a> ubuntu@<ip-b>"   # atau IMAGE_REGISTRY=<registry>; kind: otomatis

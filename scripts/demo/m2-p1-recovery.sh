@@ -11,6 +11,7 @@
 #   6. SECOND_LOSS=1: take the worker away again and check the reads again (survives the next loss)
 #   Env: SCENARIO (wipe-node) SECOND_LOSS (1) RECOVER_TIMEOUT_S (900) API (http://127.0.0.1:30080) AGG_URL (:30083)
 . "$(dirname "${BASH_SOURCE[0]}")/k8s-lib.sh"
+export MSYS_NO_PATHCONV=1   # Git Bash: keep /tmp/patroni.yaml and /usr/local/bin paths for kubectl exec as they are
 [ "$K8S_STORAGE" = sharded ] || fail "select K8S_STORAGE=sharded"
 SCENARIO="${SCENARIO:-wipe-node}" SECOND_LOSS="${SECOND_LOSS:-1}" RECOVER_TIMEOUT_S="${RECOVER_TIMEOUT_S:-900}"
 API="${API:-http://127.0.0.1:30080}" AGG_URL="${AGG_URL:-http://127.0.0.1:30083}" AUTHU="${AUTHU:-http://127.0.0.1:30084}"

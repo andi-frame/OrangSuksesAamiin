@@ -10,14 +10,14 @@
 # They sit on a VirtualBox NAT Network (10.77.0.0/24, no admin rights needed); the host reaches them through
 # port forwards on 127.0.0.1: API server :16443, SSH :2221.. (node-a, node-b, ...), NodePorts 30080/30083/30084/30030/30686/30090.
 # Ubuntu 24.04 cloud image + cloud-init (seed ISO made with genisoimage in WSL).
-#   VBOX_MEM (MiB, default 5120)  VBOX_CPUS (default 4); disk = the cloud image's 10 GB
+#   VBOX_MEM (MiB, default 4608)  VBOX_CPUS (default 4); disk = the cloud image's 10 GB
 #   resize: shut the VMs down cleanly, apply VBOX_MEM/VBOX_CPUS, start them again (disks and data are kept)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 VB="${VBOXMANAGE:-$(command -v VBoxManage || echo "/c/Program Files/Oracle/VirtualBox/VBoxManage.exe")}"
 read -r -a NODES <<<"${VBOX_NODES:-node-a node-b}"
-MEM="${VBOX_MEM:-5120}" CPUS="${VBOX_CPUS:-4}"
+MEM="${VBOX_MEM:-4608}" CPUS="${VBOX_CPUS:-4}"
 NET=argus-k3s NET_PREFIX=10.77.0
 WORK="${ARGUS_K3S_DIR:-$HOME/.argus-k3s}"
 KEY="$HOME/.ssh/argus_k3s"
