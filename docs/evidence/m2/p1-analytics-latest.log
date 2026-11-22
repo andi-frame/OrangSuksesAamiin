@@ -1,0 +1,16 @@
+
+[1m[36m== [1] 1. Dashboard numbers = direct count over the Audit API ==[0m
+   cut: ingested_at < 2026-11-22T10:34:10Z (both sides)
+   Audit API: {"total":8451,"by_category":{"SEISMIC":7375,"TSUNAMI":129,"VOLCANIC":939,"WILDFIRE":8}} (9 pages)
+   dashboard: {"total":8451,"by_category":{"SEISMIC":7375,"TSUNAMI":129,"VOLCANIC":939,"WILDFIRE":8}}
+   by severity: {"AWAS":211,"NORMAL":7447,"SIAGA":313,"WASPADA":480}; areas: 36
+   [32mPASS[0m identical: total, per category, per severity and per area_name
+
+[1m[36m== [2] 2. A storage unit down: still answered, flagged incomplete ==[0m
+[33m$ kubectl scale statefulset/shard-1 --replicas=0[0m
+   {"partial":true,"unavailable_units":["shard-1"],"total":5630}
+   dashboard banner: 'Angka BELUM LENGKAP: unit penyimpanan ... tidak terjangkau'
+   [32mPASS[0m answered with partial=true and the missing unit named (no 500, no wrong numbers without a flag)
+   open the dashboard: http://<node-ip>:30080/dashboard (log in with any client)
+
+[32m[1mANALYTICS PASS[0m

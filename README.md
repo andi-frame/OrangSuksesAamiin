@@ -22,8 +22,10 @@ di bawah) tetap berfungsi untuk pengembangan satu mesin.
 
 | Node | Peran | Jenis | vCPU / RAM node | OS / kernel | Host fisik | CPU / RAM host |
 |---|---|---|---|---|---|---|
-| node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
-| node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 2 vCPU / 3 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
+| node-a (10.77.0.11) | control plane + worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop Acer Nitro AN515-58, Windows 11 Home | Intel Core i5-12500H / 24 GB |
+| node-b (10.77.0.12) | worker | VM VirtualBox 7.1.4 | 4 vCPU / 4,5 GiB, disk 10 GB | Ubuntu 24.04.5, kernel 6.8.0-147, k3s v1.37.2 | laptop yang sama | sama |
+
+Setiap node juga punya NIC kedua di jaringan host-only VirtualBox (node-a `192.168.56.11`, node-b `192.168.56.12`). Lewat NIC ini host menjangkau NodePort langsung, misalnya k6 untuk load test atau peramban untuk dashboard. Forwarder NAT `127.0.0.1` tidak sanggup menahan 10.000 koneksi.
 
 Kedua node berjalan di satu host fisik, dengan kernel terpisah (boot id berbeda; `docs/evidence/m2/topology.log`) dan
 saling terhubung lewat VirtualBox NAT Network `10.77.0.0/24`. Cluster ini dibuat dengan `bash scripts/k8s/vbox-cluster.sh up`.
@@ -34,6 +36,7 @@ bahwa setiap node punya kernel sendiri). Cara menyiapkan VM dan k3s: [`docs/k8s-
 ### M2.2 Satu perintah
 
 ```bash
+bash scripts/k8s/vbox-cluster.sh up      # 2 VM VirtualBox (node-a, node-b; 4,5 GiB / 4 vCPU), k3s, konteks argus-k3s
 cp .env.example .env                      # isi token dari asisten: AUDIT_TOKEN, SATELLITE_FEED_TOKEN
 export KUBE_CONTEXT=<konteks-cluster>     # default: konteks kubectl saat ini
 export K8S_SSH_NODES="ubuntu@<ip-a> ubuntu@<ip-b>"   # atau IMAGE_REGISTRY=<registry>; kind: otomatis
@@ -73,6 +76,13 @@ manifest yang dipin, tanpa modifikasi.
 | `KAFKA_BROKERS` (client-api), `FIELD_REPORT_ACK_TIMEOUT_SEC`, `FIELD_REPORTS_URL` | `kafka:9092`, 5, `http://field-reports:8093` | `POST /v1/field-reports`: 202 setelah broker mengonfirmasi; status laporan dari pemroses |
 | `FIELD_REPORT_PROCESS_DELAY_MS` | 0 | jeda buatan per laporan di pemroses (demo "hilir lambat") |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER_ARG` | `http://jaeger:4318`, 1 | ekspor trace (ConfigMap `observability-config`); kosong = trace hanya di log (`trace_id`) |
+| `K8S_STORAGE` | `sharded` | `sharded`: Canonical Store = 3 shard Patroni × 2 anggota (P1); `single`: satu PostgreSQL (pengembangan) |
+| `STORE_NODES` | semua node | node penyimpanan; primary pilihan shard dirotasi di node ini (ConfigMap `shard-placement`) |
+| `CANONICAL_DB_ADMIN_PASSWORD`, `CANONICAL_DB_REPLICATION_PASSWORD` | – (wajib, sharded) | superuser dan replikasi Patroni; Secret `canonical-shard-credentials` |
+| `BALANCE_STABLE_SEC`, `BALANCE_COOLDOWN_SEC` | 60, 300 | `balance-shard`: replica di node pilihan harus sinkron selama ini sebelum switchover; jeda antar-switchover |
+| `SATELLITE_LATENESS_SEC` | 86400 | batas keterlambatan waktu deteksi (P4 kriteria 2); lebih tua dari watermark = terlambat, dihitung |
+| `SATELLITE_START_FROM` | `latest` (k8s) | sesi practice tanpa checkpoint mulai dari head; profil `exam` selalu dari offset 0 |
+| `SATELLITE_PROVINCES_PATH` | `/app/config/provinces.json` | tabel pusat provinsi untuk `area_name` WILDFIRE |
 | `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | `admin`, dibuat acak bila kosong | admin Grafana (dashboard juga terbuka anonim sebagai Viewer) |
 
 ### M2.4 Skenario pengujian
@@ -92,6 +102,11 @@ manifest yang dipin, tanpa modifikasi.
 | **P1 kriteria 7** | `make demo-m2-analytics`; peramban `http://<node>:30080/dashboard` | angka dashboard = hitungan langsung Audit API; satu shard mati → `partial` dan banner "BELUM LENGKAP" |
 | **P2 kriteria 6** | `make loadtest-m2-scale` (`K6_VUS=10000`, k6 di mesin ini; lihat `docs/report/m2/02-p2.md` §8) | 10 000 VU, ≥ 120 s, Aggregator 3 → 5 → 2, error < 1 % di luar 429, lalu pemeriksaan satu penulis |
 | **P2 kriteria 7** | `make loadtest-m2-throughput` | throughput 3 instance ≥ 2× 1 instance (CPU limit sama per pod) |
+| **P1 kriteria 1–2** | `make demo-m2-p1-load` (`CATALOG=<ndjson>`; CSV: `python3 tools/catalog/catalog.py convert x.csv`) | katalog dimuat, unit/peran/baris per node, tidak ada unit memuat seluruh data, beban tulis per node saat muat dan saat lonjakan satu wilayah, perbandingan dua alternatif penempatan |
+| **P1 kriteria 3** | `bash scripts/demo/m2-p1.sh snapshot` | 50 event terbaru lintas shard, urutan keyset benar, `next_cursor` |
+| **P1 kriteria 4–6** | `make demo-m2-p1-recovery` (`SCENARIO=wipe-node`) | worker dimatikan dan datanya dihapus saat dibaca terus: semua 200 (lengkap/partial bertanda), pulih sendiri, primary kembali ke node yang kembali, 0 HazardEvent hilang, tahan kehilangan berikutnya |
+| **P4** | `bash scripts/demo/m2-p4.sh` (`BURST_END_AT`, `BURST_END_OFFSET`); `python3 tools/satellite/probe.py` | lag dan p95 masuk → tersimpan, catch-up, checksum SATELIT; distribusi keterlambatan feed |
+| **P5 game day** | `make demo-m2-gameday` (`SENSOR_EXAM_KEY=<file>` untuk profil ujian) | kombinasi kegagalan tanpa intervensi, pulih sendiri, SLO dan error budget terpakai |
 | Bonus HPA | `make demo-m2-hpa` (`bash scripts/k8s/hpa.sh on/off`) | instance bertambah saat beban naik dan berkurang saat turun; matikan sebelum load test P2 |
 
 UI di node mana pun: **Grafana** `http://<node>:30030` (dashboard "Argus / Observabilitas"), **Jaeger** `http://<node>:30686`,
@@ -111,45 +126,28 @@ curl -X POST -H "Authorization: Bearer $AGGREGATOR_OPS_TOKEN" -d '{"source":"PVM
 Penyesuaian skema permanen: ubah `deploy/k8s/schema-rules.json` (contoh `deploy/schema-rules/pvmbg-v3.json`), jalankan
 `make k8s-up` (ConfigMap berganti nama → rolling update), lalu *reprocess* setelah rollout selesai.
 
-### M2.5 Sharded storage and Feed Satelit
+### M2.5 Canonical Store terdistribusi (P1) dan Feed Satelit (P4)
 
-On a Linux x86-64 host with KVM and Docker, run `bash scripts/k8s/qemu-cluster.sh up`
-followed by `bash scripts/k8s/qemu-cluster.sh deploy`. This provisions three Linux VMs
-and uses their own disks. See the [Linux VM commands](docs/k8s-cluster.md#menjalankan-demo-dari-host-linux).
+`make k8s-up` memasang Canonical Store sebagai **3 shard Patroni**, masing-masing 2 anggota PostgreSQL di node berbeda
+(pod anti-affinity, disk lokal `local-path`). HazardEvent diarahkan ke shard dengan FNV-1a 64 atas `hazard_id` mod 3.
+Primary pilihan tiap shard dirotasi di node penyimpanan (2 node: shard-0 → node-a, shard-1 → node-b, shard-2 → node-a),
+sehingga beban tulis ada di lebih dari satu node. `balance-shard` di setiap anggota mengembalikan primary ke node
+pilihannya lewat switchover terencana setelah replica di sana sinkron (node yang kembali dengan disk kosong dibangun
+ulang otomatis oleh Patroni dengan base backup, lalu ikut menanggung tulisan lagi). Laporan: [P1](docs/report/m2/01-p1.md).
 
-Use three k3s nodes with distinct kernels and node disks. With the VirtualBox helper, set
-`VBOX_NODES="node-a node-b node-c"`. Specify `STORE_NODE_A`, `STORE_NODE_B`,
-and `STORE_NODE_C` for different node names. Keep the real Kubernetes context explicit.
+Cluster yang masih memakai store tunggal: `MIGRATE_CANONICAL=1 make k8s-up` menyalin, memverifikasi, lalu berpindah ke
+sharded (PVC lama dipertahankan). Cluster QEMU 3 node di host Linux: `bash scripts/k8s/qemu-cluster.sh up && … deploy`
+([panduan](docs/k8s-cluster.md#menjalankan-demo-dari-host-linux)).
 
-```bash
-K8S_STORAGE=sharded make k8s-up
-```
-
-The command labels the three storage slots and deploys three PostgreSQL groups with two
-members per shard on the k3s `local-path` StorageClass. Supply independent `CANONICAL_DB_ADMIN_PASSWORD` and
-`CANONICAL_DB_REPLICATION_PASSWORD` values in `.env` along with the regular application
-password. The default `K8S_STORAGE=single` remains available for the two-node environment.
-For an existing singleton store, run `K8S_STORAGE=sharded MIGRATE_CANONICAL=1 make k8s-up`
-in the maintenance window. It drains the Aggregator, copies and verifies data, switches the
-backend, and scales the old database down after rollout. Its PVC remains available for recovery.
-
-Set `SATELLITE_FEED_TOKEN` in `.env` to enable the elected Aggregator consumer.
-The `satellite-feed-credentials` Secret is mounted through `secretRef`.
-Use `SATELLITE_FEED_URL` for a fixture endpoint, `SATELLITE_LATENESS_SEC` for the local
-event-time window, and `SATELLITE_PROVINCES_PATH` for an alternate province table.
-Kubernetes uses the Aggregator ConfigMap for non-secret overrides.
-
-Run the remaining P1 and P4 demo checks with the [P1 report](docs/report/m2/01-p1.md)
-and [P4 report](docs/report/m2/04-p4.md). The Canonical Store importer consumes one BMKG
-`SeismicEvent` JSON object per line. Convert the assistant's catalog to the fields in
-`contracts/schemas/seismic-event.json`, retaining its original event IDs and UTC timestamps.
+Katalog gempa historis: satu objek BMKG `SeismicEvent` per baris (`contracts/schemas/seismic-event.json`).
 
 ```bash
-kubectl -n sistem-informasi-kebencanaan-bnpb exec -i deploy/aggregator -- \
-  /usr/local/bin/aggregator import-catalog < catalog.ndjson
-K8S_STORAGE=sharded bash scripts/demo/m2-p1.sh baseline
-K8S_STORAGE=sharded bash scripts/demo/m2-p4.sh
+python3 tools/catalog/catalog.py convert katalog-asisten.csv > catalog.ndjson   # atau: generate --count 5000
+CATALOG=catalog.ndjson make demo-m2-p1-load
 ```
+
+Feed Satelit dibaca oleh instance Aggregator yang memegang lease ingest (SSE, resume dari offset tersimpan); token di
+Secret `satellite-feed-credentials`. Laporan: [P4](docs/report/m2/04-p4.md).
 
 ## 1. Prasyarat
 

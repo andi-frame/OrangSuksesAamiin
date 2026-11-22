@@ -1,6 +1,7 @@
 #!/opt/patroni/bin/python3
 """Start PostgreSQL under Patroni using pod identity and mounted credentials."""
 import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -16,6 +17,8 @@ config = {
     "scope": env["SHARD_NAME"],
     "name": env["POD_NAME"],
     "restapi": {"listen": "0.0.0.0:8008", "connect_address": f"{ip}:8008"},
+    # the node name lets the balancer (balance-shard) see where each member lives
+    "tags": {"node": env["NODE_NAME"]},
     "kubernetes": {
         "namespace": env["POD_NAMESPACE"],
         "labels": {"app": "canonical-shard", "shard": env["SHARD_NAME"]},
@@ -27,9 +30,12 @@ config = {
     },
     "bootstrap": {
         "dcs": {
-            "ttl": 20,
-            "loop_wait": 3,
-            "retry_timeout": 5,
+            # Patroni defaults. A 3 s loop rewrote the leader Endpoints of every shard every 3 s, and each write made
+            # kube-proxy and the NetworkPolicy controller resync: on 4-vCPU VMs that starved the nodes until leader
+            # locks expired and the shards failed over repeatedly. Failover within ~30 s is enough for P1.
+            "ttl": 30,
+            "loop_wait": 10,
+            "retry_timeout": 10,
             "check_timeline": True,
             "synchronous_mode": True,
             "synchronous_node_count": 1,
@@ -58,4 +64,9 @@ config = {
 os.umask(0o077)
 path = Path("/tmp/patroni.yaml")
 path.write_text(yaml.safe_dump(config))
+# Primary placement: a small loop next to Patroni moves this shard's primary role to its preferred node once a
+# synchronous standby there has caught up (P1: write load on more than one node, and a returning node takes its
+# share again without an operator). It only talks to the local Patroni REST API.
+# The same loop also self-heals a replica whose data directory is unusable (see balance.py).
+subprocess.Popen(["/opt/patroni/bin/python3", "/usr/local/bin/balance-shard"], start_new_session=True)
 os.execvp("patroni", ["patroni", str(path)])

@@ -55,11 +55,11 @@ step "3. Critical events reach the Tim Lapangan notifier: 0 lost, p95 <= 5 s"
 # Kafka keeps the committed offsets. Every critical event in hazard.events below the committed offset of the
 # group "notifier" has therefore been delivered. Latency: the notifier's histogram (Prometheus).
 KAFKA_BIN=/opt/kafka/bin
-crit=$(kn exec kafka-0 -- "$KAFKA_BIN/kafka-console-consumer.sh" --bootstrap-server localhost:9092 --topic hazard.events \
+crit=$(MSYS_NO_PATHCONV=1 kn exec kafka-0 -- "$KAFKA_BIN/kafka-console-consumer.sh" --bootstrap-server localhost:9092 --topic hazard.events \
   --from-beginning --timeout-ms 15000 --property print.partition=true --property print.offset=true 2>/dev/null |
   tr -d '\r' | grep '"source":"SENSOR_PANTAI"' | grep '"critical":true' |
   sed -E 's/^Partition:([0-9]+)[[:space:]]+Offset:([0-9]+)[[:space:]]+.*"hazard_id":"([^"]+)".*/\1 \2 \3/' | sort -u -k3,3)
-committed=$(kn exec kafka-0 -- "$KAFKA_BIN/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 --describe --group notifier 2>/dev/null |
+committed=$(MSYS_NO_PATHCONV=1 kn exec kafka-0 -- "$KAFKA_BIN/kafka-consumer-groups.sh" --bootstrap-server localhost:9092 --describe --group notifier 2>/dev/null |
   tr -d '\r' | awk '$2=="hazard.events"{print $3, $4}')
 n_crit=$(echo "$crit" | grep -c . || true)
 [ "$n_crit" -gt 0 ] || fail "no critical event in hazard.events yet (the practice profile flags its first one a few minutes after the sensor starts)"
@@ -144,8 +144,9 @@ else
 fi
 
 step "6. SLO of the Tim Lapangan warning path: 99 % of critical alerts within 5 s"
-ratio=$(promq 'sum(increase(consumer_critical_alert_seconds_bucket{le="5"}[${P5_WINDOW:-6h}])) / clamp_min(sum(increase(consumer_critical_alert_seconds_count[${P5_WINDOW:-6h}])), 1e-9)')
-total=$(promq 'sum(increase(consumer_critical_alert_seconds_count[${P5_WINDOW:-6h}]))')
+W="${P5_WINDOW:-6h}"
+ratio=$(promq "sum(increase(consumer_critical_alert_seconds_bucket{le=\"5\"}[$W])) / clamp_min(sum(increase(consumer_critical_alert_seconds_count[$W])), 1e-9)")
+total=$(promq "sum(increase(consumer_critical_alert_seconds_count[$W]))")
 info "alerts in the last ${P5_WINDOW:-6h}: $total, within 5 s: $(awk -v r="$ratio" 'BEGIN{printf "%.2f %%", r*100}'), error budget used: $(awk -v r="$ratio" 'BEGIN{printf "%.0f %%", (1-r)/0.01*100}')"
 info "Grafana: Argus / Observabilitas -> row 'P5 Sensor Pantai' (SLO, budget, critical sent vs delivered, requests to the sensor)"
 printf '\n%sP5 PASS%s\n' "$C_G$C_B" "$C_0"

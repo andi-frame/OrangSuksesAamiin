@@ -102,7 +102,7 @@ func main() {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.ResponseHeaderTimeout = 5 * time.Second
 		ing.satellite = &satellite.Runner{Repo: repo, Store: store, Client: &http.Client{Transport: transport},
-			URL: cfg.SatelliteURL, Token: cfg.SatelliteToken, Lateness: cfg.SatelliteLateness, Provinces: provinces, Log: log}
+			URL: cfg.SatelliteURL, Token: cfg.SatelliteToken, Lateness: cfg.SatelliteLateness, StartFrom: cfg.SatelliteStartFrom, Provinces: provinces, Log: log}
 	}
 
 	// background work ends (and the lease is released) before the process exits
@@ -146,6 +146,9 @@ func main() {
 		apiSrv.Leader = elector.Status
 	}
 	go exportGauges(ctx, apiSrv.Status, repo, apiSrv.Leader)
+	if placed, ok := repo.(interface{ ExportPlacement(context.Context) }); ok {
+		go placed.ExportPlacement(ctx) // P1: unit, node and role of every shard member on the dashboard
+	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           apiSrv.Handler(),

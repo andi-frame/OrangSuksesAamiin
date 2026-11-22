@@ -14,6 +14,8 @@ fail() { printf '   %sFAIL%s %s\n' "$C_R" "$C_0" "$*"; exit 1; }
 show() { printf '%s$ %s%s\n' "$C_Y" "$*" "$C_0"; }
 
 # jq.exe on Windows ends lines with CRLF: strip the CR so ids compare equal
+# the VirtualBox helper keeps a jq binary here (scripts/k8s/vbox-cluster.sh); Windows has no jq by default
+[ -d "$HOME/.argus-k3s/bin" ] && PATH="$HOME/.argus-k3s/bin:$PATH"
 if command -v jq >/dev/null 2>&1; then jqx() { jq "$@" | tr -d '\r'; }; else jqx() { docker run --rm -i ghcr.io/jqlang/jq:1.7.1 "$@"; }; fi
 
 PF_PIDS=()

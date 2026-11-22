@@ -117,3 +117,11 @@ func (r *Repo) ConfirmHazard(ctx context.Context, id string, version int) error 
 		return err
 	})
 }
+
+// UnitStats reports where this database runs, whether it is a standby, and how many active hazards it holds
+// (P1: data and roles per node; read by the sharded adapter for its placement metrics).
+func (r *Repo) UnitStats(ctx context.Context) (node string, replica bool, rows int64, err error) {
+	err = r.pool.QueryRow(ctx, `SELECT COALESCE(current_setting('argus.node', true), ''), pg_is_in_recovery(),
+		(SELECT count(*) FROM hazards WHERE NOT retired)`).Scan(&node, &replica, &rows)
+	return node, replica, rows, err
+}

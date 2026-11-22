@@ -57,13 +57,14 @@ if [ -z "$unit" ] && kn get statefulset shard-1 >/dev/null 2>&1; then unit=shard
 if [ -z "$unit" ]; then
   info "single Canonical Store (K8S_STORAGE=single): nothing to take away without taking everything; run with sharded storage"
 else
+  before=$(kn get statefulset "$unit" -o jsonpath="{.spec.replicas}")
   show "kubectl scale statefulset/$unit --replicas=0"
   kn scale "statefulset/$unit" --replicas=0 >/dev/null
   partial_now() { curl -sS "$API/v1/analytics/summary" -H "Authorization: Bearer $TOK" | jqx -e '.partial == true' >/dev/null; }
   wait_until 60 "summary flagged partial" partial_now
   curl -sS "$API/v1/analytics/summary" -H "Authorization: Bearer $TOK" | jqx -c '{partial, unavailable_units, total}' | sed 's/^/   /'
   info "dashboard banner: 'Angka BELUM LENGKAP: unit penyimpanan ... tidak terjangkau'"
-  kn scale "statefulset/$unit" --replicas=1 >/dev/null
+  kn scale "statefulset/$unit" --replicas="${before:-1}" >/dev/null   # both members of the shard again
   kn rollout status "statefulset/$unit" --timeout=180s >/dev/null
   ok "answered with partial=true and the missing unit named (no 500, no wrong numbers without a flag)"
 fi

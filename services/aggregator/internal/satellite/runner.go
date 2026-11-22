@@ -26,6 +26,7 @@ type Runner struct {
 	Gate       func(context.Context) error
 	URL, Token string
 	Lateness   time.Duration
+	StartFrom  string // "latest": a session without checkpoint starts at the feed head
 	Provinces  []province
 	Log        *slog.Logger
 }
@@ -38,6 +39,7 @@ func (r *Runner) Run(ctx context.Context) {
 		if errors.Is(err, ports.ErrFenced) || ctx.Err() != nil {
 			return
 		}
+		metricDisconnects.Inc()
 		r.Log.WarnContext(ctx, "satellite_stream_disconnected", "error", err)
 		var code responseError
 		if errors.As(err, &code) && (code == 400 || code == 401 || code == 403) {
@@ -77,6 +79,12 @@ func (r *Runner) consume(ctx context.Context) error {
 			return err
 		}
 	}
+	// never for the exam profile: its whole stream is compared with the assistants' reference
+	if s.Offset == nil && r.StartFrom == "latest" && session.Profile != "exam" && session.Latest > 0 {
+		start := session.Latest - 1 // the stream is inclusive: event Latest-1 is read and skipped as already seen
+		s.Offset, s.Applied = &start, &start
+		r.Log.InfoContext(ctx, "satellite_start_at_head", "offset", session.Latest)
+	}
 	if len(s.Pending) > 0 || (s.Offset != nil && (s.Applied == nil || *s.Applied != *s.Offset)) {
 		if err := r.flush(ctx, key, &s, session.Latest); err != nil {
 			return err
@@ -108,12 +116,16 @@ func (r *Runner) consume(ctx context.Context) error {
 				current, err := r.session(ctx)
 				if err == nil && current.Group == session.Group && current.Profile == session.Profile && current.ID == session.ID {
 					head.Store(current.Latest)
+					metricHead.Set(float64(current.Latest))
 				}
 			}
 		}
 	}()
 	p := newProcessor(&s, r.Provinces, r.Lateness, identity)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// The checkpoint holds the whole clustering state and grows with the session, so it is written at most once
+	// per second or every 512 events: a burst is stored in large batches instead of one state write per event.
+	// Resuming replays at most those events from the stored offset (idempotent: versions already stored are skipped).
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	idle := time.NewTimer(45 * time.Second)
 	defer idle.Stop()
@@ -142,6 +154,9 @@ func (r *Runner) consume(ctx context.Context) error {
 				return err
 			}
 		case e, ok := <-events:
+			if ok {
+				metricEvents.Inc(e.kind)
+			}
 			if !ok {
 				if err := flush(); err != nil {
 					return err
@@ -164,11 +179,21 @@ func (r *Runner) consume(ctx context.Context) error {
 			}
 			e.id = strconv.FormatInt(offset, 10)
 			if err := p.apply(e); err != nil {
-				return fmt.Errorf("satellite offset %d: %w", offset, err)
+				// apply only fails on the content of this one event (unparseable, invalid values, an update of a
+				// detection never seen). Stopping here would retry the same offset forever and stall the whole
+				// feed, so the event is counted, logged with its raw text and skipped; the offset still advances.
+				s.Rejected++
+				metricRejected.Inc()
+				raw := string(e.data)
+				if len(raw) > 512 {
+					raw = raw[:512]
+				}
+				r.Log.WarnContext(ctx, "satellite_event_rejected", "offset", offset, "kind", e.kind,
+					"error", err.Error(), "raw", raw)
 			}
 			s.Offset = &offset
 			dirty++
-			if dirty >= 64 {
+			if dirty >= 512 {
 				if err := flush(); err != nil {
 					return err
 				}
@@ -203,6 +228,7 @@ func (r *Runner) flush(ctx context.Context, key string, s *state, head int64) er
 			return err
 		}
 		if written {
+			metricStoreLatency.ObserveSince(h.UpdatedAt)
 			r.Log.InfoContext(ctx, "satellite_hazard_applied", "hazard_id", h.HazardID, "version", h.Version,
 				"store_latency_ms", time.Since(h.UpdatedAt).Milliseconds(), "retired", h.Retired)
 		}
@@ -217,12 +243,18 @@ func (r *Runner) flush(ctx context.Context, key string, s *state, head int64) er
 		return nil
 	}
 	lag := max(0, head-*s.Applied)
+	metricHead.Set(float64(head))
+	metricApplied.Set(float64(*s.Applied))
+	metricLag.Set(float64(lag))
+	metricLate.Set(float64(s.Late))
+	metricSingletons.Set(float64(singletons))
+	metricActiveFires.Set(float64(activeFires(s)))
 	r.Log.InfoContext(ctx, "satellite_checkpoint", "applied_offset", *s.Applied,
-		"last_session_head", head, "lag_offsets", lag, "late_detections", s.Late, "singletons", singletons)
+		"last_session_head", head, "lag_offsets", lag, "late_detections", s.Late, "singletons", singletons, "rejected_events", s.Rejected)
 	status, err := json.Marshal(map[string]any{
 		"source": domain.SourceSatellite, "state": "up", "breaker": "closed",
 		"last_success_at": time.Now().UTC(), "applied_offset": *s.Applied,
-		"last_session_head": head, "lag_offsets": lag, "late_detections": s.Late, "singletons": singletons,
+		"last_session_head": head, "lag_offsets": lag, "late_detections": s.Late, "singletons": singletons, "rejected_events": s.Rejected,
 	})
 	if err == nil {
 		err = r.Repo.PutSourceStatus(ctx, string(domain.SourceSatellite), status)
@@ -262,4 +294,15 @@ func (r *Runner) saveChange(ctx context.Context, h domain.HazardEvent) (bool, er
 	err = r.Repo.Save(ctx, h, h.Version-1, ports.OutboxEntry{EventID: id, HazardID: h.HazardID, Version: h.Version,
 		Payload: payload, CorrelationID: obs.CorrelationID(ctx), CreatedAt: h.UpdatedAt})
 	return err == nil, err
+}
+
+// activeFires counts the fires that are not retired (a fire that shrank below two detections is retired).
+func activeFires(s *state) int {
+	n := 0
+	for _, h := range s.Fires {
+		if !h.Retired {
+			n++
+		}
+	}
+	return n
 }

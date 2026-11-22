@@ -236,3 +236,53 @@ func TestTransitiveEventTimeClusteringAndLateDetections(t *testing.T) {
 		t.Fatalf("retracted bridge should retire the original: %+v", last)
 	}
 }
+
+// A broken event (unparseable JSON, an update of a detection never seen) must not stall the feed: it is counted,
+// skipped, and the detections after it still form the fire (P3 principle applied to P4; P4 criteria 4 and 8).
+const brokenStream = `id: 0
+event: detection
+data: {"offset":0,"detection":{"satellite":"N20","acq_date":"2026-12-02","acq_time":5,"latitude":-1.21125,"longitude":131.06300,"confidence":"n","frp":10}}
+
+id: 1
+event: detection
+data: {"offset":1,"detection":{"satellite":"N20","acq_date":
+
+id: 2
+event: update
+data: {"offset":2,"key":"N99|2026-12-02|1|0|0","changes":{"frp":1}}
+
+id: 3
+event: detection
+data: {"offset":3,"detection":{"satellite":"N21","acq_date":"2026-12-02","acq_time":6,"latitude":-1.21125,"longitude":131.06761,"confidence":"n","frp":20}}
+
+`
+
+func TestBrokenEventsAreSkippedWithoutStallingTheFeed(t *testing.T) {
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/session":
+			fmt.Fprint(w, `{"group":"test","profile":"practice","latest_offset":3}`)
+		case "/v1/stream":
+			fmt.Fprint(w, brokenStream)
+		}
+	}))
+	defer feed.Close()
+	repo := memory.New()
+	r := Runner{Repo: repo, Store: repo, Client: feed.Client(), URL: feed.URL, Token: "test", Lateness: 24 * time.Hour,
+		Provinces: []province{{Name: "Papua Barat Daya", Lat: -0.88, Lon: 131.26}},
+		Log:       slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx := context.Background()
+	if err := r.consume(ctx); !errors.Is(err, io.EOF) {
+		t.Fatalf("the stream must end normally, not on the broken events: %v", err)
+	}
+	page, err := repo.List(ctx, ports.ListFilter{})
+	if err != nil || len(page.Items) != 1 || page.Items[0].Attributes["detection_count"] != 2.0 {
+		t.Fatalf("the detections around the broken events still form one fire: %+v, %v", page, err)
+	}
+	doc, err := repo.LoadSatellite(ctx, feed.URL+"|test|practice|")
+	var checkpoint state
+	if err != nil || json.Unmarshal(doc, &checkpoint) != nil || checkpoint.Applied == nil || *checkpoint.Applied != 3 ||
+		checkpoint.Rejected != 2 {
+		t.Fatalf("checkpoint must pass the broken offsets and count them: %+v, %v", checkpoint, err)
+	}
+}

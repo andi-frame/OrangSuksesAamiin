@@ -33,6 +33,6 @@ step "Aggregator logs: leadership changes and refused writes (last $SINCE)"
 for p in $(kn get pods -l app=aggregator -o jsonpath='{.items[*].metadata.name}'); do
   kn logs "$p" --since="$SINCE" |
     grep -E '"msg":"(leader_acquired|lease_taken_over|leader_lost|fence_raised|fence_rejected|write_fenced|dlq_worker_fenced|poll_skipped)"' |
-    jqx -r '"   \(.ts) \(.instance) \(.msg) \(.term // "") \(.reason // .error // "")"' | tail -12
+    jqx -r '"   \(.ts) \(.instance) \(.msg) \(.term // "") \(.reason // .error // "")"' | tail -12 || true   # a pod without such lines is fine
 done
 printf '\n%sSINGLE WRITER PASS%s\n' "$C_G$C_B" "$C_0"

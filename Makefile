@@ -13,7 +13,7 @@ COMPOSE ?= $(RUN) docker compose
 .PHONY: help env up down wipe reset ps logs wait test test-race vet fmt lint secrets pvmbg-token \
         demo-p1 demo-p2 demo-p2-aggregator demo-mock-auth demo-p3 demo-p4 demo-p5 demo-isolation evidence test-postgres \
         k8s-up k8s-down k8s-images k8s-status demo-m2-p2 demo-m2-p3 demo-m2-isolation \
-        demo-m2-observability demo-m2-field-reports demo-m2-p5 demo-m2-analytics demo-m2-hpa \
+        demo-m2-observability demo-m2-field-reports demo-m2-p5 demo-m2-analytics demo-m2-hpa demo-m2-p1-load demo-m2-p1-recovery demo-m2-gameday \
         loadtest-m2-scale loadtest-m2-throughput
 
 help: ## show this help
@@ -136,6 +136,15 @@ demo-m2-field-reports: ## M2 P3-6: POST /v1/field-reports 202 fast, receiver/pro
 demo-m2-p5: ## M2 P5: Sensor Pantai contract, critical alerts, outage isolation/breaker/recovery, priorities, SLO
 	@mkdir -p docs/evidence/m2
 	@bash -o pipefail -c '$(RUN) bash scripts/demo/m2-p5.sh 2>&1 | tee docs/evidence/m2/p5-latest.log'
+
+demo-m2-p1-load: ## M2 P1-1/2: load the catalog + one-region spike; units, roles and write load per node
+	@$(RUN) bash scripts/demo/m2-p1-load.sh
+
+demo-m2-p1-recovery: ## M2 P1-4/5/6: Tester wipe-node under reads, self-recovery, 0 lost, survives the next loss
+	@$(RUN) bash scripts/demo/m2-p1-recovery.sh
+
+demo-m2-gameday: ## M2 P5-6/8: combined failures without intervention; recovery, SLO and error budget used
+	@$(RUN) bash scripts/demo/m2-gameday.sh
 
 demo-m2-analytics: ## M2 P1-7: analytics dashboard numbers = Audit API count; unit down -> flagged partial
 	@mkdir -p docs/evidence/m2

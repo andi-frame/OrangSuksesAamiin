@@ -1,0 +1,4 @@
+session: {"group": "orangsuksesaamiin", "profile": "practice", "speed": 60, "virtual_now": "2028-03-21T05:00:32Z", "latest_offset": 5552010}
+offsets: 5530000 -> 5552249 events: {"detection": 20676, "update": 1105, "retract": 449, "heartbeat": 20}
+out_of_order_minutes: {"n": 20676, "p50": 5.0, "p95": 64.0, "p99": 202.0, "max": 246.0}
+arrival_delay_minutes (virtual clock - acquisition): {"n": 20676, "p50": -91.6, "p95": 2497.5333333333333, "p99": 2545.5333333333333, "max": 2731.5333333333333}

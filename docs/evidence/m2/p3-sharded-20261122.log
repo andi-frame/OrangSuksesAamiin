@@ -1,0 +1,87 @@
+
+[1m[36m== [1] Declared policy (services/aggregator/internal/mapping/raw.go) ==[0m
+   accepted automatically: new fields of any type -> attributes; attribute fields changing type or disappearing
+   not accepted (parked, never guessed): rename / removal / move / type change of a canonical field, new enum values
+   unreadable bytes (cut off, invalid UTF-8, too deep, too large) -> parked as malformed; cut off = retryable
+[33m$ GET /internal/ops/schema-rules[0m
+   {"rules":[]}
+[33m$ POST pvmbg-mock /admin/schema-version {"confidence_level":true, "extra_fields":{"lava_dome_volume_m3":125000}}[0m
+   {"hazard_id":"pvmbg-VR-f869cf-0388","severity":"SIAGA","area_name":"Gunung Anak Krakatau","attributes":{"ash_column_height_m":2849.6,"confidence_level":0.61,"eruption_count_24h":7,"lava_dome_volume_m3":125000}}
+   [32mPASS[0m compatible change accepted automatically (new fields in attributes)
+
+[1m[36m== [2] Broken messages: nothing crashes, the rest keeps flowing ==[0m
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"deep","depth":200000}[0m
+   {"bytes":400138,"kind":"deep","report_id":"VR-f869cf-0390"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"invalid_utf8"}[0m
+   {"bytes":141,"kind":"invalid_utf8","report_id":"VR-f869cf-0391"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"oversize","size_bytes":3145728}[0m
+   {"bytes":3145866,"kind":"oversize","report_id":"VR-f869cf-0392"}
+[33m$ POST pvmbg-mock /admin/malformed {"kind":"truncated"}[0m
+   {"kind":"truncated","truncated_responses":1}
+   [32mPASS[0m a valid report sent together with the broken ones was stored (VR-f869cf-0394)
+[33m$ GET /internal/ops/unprocessed?source=PVMBG&status=all (Internal Ops)[0m
+   parked	retryable=false	attempts=2	400140B	malformed: too_deep
+   parked	retryable=false	attempts=2	149B	malformed: invalid_utf8
+   parked	retryable=false	attempts=2	3145861B	malformed: too_large: 3145861 bytes, limit 1048576 (first 1048576 bytes kept)
+   resolved	retryable=true	attempts=3	115B	malformed: truncated in transit (115 bytes received); the source is polled again from the 
+   resolved	retryable=false	attempts=2	161B	schema_incompatible: field 'volcano_id': required field is missing
+   resolved	retryable=false	attempts=2	162B	schema_incompatible: field 'volcano_id': required field is missing
+   resolved	retryable=false	attempts=2	162B	schema_incompatible: field 'volcano_id': required field is missing
+   resolved	retryable=true	attempts=3	174B	store_error: get pvmbg-VR-fb9aef-0036: failed to connect to `user=canonical database=canon
+   resolved	retryable=true	attempts=5	180B	store_error: get pvmbg-VR-fb9aef-0140: context deadline exceeded
+   parked	retryable=false	attempts=1	0B	malformed: not_an_array
+   resolved	retryable=true	attempts=7	175B	store_error: get pvmbg-VR-7c087e-0030: context deadline exceeded
+   resolved	retryable=true	attempts=6	176B	store_error: get pvmbg-VR-7c087e-0035: context deadline exceeded
+   resolved	retryable=true	attempts=5	175B	store_error: get pvmbg-VR-7c087e-0036: context deadline exceeded
+   resolved	retryable=true	attempts=3	175B	store_error: get pvmbg-VR-7c087e-0053: context deadline exceeded
+   resolved	retryable=true	attempts=3	177B	store_error: get pvmbg-VR-7c087e-0197: timeout: context deadline exceeded
+   resolved	retryable=true	attempts=2	173B	store_error: get pvmbg-VR-7c087e-0280: context deadline exceeded
+   resolved	retryable=true	attempts=3	176B	store_error: get pvmbg-VR-f869cf-0093: failed to connect to `user=canonical database=canon
+   resolved	retryable=true	attempts=3	173B	store_error: get pvmbg-VR-f869cf-0197: failed to connect to `user=canonical database=canon
+   parked	retryable=false	attempts=1	400138B	malformed: too_deep
+   parked	retryable=false	attempts=1	141B	malformed: invalid_utf8
+   parked	retryable=false	attempts=1	3145866B	malformed: too_large: 3145866 bytes, limit 1048576 (first 1048576 bytes kept)
+   retrying	retryable=true	attempts=3	115B	malformed: truncated in transit (115 bytes received); the source is polled again from the 
+   [32mPASS[0m cut-off message: retrying -> resolved once PVMBG delivered it whole (no intervention)
+   POD                           RESTARTS
+   aggregator-6bcfc4cddb-rst58   1
+   aggregator-6bcfc4cddb-zx8j2   0
+   [32mPASS[0m no Aggregator crashed or restarted
+   [32mPASS[0m parked messages are not retried automatically (attempts unchanged); retryable ones are
+
+[1m[36m== [3] Who may look at failed messages ==[0m
+   /internal/ops/unprocessed as Client-Facing API (X-Service-Key): HTTP 401
+   /internal/ops/unprocessed as Client-Facing API key as Bearer: HTTP 403
+   /internal/ops/unprocessed as auditor token: HTTP 403
+   /internal/ops/unprocessed as BNPB Internal Ops token: HTTP 200
+[33m$ GET /internal/audit/unprocessed (auditor: metadata only, Lampiran A)[0m
+   {"items":[{"message_id":"msg-9dafcd8b58a1dc471369","source":"PVMBG","received_at":"2026-11-14T14:32:31.394932Z","reason":"malformed: too_deep","retryable":false,"attempts":2,"status":"parked"},{"message_id":"msg-6a3721494cd7ca7a1deb","source":"PVMBG","received_at":"2026-11-14T14:32:31.438544Z","reason":"malformed: invalid_utf8","retryable":false,"attempts":2,"status":"parked"}],"next_cursor":"dXwy
+   [32mPASS[0m only Internal Ops sees the messages and their bytes
+
+[1m[36m== [4] Incompatible change: rename, type change, required field missing ==[0m
+[33m$ POST pvmbg-mock /admin/schema-version {"mode":"incompatible"}[0m
+   {"schema_version":3,"incompatible_changes":["rename","type_change","drop_required"]}
+   generated VR-f869cf-0401
+   generated VR-f869cf-0402
+   generated VR-f869cf-0403
+   reason: schema_incompatible: field 'volcano_id': required field is missing
+   raw:    {"ash_column_height_m":3470.9,"eruption_count_24h":28,"level":"Awas","location":{"volcano_code":"semeru"},"report_id":"VR-f869cf-0401","reported_at":1795360934}
+   [32mPASS[0m 3 incompatible reports parked with their exact bytes, none guessed
+
+[1m[36m== [5] Adjust the system: declare the new schema (deploy/schema-rules/pvmbg-v3.json), roll out, requeue ==[0m
+   {
+     "PVMBG": {
+       "rename": {
+         "level": "alert_level",
+         "location.volcano_code": "volcano_id"
+       },
+       "coerce": {
+         "reported_at": "unix_seconds_to_rfc3339"
+       }
+     }
+   }
+[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb patch deploy/aggregator: mount aggregator-schema-rules-pvmbg-v3 (rolling update)[0m
+Waiting for deployment spec update to be observed...
+Waiting for deployment "aggregator" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "aggregator" rollout to finish: 1 out of 2 new replicas have been updated...
+error: timed out waiting for the condition

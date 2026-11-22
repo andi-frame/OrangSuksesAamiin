@@ -1,0 +1,26 @@
+
+[1m[36m== [1] 1. Sensor Pantai: the assistants' image, unmodified ==[0m
+   deployment image: sustuna/sensor-pantai@sha256:51fbd90d3891ad6e9f5768ad330ffb65205644cb29e50da65c7538f2e0b4397d
+   running image id: docker.io/sustuna/sensor-pantai@sha256:51fbd90d3891ad6e9f5768ad330ffb65205644cb29e50da65c7538f2e0b4397d
+   profile: practice
+   Aggregator view: unknown closed
+   [32mPASS[0m image pinned by digest; the Aggregator polls it (own loop, own HTTP client, own breaker)
+
+[1m[36m== [2] 2. Contract violations are set aside with their reason (not HazardEvents) ==[0m
+   parked	obs-000108	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000220	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000285	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000420	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000472	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000523	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000650	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000679	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000749	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000899	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-000953	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   parked	obs-001006	contract_violation: field 'quality': sensor reports quality "suspect" (only "ok" readings are stored)
+   set aside so far: 59
+   rejected per reason (metrics): quality=2371
+   [32mPASS[0m none of the set-aside observations is a HazardEvent
+
+[1m[36m== [3] 3. Critical events reach the Tim Lapangan notifier: 0 lost, p95 <= 5 s ==[0m

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -13,9 +14,23 @@ import (
 // preserves rows verbatim and verifies equality before committing each target.
 // A restart can safely reuse already committed targets.
 func MigrateSingle(ctx context.Context, sourceURL, shardURLs string, log *slog.Logger) error {
-	opened, err := Open(ctx, shardURLs, "")
-	if err != nil {
-		return err
+	// A just-started pod can be refused until the node's NetworkPolicy controller has admitted its IP, so the
+	// shards are retried for up to 90 s (like the Aggregator's own startup) instead of failing on the first ping.
+	var opened *Repo
+	var err error
+	for deadline := time.Now().Add(90 * time.Second); ; {
+		if opened, err = Open(ctx, shardURLs, ""); err == nil {
+			break
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return err
+		}
+		log.Warn("migration_shards_not_reachable_yet", "error", err.Error())
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
 	for _, s := range opened.shards {
 		// Initialize every database before starting the copy transactions.

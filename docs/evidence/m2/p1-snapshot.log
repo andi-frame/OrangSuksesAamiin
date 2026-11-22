@@ -1,0 +1,65 @@
+
+[1m[36m== [1] Canonical store replica placement and load ==[0m
+NAME        READY   STATUS    RESTARTS   AGE   IP           NODE     NOMINATED NODE   READINESS GATES   SHARD     DB-ROLE
+shard-0-0   1/1     Running   0          20m   10.42.1.50   node-b   <none>           <none>            shard-0   replica
+shard-0-1   1/1     Running   0          20m   10.42.0.58   node-a   <none>           <none>            shard-0   primary
+shard-1-0   1/1     Running   0          19m   10.42.1.51   node-b   <none>           <none>            shard-1   primary
+shard-1-1   1/1     Running   0          20m   10.42.0.59   node-a   <none>           <none>            shard-1   replica
+shard-2-0   1/1     Running   0          19m   10.42.1.52   node-b   <none>           <none>            shard-2   replica
+shard-2-1   1/1     Running   0          20m   10.42.0.60   node-a   <none>           <none>            shard-2   primary
+   shard-0-0
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-b | t       |        2792 | 1638400 |            569 | 0/3D02410
+(1 row)
+
+   shard-0-1
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-a | f       |        2792 | 1638400 |           2672 | 0/3D02538
+(1 row)
+
+   shard-1-0
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-b | f       |        2820 | 1654784 |           2244 | 0/38EC5D0
+(1 row)
+
+   shard-1-1
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-a | t       |        2820 | 1654784 |              0 | 0/38EC5D0
+(1 row)
+
+   shard-2-0
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-b | t       |        2822 | 1679360 |            573 | 0/3A84350
+(1 row)
+
+   shard-2-1
+  node  | replica | active_rows |  bytes  | logical_writes |    lsn    
+--------+---------+-------------+---------+----------------+-----------
+ node-a | f       |        2822 | 1679360 |           3277 | 0/3A84350
+(1 row)
+
+
+[1m[36m== [2] Read newest 50 and verify keyset order ==[0m
+{
+  "partial": false,
+  "unavailable_units": [],
+  "count": 50,
+  "ordered": true,
+  "next_cursor": "MjAyNi0xMS0yMlQxMDoyOToxOS44MDYwMDhafHB2bWJnLVZSLWZiOWFlZi0wMTA4"
+}
+
+[1m[36m== [3] Audit checksum and locations ==[0m
+{
+  "algorithm": "sha256",
+  "as_of": "2026-11-22T10:32:51.08956065Z",
+  "checksum": "059e58cea957d70e91a464f46388af7f1e7081a05aa088843e8a1585c32b560b",
+  "count": 8435,
+  "partial": false,
+  "source": "",
+  "unavailable_units": []
+}

@@ -38,7 +38,7 @@ send() {
 }
 
 processed_topic() { # all committed records of the output topic: "<key>" per line
-  kn exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  MSYS_NO_PATHCONV=1 kn exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
     --topic field-reports.processed --from-beginning --isolation-level read_committed --timeout-ms 10000 \
     --property print.key=true --property print.value=false 2>/dev/null | tr -d '\r' | grep "^fr-" || true
 }

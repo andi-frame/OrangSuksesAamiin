@@ -88,11 +88,16 @@ kn logs "$N" --since=90s | grep -E '"msg":"(lease_taken_over|leader_acquired|fen
 step "No gap: every BMKG event the mock produced is in the store"
 sleep 6
 ensure_forwards
-mock_ids=$(curl -sS --max-time 15 -H "X-BMKG-Key: $BMKG_API_KEY" "$BMKG/seismic-events" | jqx -r '.[].event_id' | sort)
+# Judge the failover window: every event the mock produced from ${GAP_WINDOW_MIN:-15} min before the kill on. A mock
+# that restarted creates seed events backdated up to 36 h, older than the stored polling cursor; those are a known
+# limitation of a time cursor (report P2 §6), not a gap caused by the leader change.
+since_iso=$(date -u -d "-${GAP_WINDOW_MIN:-15} minutes" +%FT%TZ 2>/dev/null || date -u -v-"${GAP_WINDOW_MIN:-15}"M +%FT%TZ)
+mock_ids=$(curl -sS --max-time 15 -H "X-BMKG-Key: $BMKG_API_KEY" "$BMKG/seismic-events" |
+  jqx -r --arg since "$since_iso" '.[] | select(.occurred_at[0:19] >= $since[0:19]) | .event_id' | sort)
 [ -n "$mock_ids" ] || fail "could not read the BMKG mock's events"
 db_ids=$(psql_q "SELECT source_ref_id FROM hazards WHERE source='BMKG' ORDER BY 1" | sort)
 missing=$(comm -23 <(echo "$mock_ids") <(echo "$db_ids") | grep -c . || true)
-info "mock events: $(echo "$mock_ids" | grep -c .), stored: $(echo "$db_ids" | grep -c .), missing: $missing; hazards before kill: $before, now: $(psql_sum 'SELECT count(*) FROM hazards')"
+info "mock events since $since_iso: $(echo "$mock_ids" | grep -c .), stored: $(echo "$db_ids" | grep -c .), missing: $missing; hazards before kill: $before, now: $(psql_sum 'SELECT count(*) FROM hazards')"
 [ "$missing" = 0 ] || fail "$missing events never stored"
 [ "$(dup_check)" = 0 ] || fail "duplicates after failover"
 ok "no gap and no duplicate across the failover"
@@ -127,7 +132,9 @@ echo "$codes" | sed 's/^/   HTTP /'
 total=$(echo "$codes" | awk '{s+=$1} END {print s+0}')
 failed=$(echo "$codes" | awk '$2 != "200" {s+=$1} END {print s+0}')
 ensure_forwards
-info "version before: $old_version, after: $(curl -s "$AGG/health" | jqx -r .version); requests: $total, failed: $failed"
+info "version before: $old_version, image after: $(kn get deploy aggregator -o jsonpath="{.spec.template.spec.containers[0].image}") (pods: $(kn get pods -l app=aggregator -o jsonpath="{.items[*].spec.containers[0].image}" | tr " " "
+" | sort -u | tr "
+" " ")); requests: $total, failed: $failed"
 [ "$total" -gt 100 ] || fail "too few requests to judge ($total)"
 [ "$failed" = 0 ] || fail "$failed requests failed during the rollout"
 ok "rolling update under load without a failed request"

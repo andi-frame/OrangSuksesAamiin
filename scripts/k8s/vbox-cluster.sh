@@ -8,16 +8,20 @@
 #
 # Nodes (VBOX_NODES, default "node-a node-b"): node-a = control plane + worker, the others = workers.
 # They sit on a VirtualBox NAT Network (10.77.0.0/24, no admin rights needed); the host reaches them through
-# port forwards on 127.0.0.1: API server :16443, SSH :2221.. (node-a, node-b, ...), NodePorts 30080/30083/30084.
+# port forwards on 127.0.0.1: API server :16443, SSH :2221.. (node-a, node-b, ...), NodePorts 30080/30083/30084/30030/30686/30090.
 # Ubuntu 24.04 cloud image + cloud-init (seed ISO made with genisoimage in WSL).
-#   VBOX_MEM (MiB, default 3072)  VBOX_CPUS (default 2); disk = the cloud image's 10 GB
+#   VBOX_MEM (MiB, default 4608)  VBOX_CPUS (default 4); disk = the cloud image's 10 GB
+#   resize: shut the VMs down cleanly, apply VBOX_MEM/VBOX_CPUS, start them again (disks and data are kept)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 VB="${VBOXMANAGE:-$(command -v VBoxManage || echo "/c/Program Files/Oracle/VirtualBox/VBoxManage.exe")}"
 read -r -a NODES <<<"${VBOX_NODES:-node-a node-b}"
-MEM="${VBOX_MEM:-3072}" CPUS="${VBOX_CPUS:-2}"
+MEM="${VBOX_MEM:-4608}" CPUS="${VBOX_CPUS:-4}"
 NET=argus-k3s NET_PREFIX=10.77.0
+# second NIC on the host-only network: the host (k6, browser) reaches the NodePorts through the kernel instead of the
+# user-space NAT forwarder, which cannot hold the 10 000 connections of the P2 load test
+HOSTONLY_IF="${VBOX_HOSTONLY_IF:-VirtualBox Host-Only Ethernet Adapter}" HOSTONLY_PREFIX="${VBOX_HOSTONLY_PREFIX:-192.168.56}"
 WORK="${ARGUS_K3S_DIR:-$HOME/.argus-k3s}"
 KEY="$HOME/.ssh/argus_k3s"
 SSH_CONFIG="$HOME/.ssh/argus-k3s.config"
@@ -58,7 +62,8 @@ prepare() {
   rules=$(vb natnetwork list)
   add_fwd() { echo "$rules" | grep -q "$1" || vb natnetwork modify --netname "$NET" --port-forward-4 "$1:tcp:[127.0.0.1]:$2:[$3]:$4"; }
   add_fwd api 16443 "$(ip_of 0)" 6443
-  for p in 30080 30083 30084; do add_fwd "np$p" "$p" "$(ip_of 0)" "$p"; done
+  # NodePorts: Client-Facing API, Aggregator, Auth, Grafana, Jaeger, Prometheus (browser and k6 on the host)
+  for p in 30080 30083 30084 30030 30686 30090; do add_fwd "np$p" "$p" "$(ip_of 0)" "$p"; done
   for i in "${!NODES[@]}"; do add_fwd "ssh-${NODES[$i]}" "$(ssh_port "$i")" "$(ip_of "$i")" 22; done
   if [ ! -f "$WORK/ubuntu.ova" ]; then
     say "downloading the Ubuntu 24.04 cloud image (~600 MB)"
@@ -83,10 +88,13 @@ seed_iso() { # <index> -> path of the cloud-init seed ISO of that node
 version: 2
 ethernets:
   nic:
-    match: {name: "en*"}
+    match: {name: enp0s3}
     addresses: [$(ip_of "$i")/24]
     routes: [{to: default, via: $NET_PREFIX.1}]
     nameservers: {addresses: [$NET_PREFIX.1, 1.1.1.1, 8.8.8.8]}
+  hostonly:
+    match: {name: enp0s8}
+    addresses: [$HOSTONLY_PREFIX.$((11 + i))/24]
 EOF
   cat >"$dir/user-data" <<EOF
 #cloud-config
@@ -119,8 +127,8 @@ create() { # <index>
     --basefolder "$(winpath "$WORK/vms")" >/dev/null
   # the cloud image's console is ttyS0: without a serial port the boot stalls; the port writes to a log file,
   # which is also where cloud-init's progress can be read
-  vb modifyvm "$name" --nic1 natnetwork --nat-network1 "$NET" --audio-enabled off \
-    --uart1 0x3F8 4 --uart-mode1 file "$(winpath "$WORK/$name-console.log")"
+  vb modifyvm "$name" --nic1 natnetwork --nat-network1 "$NET" --nictype1 virtio --audio-enabled off \
+    --uart1 0x3F8 4 --uart-mode1 file "$(winpath "$WORK/$name-console.log")"     --nic2 hostonly --hostonlyadapter2 "$HOSTONLY_IF" --nictype2 virtio
 }
 
 # attach_seed: give the VM its cloud-init seed ISO (idempotent: a VM created by an interrupted run gets it too)
@@ -175,6 +183,26 @@ case "${1:-}" in
     kubectl --context "$CONTEXT" get nodes -o wide 2>/dev/null || true
     ;;
   stop) for n in "${NODES[@]}"; do vm_running "$n" && vb controlvm "$n" acpipowerbutton; done ;;
+  resize)
+    # the whole stack with sharded storage requests ~6.5 GiB (Lampiran B) besides k3s itself: 2 x 3 GiB is too small
+    # a VM in the "saved" state cannot be modified: resume it so that it can shut down cleanly
+    for n in "${NODES[@]}"; do
+      vb showvminfo "$n" --machinereadable | grep -q '^VMState="saved"' && { say "resuming saved $n"; vb startvm "$n" --type headless >/dev/null; sleep 20; }
+    done
+    # clean shutdown over SSH (the cloud image may ignore the ACPI button while k3s stops); ACPI as fallback
+    for n in "${NODES[@]}"; do vm_running "$n" && { say "shutting down $n"; nssh "$n" sudo systemctl poweroff 2>/dev/null || vb controlvm "$n" acpipowerbutton; }; done
+    for n in "${NODES[@]}"; do
+      for _ in $(seq 1 60); do vm_running "$n" || break; sleep 3; done
+      vm_running "$n" && die "$n did not shut down within 3 minutes"
+      say "$n: ${MEM} MiB, ${CPUS} vCPU"
+      # virtio-net: far less softirq than e1000; the serial console (only needed to watch the first boot) is switched
+      # off: writes to it stalled the guest kernel (RCU stall in io_serial_out) under load
+      vb modifyvm "$n" --memory "$MEM" --cpus "$CPUS" --nictype1 virtio --uart1 off
+    done
+    for n in "${NODES[@]}"; do vb startvm "$n" --type headless >/dev/null; done
+    prepare   # idempotent: also adds port forwards that are missing on an older NAT network
+    say "started; wait for: kubectl --context $CONTEXT get nodes"
+    ;;
   delete)
     # only an interactive "yes" deletes anything (never a missing or redirected stdin)
     [ -t 0 ] || die "delete needs an interactive terminal"

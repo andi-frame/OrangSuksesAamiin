@@ -7,6 +7,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY services/canonical-shard/start.py /usr/local/bin/start-shard
 COPY services/canonical-shard/init.sh /usr/local/bin/init-shard
+COPY services/canonical-shard/balance.py /usr/local/bin/balance-shard
 ENV PATH=/opt/patroni/bin:$PATH
 ENTRYPOINT ["start-shard"]
 USER postgres

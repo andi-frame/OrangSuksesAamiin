@@ -79,8 +79,7 @@ spec:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: bnpb.io/store-slot
-                    operator: In
-                    values: [a, b]
+                    operator: Exists
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - topologyKey: kubernetes.io/hostname
@@ -91,6 +90,8 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - {name: SHARD_NAME, value: shard-0}
+            - name: PREFERRED_PRIMARY_NODE
+              valueFrom: {configMapKeyRef: {name: shard-placement, key: shard-0, optional: true}}
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: POD_NAMESPACE
@@ -167,8 +168,7 @@ spec:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: bnpb.io/store-slot
-                    operator: In
-                    values: [b, c]
+                    operator: Exists
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - topologyKey: kubernetes.io/hostname
@@ -179,6 +179,8 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - {name: SHARD_NAME, value: shard-1}
+            - name: PREFERRED_PRIMARY_NODE
+              valueFrom: {configMapKeyRef: {name: shard-placement, key: shard-1, optional: true}}
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: POD_NAMESPACE
@@ -255,8 +257,7 @@ spec:
             nodeSelectorTerms:
               - matchExpressions:
                   - key: bnpb.io/store-slot
-                    operator: In
-                    values: [c, a]
+                    operator: Exists
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - topologyKey: kubernetes.io/hostname
@@ -267,6 +268,8 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - {name: SHARD_NAME, value: shard-2}
+            - name: PREFERRED_PRIMARY_NODE
+              valueFrom: {configMapKeyRef: {name: shard-placement, key: shard-2, optional: true}}
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: POD_NAMESPACE

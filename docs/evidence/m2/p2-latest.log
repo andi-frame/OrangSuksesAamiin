@@ -1,47 +1,49 @@
 
 [1m[36m== [1] Aggregator instances, nodes and the Service in front of them ==[0m
 [33m$ kubectl -n sistem-informasi-kebencanaan-bnpb get pods -l app=aggregator -o wide[0m
-NAME                          READY   STATUS    RESTARTS   AGE     IP           NODE     NOMINATED NODE   READINESS GATES
-aggregator-69d6fdbdd6-2j266   1/1     Running   0          35s     10.42.0.21   node-a   <none>           <none>
-aggregator-69d6fdbdd6-hsrk7   1/1     Running   0          2m43s   10.42.1.15   node-b   <none>           <none>
-aggregator-69d6fdbdd6-spssn   1/1     Running   0          3m33s   10.42.1.14   node-b   <none>           <none>
+NAME                          READY   STATUS    RESTARTS   AGE   IP           NODE     NOMINATED NODE   READINESS GATES
+aggregator-6bcfc4cddb-5m9k5   1/1     Running   0          28m   10.42.1.86   node-b   <none>           <none>
+aggregator-6bcfc4cddb-6jndj   1/1     Running   0          25m   10.42.1.97   node-b   <none>           <none>
+aggregator-6bcfc4cddb-hjxnj   1/1     Running   0          10m   10.42.0.93   node-a   <none>           <none>
    [32mPASS[0m 3 instances on 2 node(s) (schedulable nodes: 2; topologySpreadConstraints maxSkew=1)
 [33m$ kubectl -n sistem-informasi-kebencanaan-bnpb get endpointslices -l kubernetes.io/service-name=aggregator[0m
-   aggregator-69d6fdbdd6-spssn ready=true
-   aggregator-69d6fdbdd6-hsrk7 ready=true
-   aggregator-69d6fdbdd6-2j266 ready=true
+   aggregator-6bcfc4cddb-5m9k5 ready=true
+   aggregator-6bcfc4cddb-6jndj ready=true
+   aggregator-6bcfc4cddb-hjxnj ready=true
    readinessProbe /ready every 2 s, 2 failures => out of the Service (deploy/k8s/aggregator.yaml)
 
 [1m[36m== [2] Exactly one leader ==[0m
-   Lease aggregator-ingest: holder=aggregator-69d6fdbdd6-hsrk7 term=10
-   aggregator-69d6fdbdd6-2j266 leader=false term=0
-   aggregator-69d6fdbdd6-hsrk7 leader=true term=10
-   aggregator-69d6fdbdd6-spssn leader=false term=0
-   [32mPASS[0m exactly one instance leads (aggregator-69d6fdbdd6-hsrk7)
+   Lease aggregator-ingest: holder=aggregator-6bcfc4cddb-6jndj term=56
+   aggregator-6bcfc4cddb-5m9k5 leader=false term=0
+   aggregator-6bcfc4cddb-6jndj leader=true term=56
+   aggregator-6bcfc4cddb-hjxnj leader=false term=0
+   [32mPASS[0m exactly one instance leads (aggregator-6bcfc4cddb-6jndj)
 
 [1m[36m== [3] Each upstream is polled by one instance at a time (request logs of the mocks, last 10 min) ==[0m
 [33m$ kubectl -n sistem-informasi-kebencanaan-bnpb logs deploy/bmkg-mock --since=10m | jq: per caller, first and last data request[0m
-   aggregator-56f879844-g8vmw        166 requests  2026-11-14T14:20:59.019854583Z .. 2026-11-14T14:25:34.479864888Z
-   aggregator-56f879844-swmwm          8 requests  2026-11-14T14:26:09.76422773Z .. 2026-11-14T14:26:20.00785622Z
-   aggregator-69d6fdbdd6-bnnrh        16 requests  2026-11-14T14:26:22.283601237Z .. 2026-11-14T14:26:45.097476357Z
-   aggregator-69d6fdbdd6-pcjld        32 requests  2026-11-14T14:26:48.397068246Z .. 2026-11-14T14:27:37.778288671Z
-   aggregator-69d6fdbdd6-vcqhv        76 requests  2026-11-14T14:27:39.410871737Z .. 2026-11-14T14:29:45.637523216Z
-   aggregator-69d6fdbdd6-hsrk7        24 requests  2026-11-14T14:29:46.801566148Z .. 2026-11-14T14:30:22.201446698Z
+   aggregator-6bcfc4cddb-6jndj       268 requests  2026-11-22T13:26:12.4343287Z .. 2026-11-22T13:36:04.219336931Z
 [33m$ kubectl -n sistem-informasi-kebencanaan-bnpb logs deploy/pvmbg-mock --since=10m | jq: per caller, first and last data request[0m
-   aggregator-66b75f6bf-5ds2q          1 requests  2026-11-14T14:20:45.672255876Z .. 2026-11-14T14:20:45.672255876Z
-   aggregator-56f879844-g8vmw         56 requests  2026-11-14T14:21:00.365275336Z .. 2026-11-14T14:25:33.592628923Z
-   aggregator-56f879844-swmwm          2 requests  2026-11-14T14:26:12.439598184Z .. 2026-11-14T14:26:18.305768407Z
-   aggregator-69d6fdbdd6-bnnrh         6 requests  2026-11-14T14:26:22.749671939Z .. 2026-11-14T14:26:47.80334753Z
-   aggregator-69d6fdbdd6-pcjld        11 requests  2026-11-14T14:26:48.949705455Z .. 2026-11-14T14:27:36.275972142Z
-   aggregator-69d6fdbdd6-vcqhv        25 requests  2026-11-14T14:27:41.592125536Z .. 2026-11-14T14:29:45.702531555Z
-   aggregator-69d6fdbdd6-hsrk7         8 requests  2026-11-14T14:29:49.636785127Z .. 2026-11-14T14:30:20.11484538Z
+   aggregator-6bcfc4cddb-6jndj        97 requests  2026-11-22T13:26:17.178363353Z .. 2026-11-22T13:36:03.199255033Z
    [32mPASS[0m callers only follow each other (one per leadership term), never overlap; the current one is the leader
 
 [1m[36m== [4] No duplicate HazardEvent in the store ==[0m
 [33m$ psql: SELECT count(*), count(DISTINCT (source, source_ref_id)) FROM hazards[0m
+  [shard-0-1]
  hazards | distinct_records 
 ---------+------------------
-     268 |              268
+    5310 |             5310
+(1 row)
+
+  [shard-1-0]
+ hazards | distinct_records 
+---------+------------------
+    5354 |             5354
+(1 row)
+
+  [shard-2-1]
+ hazards | distinct_records 
+---------+------------------
+    5332 |             5332
 (1 row)
 
    [32mPASS[0m no duplicates
@@ -49,43 +51,187 @@ aggregator-69d6fdbdd6-spssn   1/1     Running   0          3m33s   10.42.1.14   
 [1m[36m== [5] Delete the leader pod (what Tester Agent kill-leader does); another instance must take over <= 60 s ==[0m
    a pod that gets SIGTERM hands the lease back (takeover in ~2 s); one that dies without it (node lost,
    VM frozen) is replaced once the lease is not renewed for 15 s - see scripts/demo/m2-freeze.sh
-[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb delete pod aggregator-69d6fdbdd6-hsrk7 --grace-period=0 --force[0m
-   new leader aggregator-69d6fdbdd6-spssn (term 11) after 12s
-   [32mPASS[0m ingestion resumed by aggregator-69d6fdbdd6-spssn 13s after the kill (lease duration 15 s)
-   {"ts":"2026-11-14T14:30:29.141160323Z","level":"INFO","msg":"lease_taken_over","service":"aggregator","instance":"aggregator-69d6fdbdd6-spssn","previous_holder":"","previous_term":10,"term":11,"cid":"lease-aggregator-69d6fdbdd6-spssn"}
-   {"ts":"2026-11-14T14:30:29.141210822Z","level":"INFO","msg":"leader_acquired","service":"aggregator","instance":"aggregator-69d6fdbdd6-spssn","identity":"aggregator-69d6fdbdd6-spssn","term":11,"lease":"aggregator-ingest"}
-   {"ts":"2026-11-14T14:30:29.166085556Z","level":"INFO","msg":"fence_raised","service":"aggregator","instance":"aggregator-69d6fdbdd6-spssn","lease":"aggregator-ingest","term":11}
-   {"ts":"2026-11-14T14:30:29.171790284Z","level":"INFO","msg":"ingestion_started","service":"aggregator","instance":"aggregator-69d6fdbdd6-spssn"}
+[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb delete pod aggregator-6bcfc4cddb-6jndj --grace-period=0 --force[0m
+   new leader aggregator-6bcfc4cddb-5m9k5 (term 57) after 29s
+   [32mPASS[0m ingestion resumed by aggregator-6bcfc4cddb-5m9k5 31s after the kill (lease duration 15 s)
+   {"ts":"2026-11-22T13:36:41.755455336Z","level":"INFO","msg":"lease_taken_over","service":"aggregator","instance":"aggregator-6bcfc4cddb-5m9k5","previous_holder":"","previous_term":56,"term":57,"cid":"lease-aggregator-6bcfc4cddb-5m9k5"}
+   {"ts":"2026-11-22T13:36:41.782853027Z","level":"INFO","msg":"leader_acquired","service":"aggregator","instance":"aggregator-6bcfc4cddb-5m9k5","identity":"aggregator-6bcfc4cddb-5m9k5","term":57,"lease":"aggregator-ingest"}
+   {"ts":"2026-11-22T13:36:42.071294315Z","level":"INFO","msg":"fence_raised","service":"aggregator","instance":"aggregator-6bcfc4cddb-5m9k5","lease":"aggregator-ingest","term":57}
+   {"ts":"2026-11-22T13:36:42.098337306Z","level":"INFO","msg":"ingestion_started","service":"aggregator","instance":"aggregator-6bcfc4cddb-5m9k5"}
 
 [1m[36m== [6] No gap: every BMKG event the mock produced is in the store ==[0m
-   mock events: 156, stored: 156, missing: 0; hazards before kill: 268, now: 277
+   mock events since 2026-11-22T13:22:20Z: 98, stored: 8530, missing: 0; hazards before kill: 16001, now: 16017
    [32mPASS[0m no gap and no duplicate across the failover
 
 [1m[36m== [7] Fencing audit: write periods per leadership term (store clock) ==[0m
 [33m$ psql: SELECT writer_term, writer, count(*), min(stored_at), max(stored_at) FROM outbox GROUP BY 1,2[0m
+  [shard-0-1]
  term |           writer            | writes |          first_write          |          last_write           
 ------+-----------------------------+--------+-------------------------------+-------------------------------
-    1 | aggregator-66b75f6bf-25tqz  |     72 | 2026-11-14 14:13:25.280512+00 | 2026-11-14 14:13:28.442395+00
-    2 | aggregator-66b75f6bf-25tqz  |     38 | 2026-11-14 14:13:34.929526+00 | 2026-11-14 14:16:30.343154+00
-    3 | aggregator-66b75f6bf-5ds2q  |     18 | 2026-11-14 14:16:34.758848+00 | 2026-11-14 14:17:39.632816+00
-    5 | aggregator-56f879844-g8vmw  |     78 | 2026-11-14 14:20:59.338945+00 | 2026-11-14 14:25:34.583227+00
-    6 | aggregator-56f879844-swmwm  |      5 | 2026-11-14 14:26:09.961821+00 | 2026-11-14 14:26:18.391179+00
-    7 | aggregator-69d6fdbdd6-bnnrh |      5 | 2026-11-14 14:26:22.415374+00 | 2026-11-14 14:26:41.950142+00
-    8 | aggregator-69d6fdbdd6-pcjld |     17 | 2026-11-14 14:26:48.558005+00 | 2026-11-14 14:27:37.890924+00
-    9 | aggregator-69d6fdbdd6-vcqhv |     28 | 2026-11-14 14:27:41.644172+00 | 2026-11-14 14:29:42.219861+00
-   10 | aggregator-69d6fdbdd6-hsrk7 |     13 | 2026-11-14 14:29:46.928091+00 | 2026-11-14 14:30:22.286759+00
-   11 | aggregator-69d6fdbdd6-spssn |     10 | 2026-11-14 14:30:29.594963+00 | 2026-11-14 14:30:52.479676+00
-(10 rows)
+    1 | aggregator-66b75f6bf-25tqz  |     25 | 2026-11-14 14:13:25.36752+00  | 2026-11-14 14:13:28.392434+00
+    2 | aggregator-66b75f6bf-25tqz  |     12 | 2026-11-14 14:14:01.533536+00 | 2026-11-14 14:16:28.174874+00
+    3 | aggregator-66b75f6bf-5ds2q  |      3 | 2026-11-14 14:16:34.758848+00 | 2026-11-14 14:17:22.028068+00
+    5 | aggregator-56f879844-g8vmw  |     26 | 2026-11-14 14:20:59.463196+00 | 2026-11-14 14:25:27.759269+00
+    6 | aggregator-56f879844-swmwm  |      1 | 2026-11-14 14:26:12.540107+00 | 2026-11-14 14:26:12.540107+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      2 | 2026-11-14 14:26:28.812882+00 | 2026-11-14 14:26:37.835359+00
+    8 | aggregator-69d6fdbdd6-pcjld |      5 | 2026-11-14 14:26:48.558005+00 | 2026-11-14 14:27:37.890924+00
+    9 | aggregator-69d6fdbdd6-vcqhv |     12 | 2026-11-14 14:27:41.644172+00 | 2026-11-14 14:29:30.258704+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |      4 | 2026-11-14 14:29:53.441227+00 | 2026-11-14 14:30:12.737607+00
+   11 | aggregator-69d6fdbdd6-spssn |      7 | 2026-11-14 14:30:33.150712+00 | 2026-11-14 14:31:41.642836+00
+   12 | aggregator-5645679cc5-49ngm |      9 | 2026-11-14 14:31:58.679215+00 | 2026-11-14 14:33:33.643692+00
+   13 | aggregator-5645679cc5-xvfv7 |      1 | 2026-11-14 14:33:54.52382+00  | 2026-11-14 14:33:54.52382+00
+   14 | aggregator-67b4f59465-4z527 |     59 | 2026-11-14 14:34:04.079457+00 | 2026-11-14 14:47:14.365222+00
+   15 | aggregator-67b4f59465-hj5jm |      2 | 2026-11-14 14:47:17.347472+00 | 2026-11-14 14:47:21.66599+00
+   18 | aggregator-67b4f59465-vxwww |      4 | 2026-11-14 14:47:41.040874+00 | 2026-11-14 14:48:18.164134+00
+   20 | aggregator-67b4f59465-csgvq |      2 | 2026-11-14 14:48:47.190547+00 | 2026-11-14 14:48:50.094086+00
+   21 | aggregator-67b4f59465-hlqls |      2 | 2026-11-14 14:49:11.392733+00 | 2026-11-14 14:49:18.811864+00
+   22 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 14:49:26.789566+00 | 2026-11-14 14:49:26.789566+00
+   23 | aggregator-67b4f59465-nk4h9 |      9 | 2026-11-14 14:49:31.374767+00 | 2026-11-14 14:54:19.028868+00
+   24 | aggregator-67b4f59465-69csj |      3 | 2026-11-14 14:55:21.740208+00 | 2026-11-14 14:55:31.728162+00
+   26 | aggregator-67b4f59465-9qngf |      5 | 2026-11-14 14:57:49.851335+00 | 2026-11-14 14:58:13.105767+00
+   27 | aggregator-67b4f59465-9qngf |      6 | 2026-11-14 14:59:16.35039+00  | 2026-11-14 15:00:30.714175+00
+   28 | aggregator-67b4f59465-pwttl |      3 | 2026-11-14 15:01:14.54061+00  | 2026-11-14 15:01:24.53225+00
+   29 | aggregator-67b4f59465-k69gr |      1 | 2026-11-14 15:01:40.594222+00 | 2026-11-14 15:01:40.594222+00
+   30 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 15:01:53.163171+00 | 2026-11-14 15:01:53.163171+00
+   31 | aggregator-67b4f59465-58748 |      8 | 2026-11-14 15:01:55.596498+00 | 2026-11-14 15:04:35.863992+00
+   32 | aggregator-67b4f59465-5cfj5 |      1 | 2026-11-14 15:04:50.816575+00 | 2026-11-14 15:04:50.816575+00
+   33 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 15:05:02.668823+00 | 2026-11-14 15:05:02.668823+00
+   34 | aggregator-67b4f59465-pbpwt |     10 | 2026-11-14 15:05:26.756323+00 | 2026-11-14 15:08:09.969699+00
+   35 | aggregator-67b4f59465-pbpwt |     52 | 2026-11-14 15:13:02.336048+00 | 2026-11-14 15:25:02.419471+00
+   37 | aggregator-67b4f59465-pbpwt |    179 | 2026-11-22 09:02:34.079717+00 | 2026-11-22 09:39:59.659822+00
+   38 | aggregator-67b4f59465-z2csh |     42 | 2026-11-22 09:50:27.982576+00 | 2026-11-22 09:50:58.916493+00
+   39 | aggregator-67b4f59465-cfrx8 |     95 | 2026-11-22 10:01:22.835243+00 | 2026-11-22 10:13:09.030297+00
+   42 | aggregator-5b7fdff979-cx4tw |    175 | 2026-11-22 10:15:45.583487+00 | 2026-11-22 10:44:31.737138+00
+   44 | aggregator-5b7fdff979-cx4tw |      1 | 2026-11-22 10:45:37.951927+00 | 2026-11-22 10:45:37.951927+00
+   48 | aggregator-5b7fdff979-cx4tw |    156 | 2026-11-22 10:53:09.451238+00 | 2026-11-22 10:56:05.503919+00
+   49 | aggregator-5b7fdff979-txdrm |   2096 | 2026-11-22 11:06:06.151356+00 | 2026-11-22 11:15:09.445328+00
+   50 | aggregator-5b7fdff979-txdrm |   5769 | 2026-11-22 11:15:19.113483+00 | 2026-11-22 12:34:59.721583+00
+   51 | aggregator-5b7fdff979-txdrm |      1 | 2026-11-22 12:36:03.294608+00 | 2026-11-22 12:36:03.294608+00
+   52 | aggregator-5b7fdff979-txdrm |     52 | 2026-11-22 12:36:38.476369+00 | 2026-11-22 12:48:04.190227+00
+   53 | aggregator-5b7fdff979-txdrm |     93 | 2026-11-22 12:48:13.171347+00 | 2026-11-22 13:10:19.769329+00
+   55 | aggregator-6bcfc4cddb-6n5qj |     68 | 2026-11-22 13:11:40.383986+00 | 2026-11-22 13:25:36.51459+00
+   56 | aggregator-6bcfc4cddb-6jndj |     47 | 2026-11-22 13:26:05.058235+00 | 2026-11-22 13:36:20.462707+00
+   57 | aggregator-6bcfc4cddb-5m9k5 |      9 | 2026-11-22 13:36:44.740339+00 | 2026-11-22 13:37:50.858225+00
+(44 rows)
 
+  [shard-1-0]
+ term |           writer            | writes |          first_write          |          last_write           
+------+-----------------------------+--------+-------------------------------+-------------------------------
+    1 | aggregator-66b75f6bf-25tqz  |     24 | 2026-11-14 14:13:25.332466+00 | 2026-11-14 14:13:28.442395+00
+    2 | aggregator-66b75f6bf-25tqz  |     12 | 2026-11-14 14:13:34.929526+00 | 2026-11-14 14:16:23.272174+00
+    3 | aggregator-66b75f6bf-5ds2q  |      7 | 2026-11-14 14:16:34.784668+00 | 2026-11-14 14:17:39.632816+00
+    5 | aggregator-56f879844-g8vmw  |     26 | 2026-11-14 14:20:59.338945+00 | 2026-11-14 14:25:17.468429+00
+    6 | aggregator-56f879844-swmwm  |      1 | 2026-11-14 14:26:13.389067+00 | 2026-11-14 14:26:13.389067+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      2 | 2026-11-14 14:26:32.264861+00 | 2026-11-14 14:26:41.950142+00
+    8 | aggregator-69d6fdbdd6-pcjld |      8 | 2026-11-14 14:26:48.957993+00 | 2026-11-14 14:27:34.625576+00
+    9 | aggregator-69d6fdbdd6-vcqhv |      9 | 2026-11-14 14:27:46.902616+00 | 2026-11-14 14:29:42.219861+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |      3 | 2026-11-14 14:29:46.928091+00 | 2026-11-14 14:29:56.744157+00
+   11 | aggregator-69d6fdbdd6-spssn |      8 | 2026-11-14 14:30:29.594963+00 | 2026-11-14 14:31:38.463316+00
+   12 | aggregator-5645679cc5-49ngm |      8 | 2026-11-14 14:31:52.343904+00 | 2026-11-14 14:33:23.972459+00
+   13 | aggregator-5645679cc5-xvfv7 |      3 | 2026-11-14 14:33:36.55807+00  | 2026-11-14 14:33:49.95214+00
+   14 | aggregator-67b4f59465-4z527 |     55 | 2026-11-14 14:34:03.941461+00 | 2026-11-14 14:47:10.103836+00
+   18 | aggregator-67b4f59465-vxwww |      6 | 2026-11-14 14:47:40.98877+00  | 2026-11-14 14:48:16.459704+00
+   19 | aggregator-67b4f59465-vfmsd |      2 | 2026-11-14 14:48:23.398009+00 | 2026-11-14 14:48:37.608908+00
+   21 | aggregator-67b4f59465-hlqls |      1 | 2026-11-14 14:49:09.146963+00 | 2026-11-14 14:49:09.146963+00
+   23 | aggregator-67b4f59465-nk4h9 |     12 | 2026-11-14 14:49:30.792261+00 | 2026-11-14 14:54:32.566659+00
+   24 | aggregator-67b4f59465-69csj |      2 | 2026-11-14 14:55:19.075813+00 | 2026-11-14 14:55:33.117539+00
+   25 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 14:55:44.497778+00 | 2026-11-14 14:55:44.497778+00
+   26 | aggregator-67b4f59465-9qngf |      7 | 2026-11-14 14:57:49.928433+00 | 2026-11-14 14:59:05.644887+00
+   27 | aggregator-67b4f59465-9qngf |      5 | 2026-11-14 14:59:16.486714+00 | 2026-11-14 15:01:03.706758+00
+   29 | aggregator-67b4f59465-k69gr |      2 | 2026-11-14 15:01:33.893962+00 | 2026-11-14 15:01:43.956159+00
+   30 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 15:01:45.813235+00 | 2026-11-14 15:01:45.813235+00
+   31 | aggregator-67b4f59465-58748 |     11 | 2026-11-14 15:02:04.705835+00 | 2026-11-14 15:04:42.560294+00
+   33 | aggregator-67b4f59465-swqb7 |      3 | 2026-11-14 15:05:09.040384+00 | 2026-11-14 15:05:20.096366+00
+   34 | aggregator-67b4f59465-pbpwt |      9 | 2026-11-14 15:06:42.867639+00 | 2026-11-14 15:08:12.935669+00
+   35 | aggregator-67b4f59465-pbpwt |     54 | 2026-11-14 15:12:38.500308+00 | 2026-11-14 15:24:53.95238+00
+   36 | aggregator-67b4f59465-pbpwt |      3 | 2026-11-14 15:27:27.376827+00 | 2026-11-14 15:27:28.572159+00
+   37 | aggregator-67b4f59465-pbpwt |    172 | 2026-11-22 09:02:33.711349+00 | 2026-11-22 09:40:09.96048+00
+   38 | aggregator-67b4f59465-z2csh |     46 | 2026-11-22 09:50:28.179183+00 | 2026-11-22 09:51:00.903535+00
+   39 | aggregator-67b4f59465-cfrx8 |     91 | 2026-11-22 10:01:22.572337+00 | 2026-11-22 10:13:11.558553+00
+   42 | aggregator-5b7fdff979-cx4tw |    133 | 2026-11-22 10:15:44.772178+00 | 2026-11-22 10:44:43.286619+00
+   48 | aggregator-5b7fdff979-cx4tw |    150 | 2026-11-22 10:53:11.954984+00 | 2026-11-22 10:56:06.723774+00
+   49 | aggregator-5b7fdff979-txdrm |   2361 | 2026-11-22 11:06:06.522039+00 | 2026-11-22 11:15:09.386352+00
+   50 | aggregator-5b7fdff979-txdrm |   5588 | 2026-11-22 11:15:26.649137+00 | 2026-11-22 12:34:35.665359+00
+   51 | aggregator-5b7fdff979-txdrm |      4 | 2026-11-22 12:36:03.856715+00 | 2026-11-22 12:36:18.860399+00
+   52 | aggregator-5b7fdff979-txdrm |     50 | 2026-11-22 12:36:47.615828+00 | 2026-11-22 12:47:44.493398+00
+   53 | aggregator-5b7fdff979-txdrm |     82 | 2026-11-22 12:48:27.239726+00 | 2026-11-22 13:08:36.71711+00
+   55 | aggregator-6bcfc4cddb-6n5qj |     70 | 2026-11-22 13:11:35.994706+00 | 2026-11-22 13:25:29.423918+00
+   56 | aggregator-6bcfc4cddb-6jndj |     49 | 2026-11-22 13:26:03.518569+00 | 2026-11-22 13:36:28.606658+00
+   57 | aggregator-6bcfc4cddb-5m9k5 |      5 | 2026-11-22 13:36:44.012519+00 | 2026-11-22 13:37:46.775514+00
+(41 rows)
+
+  [shard-2-1]
+ term |           writer            | writes |          first_write          |          last_write           
+------+-----------------------------+--------+-------------------------------+-------------------------------
+    1 | aggregator-66b75f6bf-25tqz  |     23 | 2026-11-14 14:13:25.280512+00 | 2026-11-14 14:13:28.330404+00
+    2 | aggregator-66b75f6bf-25tqz  |     14 | 2026-11-14 14:13:37.312558+00 | 2026-11-14 14:16:30.343154+00
+    3 | aggregator-66b75f6bf-5ds2q  |      8 | 2026-11-14 14:16:41.20239+00  | 2026-11-14 14:17:30.736815+00
+    5 | aggregator-56f879844-g8vmw  |     26 | 2026-11-14 14:20:59.988281+00 | 2026-11-14 14:25:34.583227+00
+    6 | aggregator-56f879844-swmwm  |      3 | 2026-11-14 14:26:09.961821+00 | 2026-11-14 14:26:18.391179+00
+    7 | aggregator-69d6fdbdd6-bnnrh |      1 | 2026-11-14 14:26:22.415374+00 | 2026-11-14 14:26:22.415374+00
+    8 | aggregator-69d6fdbdd6-pcjld |      4 | 2026-11-14 14:26:48.60881+00  | 2026-11-14 14:27:37.874002+00
+    9 | aggregator-69d6fdbdd6-vcqhv |      7 | 2026-11-14 14:27:43.156466+00 | 2026-11-14 14:29:40.638692+00
+   10 | aggregator-69d6fdbdd6-hsrk7 |      6 | 2026-11-14 14:29:46.945531+00 | 2026-11-14 14:30:22.286759+00
+   11 | aggregator-69d6fdbdd6-spssn |      6 | 2026-11-14 14:30:36.457012+00 | 2026-11-14 14:31:49.225098+00
+   12 | aggregator-5645679cc5-49ngm |      7 | 2026-11-14 14:32:02.287419+00 | 2026-11-14 14:33:20.512637+00
+   14 | aggregator-67b4f59465-4z527 |     59 | 2026-11-14 14:33:59.757567+00 | 2026-11-14 14:47:04.365263+00
+   18 | aggregator-67b4f59465-vxwww |      2 | 2026-11-14 14:47:57.923748+00 | 2026-11-14 14:48:16.506466+00
+   19 | aggregator-67b4f59465-vfmsd |      3 | 2026-11-14 14:48:27.452044+00 | 2026-11-14 14:48:38.56174+00
+   20 | aggregator-67b4f59465-csgvq |      2 | 2026-11-14 14:48:57.0403+00   | 2026-11-14 14:48:58.893939+00
+   21 | aggregator-67b4f59465-hlqls |      1 | 2026-11-14 14:49:19.142345+00 | 2026-11-14 14:49:19.142345+00
+   22 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 14:49:28.174221+00 | 2026-11-14 14:49:28.174221+00
+   23 | aggregator-67b4f59465-nk4h9 |      7 | 2026-11-14 14:49:31.043175+00 | 2026-11-14 14:54:22.435178+00
+   24 | aggregator-67b4f59465-69csj |      4 | 2026-11-14 14:55:18.270201+00 | 2026-11-14 14:55:21.676641+00
+   25 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 14:55:43.69724+00  | 2026-11-14 14:55:43.69724+00
+   26 | aggregator-67b4f59465-9qngf |      5 | 2026-11-14 14:56:00.871833+00 | 2026-11-14 14:58:56.363764+00
+   27 | aggregator-67b4f59465-9qngf |      7 | 2026-11-14 14:59:16.42617+00  | 2026-11-14 15:01:01.83488+00
+   28 | aggregator-67b4f59465-pwttl |      1 | 2026-11-14 15:01:20.806851+00 | 2026-11-14 15:01:20.806851+00
+   29 | aggregator-67b4f59465-k69gr |      1 | 2026-11-14 15:01:35.443241+00 | 2026-11-14 15:01:35.443241+00
+   30 | aggregator-67b4f59465-swqb7 |      1 | 2026-11-14 15:01:52.615128+00 | 2026-11-14 15:01:52.615128+00
+   31 | aggregator-67b4f59465-58748 |     10 | 2026-11-14 15:01:55.713229+00 | 2026-11-14 15:04:32.700709+00
+   32 | aggregator-67b4f59465-5cfj5 |      2 | 2026-11-14 15:04:53.8301+00   | 2026-11-14 15:05:00.755353+00
+   34 | aggregator-67b4f59465-pbpwt |      8 | 2026-11-14 15:05:22.448892+00 | 2026-11-14 15:07:59.5405+00
+   35 | aggregator-67b4f59465-pbpwt |     55 | 2026-11-14 15:12:39.961708+00 | 2026-11-14 15:25:08.034719+00
+   36 | aggregator-67b4f59465-pbpwt |      4 | 2026-11-14 15:27:27.430262+00 | 2026-11-14 15:27:39.691709+00
+   37 | aggregator-67b4f59465-pbpwt |    184 | 2026-11-22 09:02:33.859408+00 | 2026-11-22 09:40:05.649401+00
+   38 | aggregator-67b4f59465-z2csh |     44 | 2026-11-22 09:50:28.047969+00 | 2026-11-22 09:50:57.605285+00
+   39 | aggregator-67b4f59465-cfrx8 |     91 | 2026-11-22 10:01:23.052732+00 | 2026-11-22 10:12:58.602386+00
+   42 | aggregator-5b7fdff979-cx4tw |    247 | 2026-11-22 10:15:45.062895+00 | 2026-11-22 10:44:31.374574+00
+   44 | aggregator-5b7fdff979-cx4tw |      1 | 2026-11-22 10:45:39.926677+00 | 2026-11-22 10:45:39.926677+00
+   48 | aggregator-5b7fdff979-cx4tw |    151 | 2026-11-22 10:53:10.926254+00 | 2026-11-22 10:56:06.36315+00
+   49 | aggregator-5b7fdff979-txdrm |   1878 | 2026-11-22 11:06:06.855433+00 | 2026-11-22 11:14:48.574056+00
+   50 | aggregator-5b7fdff979-txdrm |   5332 | 2026-11-22 11:15:19.256289+00 | 2026-11-22 12:34:55.040358+00
+   51 | aggregator-5b7fdff979-txdrm |      5 | 2026-11-22 12:36:04.313658+00 | 2026-11-22 12:36:27.151418+00
+   52 | aggregator-5b7fdff979-txdrm |     47 | 2026-11-22 12:36:36.388216+00 | 2026-11-22 12:48:05.523973+00
+   53 | aggregator-5b7fdff979-txdrm |     90 | 2026-11-22 12:48:16.462013+00 | 2026-11-22 13:09:40.538753+00
+   55 | aggregator-6bcfc4cddb-6n5qj |     68 | 2026-11-22 13:11:40.29737+00  | 2026-11-22 13:25:41.523582+00
+   56 | aggregator-6bcfc4cddb-6jndj |     48 | 2026-11-22 13:26:04.089072+00 | 2026-11-22 13:36:32.624291+00
+   57 | aggregator-6bcfc4cddb-5m9k5 |      7 | 2026-11-22 13:36:49.449294+00 | 2026-11-22 13:38:01.105253+00
+(44 rows)
+
+  [shard-0-1]
        lease       | fenced_term |           holder            |           raised_at           
 -------------------+-------------+-----------------------------+-------------------------------
- aggregator-ingest |          11 | aggregator-69d6fdbdd6-spssn | 2026-11-14 14:30:29.145168+00
+ aggregator-ingest |          57 | aggregator-6bcfc4cddb-5m9k5 | 2026-11-22 13:36:41.855964+00
+(1 row)
+
+  [shard-1-0]
+       lease       | fenced_term |           holder            |           raised_at           
+-------------------+-------------+-----------------------------+-------------------------------
+ aggregator-ingest |          57 | aggregator-6bcfc4cddb-5m9k5 | 2026-11-22 13:36:41.806266+00
+(1 row)
+
+  [shard-2-1]
+       lease       | fenced_term |           holder            |           raised_at           
+-------------------+-------------+-----------------------------+-------------------------------
+ aggregator-ingest |          57 | aggregator-6bcfc4cddb-5m9k5 | 2026-11-22 13:36:41.846057+00
 (1 row)
 
    [32mPASS[0m no two terms ever wrote in the same period (the store rejects an older term once a newer one wrote)
 
 [1m[36m== [8] Replace the Aggregator version under load: zero failed requests ==[0m
-[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb set image deploy/aggregator aggregator=argus/aggregator:k3s1[0m
+[33m$ kubectl -n sistem-informasi-kebencanaan-bnpb set image deploy/aggregator aggregator=argus/aggregator:b500253[0m
+Waiting for deployment spec update to be observed...
 Waiting for deployment spec update to be observed...
 Waiting for deployment "aggregator" rollout to finish: 0 out of 3 new replicas have been updated...
 Waiting for deployment "aggregator" rollout to finish: 1 out of 3 new replicas have been updated...
@@ -100,10 +246,11 @@ Waiting for deployment "aggregator" rollout to finish: 2 out of 3 new replicas h
 Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
 Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
 Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "aggregator" rollout to finish: 1 old replicas are pending termination...
 deployment "aggregator" successfully rolled out
-   HTTP    1955 200
-   version before: k3s2, after: k3s1; requests: 1955, failed: 0
+   HTTP     204 200
+   version before: 22c2a80, after: 22c2a80; requests: 204, failed: 0
    [32mPASS[0m rolling update under load without a failed request
-   leader after the rollout: aggregator-5645679cc5-49ngm (term 12); the old leader released the lease on SIGTERM
+   leader after the rollout: aggregator-6bcfc4cddb-5m9k5 (term 57); the old leader released the lease on SIGTERM
 
 [32m[1mM2 P2 PASS[0m
