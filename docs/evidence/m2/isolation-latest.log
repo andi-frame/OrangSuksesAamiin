@@ -1,24 +1,41 @@
 
 [1m[36m== [1] NetworkPolicies in force ==[0m
-NAME                              POD-SELECTOR             AGE
-broker-only-kafka-clients         app=kafka                4m13s
-canonical-store-only-aggregator   app=postgres-canonical   4m12s
+NAME                              POD-SELECTOR                        AGE
+broker-only-kafka-clients         app=kafka                           7d20h
+canonical-shard-only-aggregator   app=canonical-shard                 53m
+canonical-store-only-aggregator   app=postgres-canonical              7d20h
+shard-0-peer-replication          app=canonical-shard,shard=shard-0   53m
+shard-1-peer-replication          app=canonical-shard,shard=shard-1   53m
+shard-2-peer-replication          app=canonical-shard,shard=shard-2   53m
 
-[1m[36m== [2] Canonical Store (postgres-canonical:5432): Aggregator only ==[0m
-   aggregator           -> postgres-canonical:5432 open
-   client-api           -> postgres-canonical:5432 blocked
-   auth-service         -> postgres-canonical:5432 blocked
-   bmkg-mock            -> postgres-canonical:5432 blocked
-   pvmbg-mock           -> postgres-canonical:5432 blocked
-   consumer-dashboard   -> postgres-canonical:5432 blocked
+[1m[36m== [2] Canonical Store: Aggregator only ==[0m
+   aggregator           -> shard-0:5432         open
+   client-api           -> shard-0:5432         blocked
+   auth-service         -> shard-0:5432         blocked
+   bmkg-mock            -> shard-0:5432         blocked
+   pvmbg-mock           -> shard-0:5432         blocked
+   consumer-dashboard   -> shard-0:5432         blocked
+   aggregator           -> shard-1:5432         open
+   client-api           -> shard-1:5432         blocked
+   auth-service         -> shard-1:5432         blocked
+   bmkg-mock            -> shard-1:5432         blocked
+   pvmbg-mock           -> shard-1:5432         blocked
+   consumer-dashboard   -> shard-1:5432         blocked
+   aggregator           -> shard-2:5432         open
+   client-api           -> shard-2:5432         blocked
+   auth-service         -> shard-2:5432         blocked
+   bmkg-mock            -> shard-2:5432         blocked
+   pvmbg-mock           -> shard-2:5432         blocked
+   consumer-dashboard   -> shard-2:5432         blocked
    [32mPASS[0m only the Aggregator reaches the Canonical Store
 
 [1m[36m== [3] Broker (kafka:9092): producer and consumers only ==[0m
    aggregator           -> kafka:9092           open
    consumer-notifier    -> kafka:9092           open
-   client-api           -> kafka:9092           blocked
+   client-api           -> kafka:9092           open
    auth-service         -> kafka:9092           blocked
    pvmbg-mock           -> kafka:9092           blocked
+   bmkg-mock            -> kafka:9092           blocked
    [32mPASS[0m the broker only accepts its clients
 
 [1m[36m== [4] Credentials: the store password is only in the store and the Aggregator ==[0m
@@ -30,11 +47,13 @@ Unable to find image 'ghcr.io/jqlang/jq:1.7.1' locally
 365ab692e933: Download complete
 Digest: sha256:096b83865ad59b5b02841f103f83f45c51318394331bf1995e187ea3be937432
 Status: Downloaded newer image for ghcr.io/jqlang/jq:1.7.1
-   aggregator-credentials       AGGREGATOR_OPS_TOKEN,AGGREGATOR_SERVICE_KEY,AUDIT_TOKEN,BMKG_API_KEY,CANONICAL_DB_URL,PVMBG_GATEWAY_TOKEN
+   aggregator-credentials       AGGREGATOR_OPS_TOKEN,AGGREGATOR_SERVICE_KEY,AUDIT_TOKEN,BMKG_API_KEY,CANONICAL_DB_URL,CANONICAL_SHARD_URLS,PANTAI_AUTH_TOKEN,PVMBG_GATEWAY_TOKEN
    auth-service-credentials     AUTH_JWT_SECRET,AUTH_LAPANGAN_CLIENT_ID,AUTH_LAPANGAN_CLIENT_SECRET,AUTH_MEDIA_CLIENT_ID,AUTH_MEDIA_CLIENT_SECRET,AUTH_PUSAT_CLIENT_ID,AUTH_PUSAT_CLIENT_SECRET
    bmkg-mock-credentials        BMKG_ADMIN_TOKEN,BMKG_API_KEY
    canonical-db-credentials     POSTGRES_DB,POSTGRES_PASSWORD,POSTGRES_USER
+   canonical-shard-credentials  POSTGRES_ADMIN_PASSWORD,POSTGRES_DB,POSTGRES_PASSWORD,POSTGRES_REPLICATION_PASSWORD,POSTGRES_USER
    client-api-credentials       AGGREGATOR_SERVICE_KEY,AUTH_JWT_SECRET
+   grafana-credentials          GF_SECURITY_ADMIN_PASSWORD,GF_SECURITY_ADMIN_USER
    pvmbg-mock-credentials       PVMBG_ADMIN_TOKEN,PVMBG_TOKEN_SECRET
    satellite-feed-credentials   SATELLITE_FEED_TOKEN,SATELLITE_FEED_URL
 

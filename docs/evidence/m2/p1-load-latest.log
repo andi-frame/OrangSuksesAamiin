@@ -1,0 +1,376 @@
+
+[1m[36m== [1] 1. Catalog ==[0m
+   [33mWARN[0m no CATALOG given: synthetic catalog with the natural regional skew (tools/catalog/catalog.py generate)
+
+[1m[36m== [2] 2. Load the catalog: write load per unit and node ==[0m
+   importing 5000 events (catalog)
+   [10:23:02] shard-0-0   62m   100Mi   
+   [10:23:02] shard-0-1   85m   121Mi   
+   [10:23:02] shard-1-0   57m   106Mi   
+   [10:23:02] shard-1-1   64m   101Mi   
+   [10:23:02] shard-2-0   27m   99Mi    
+   [10:23:02] shard-2-1   78m   108Mi   
+   [10:23:12] shard-0-0   62m    100Mi   
+   [10:23:12] shard-0-1   100m   121Mi   
+   [10:23:12] shard-1-0   38m    109Mi   
+   [10:23:12] shard-1-1   52m    101Mi   
+   [10:23:12] shard-2-0   52m    100Mi   
+   [10:23:12] shard-2-1   58m    108Mi   
+   [10:23:23] shard-0-0   77m    100Mi   
+   [10:23:23] shard-0-1   158m   124Mi   
+   [10:23:23] shard-1-0   114m   108Mi   
+   [10:23:23] shard-1-1   57m    101Mi   
+   [10:23:23] shard-2-0   99m    100Mi   
+   [10:23:23] shard-2-1   202m   112Mi   
+   [10:23:33] shard-0-0   77m    100Mi   
+   [10:23:33] shard-0-1   158m   124Mi   
+   [10:23:33] shard-1-0   114m   108Mi   
+   [10:23:33] shard-1-1   57m    101Mi   
+   [10:23:33] shard-2-0   99m    100Mi   
+   [10:23:33] shard-2-1   202m   112Mi   
+   [10:23:44] shard-0-0   75m    101Mi   
+   [10:23:44] shard-0-1   150m   124Mi   
+   [10:23:44] shard-1-0   110m   108Mi   
+   [10:23:44] shard-1-1   57m    101Mi   
+   [10:23:44] shard-2-0   69m    100Mi   
+   [10:23:44] shard-2-1   122m   112Mi   
+   [10:23:54] shard-0-0   71m    101Mi   
+   [10:23:54] shard-0-1   150m   124Mi   
+   [10:23:54] shard-1-0   98m    108Mi   
+   [10:23:54] shard-1-1   61m    101Mi   
+   [10:23:54] shard-2-0   65m    100Mi   
+   [10:23:54] shard-2-1   106m   113Mi   
+   [10:24:05] shard-0-0   84m    101Mi   
+   [10:24:05] shard-0-1   177m   124Mi   
+   [10:24:05] shard-1-0   112m   109Mi   
+   [10:24:05] shard-1-1   53m    101Mi   
+   [10:24:05] shard-2-0   73m    100Mi   
+   [10:24:05] shard-2-1   154m   113Mi   
+   [10:24:15] shard-0-0   84m    101Mi   
+   [10:24:15] shard-0-1   177m   124Mi   
+   [10:24:15] shard-1-0   112m   109Mi   
+   [10:24:15] shard-1-1   53m    101Mi   
+   [10:24:15] shard-2-0   73m    100Mi   
+   [10:24:15] shard-2-1   154m   113Mi   
+   [10:24:26] shard-0-0   83m    101Mi   
+   [10:24:26] shard-0-1   153m   124Mi   
+   [10:24:26] shard-1-0   108m   109Mi   
+   [10:24:26] shard-1-1   62m    101Mi   
+   [10:24:26] shard-2-0   56m    100Mi   
+   [10:24:26] shard-2-1   108m   113Mi   
+   [10:24:36] shard-0-0   72m    101Mi   
+   [10:24:36] shard-0-1   143m   124Mi   
+   [10:24:36] shard-1-0   105m   109Mi   
+   [10:24:36] shard-1-1   57m    101Mi   
+   [10:24:36] shard-2-0   63m    101Mi   
+   [10:24:36] shard-2-1   127m   113Mi   
+   [10:24:47] shard-0-0   72m    101Mi   
+   [10:24:47] shard-0-1   143m   124Mi   
+   [10:24:47] shard-1-0   105m   109Mi   
+   [10:24:47] shard-1-1   57m    101Mi   
+   [10:24:47] shard-2-0   63m    101Mi   
+   [10:24:47] shard-2-1   127m   113Mi   
+   [10:24:57] shard-0-0   82m    101Mi   
+   [10:24:57] shard-0-1   174m   124Mi   
+   [10:24:57] shard-1-0   111m   109Mi   
+   [10:24:57] shard-1-1   57m    101Mi   
+   [10:24:57] shard-2-0   82m    101Mi   
+   [10:24:57] shard-2-1   152m   111Mi   
+   [10:25:08] shard-0-0   73m    101Mi   
+   [10:25:08] shard-0-1   167m   125Mi   
+   [10:25:08] shard-1-0   99m    109Mi   
+   [10:25:08] shard-1-1   63m    102Mi   
+   [10:25:08] shard-2-0   64m    101Mi   
+   [10:25:08] shard-2-1   112m   111Mi   
+   [10:25:18] shard-0-0   73m    101Mi   
+   [10:25:18] shard-0-1   167m   125Mi   
+   [10:25:18] shard-1-0   99m    109Mi   
+   [10:25:18] shard-1-1   63m    102Mi   
+   [10:25:18] shard-2-0   64m    101Mi   
+   [10:25:18] shard-2-1   112m   111Mi   
+   [10:25:29] shard-0-0   73m    101Mi   
+   [10:25:29] shard-0-1   149m   125Mi   
+   [10:25:29] shard-1-0   121m   109Mi   
+   [10:25:29] shard-1-1   62m    102Mi   
+   [10:25:29] shard-2-0   61m    101Mi   
+   [10:25:29] shard-2-1   109m   111Mi   
+   [10:25:39] shard-0-0   69m    102Mi   
+   [10:25:39] shard-0-1   167m   125Mi   
+   [10:25:39] shard-1-0   105m   110Mi   
+   [10:25:39] shard-1-1   59m    102Mi   
+   [10:25:39] shard-2-0   77m    101Mi   
+   [10:25:39] shard-2-1   158m   111Mi   
+   [10:25:50] shard-0-0   77m    102Mi   
+   [10:25:50] shard-0-1   150m   125Mi   
+   [10:25:50] shard-1-0   130m   110Mi   
+   [10:25:50] shard-1-1   60m    102Mi   
+   [10:25:50] shard-2-0   56m    101Mi   
+   [10:25:50] shard-2-1   147m   111Mi   
+   [10:26:00] shard-0-0   77m    102Mi   
+   [10:26:00] shard-0-1   150m   125Mi   
+   [10:26:00] shard-1-0   130m   110Mi   
+   [10:26:00] shard-1-1   60m    102Mi   
+   [10:26:00] shard-2-0   56m    101Mi   
+   [10:26:00] shard-2-1   147m   111Mi   
+   [10:26:11] shard-0-0   62m    102Mi   
+   [10:26:11] shard-0-1   164m   125Mi   
+   [10:26:11] shard-1-0   109m   110Mi   
+   [10:26:11] shard-1-1   60m    102Mi   
+   [10:26:11] shard-2-0   56m    101Mi   
+   [10:26:11] shard-2-1   102m   111Mi   
+   [10:26:22] shard-0-0   72m    102Mi   
+   [10:26:22] shard-0-1   162m   125Mi   
+   [10:26:22] shard-1-0   114m   110Mi   
+   [10:26:22] shard-1-1   64m    103Mi   
+   [10:26:22] shard-2-0   66m    101Mi   
+   [10:26:22] shard-2-1   147m   113Mi   
+   [10:26:33] shard-0-0   72m    102Mi   
+   [10:26:33] shard-0-1   162m   125Mi   
+   [10:26:33] shard-1-0   114m   110Mi   
+   [10:26:33] shard-1-1   64m    103Mi   
+   [10:26:33] shard-2-0   66m    101Mi   
+   [10:26:33] shard-2-1   147m   113Mi   
+   [10:26:43] shard-0-0   81m    102Mi   
+   [10:26:43] shard-0-1   199m   125Mi   
+   [10:26:43] shard-1-0   106m   110Mi   
+   [10:26:43] shard-1-1   64m    103Mi   
+   [10:26:43] shard-2-0   71m    101Mi   
+   [10:26:43] shard-2-1   147m   113Mi   
+   [10:26:54] shard-0-0   78m    102Mi   
+   [10:26:54] shard-0-1   153m   127Mi   
+   [10:26:54] shard-1-0   108m   110Mi   
+   [10:26:54] shard-1-1   60m    103Mi   
+   [10:26:54] shard-2-0   57m    102Mi   
+   [10:26:54] shard-2-1   129m   113Mi   
+   [10:27:04] shard-0-0   78m    102Mi   
+   [10:27:04] shard-0-1   153m   127Mi   
+   [10:27:04] shard-1-0   108m   110Mi   
+   [10:27:04] shard-1-1   60m    103Mi   
+   [10:27:04] shard-2-0   57m    102Mi   
+   [10:27:04] shard-2-1   129m   113Mi   
+   [10:27:15] shard-0-0   77m    102Mi   
+   [10:27:15] shard-0-1   172m   127Mi   
+   [10:27:15] shard-1-0   107m   110Mi   
+   [10:27:15] shard-1-1   60m    103Mi   
+   [10:27:15] shard-2-0   54m    101Mi   
+   [10:27:15] shard-2-1   113m   114Mi   
+   [10:27:25] shard-0-0   78m    102Mi   
+   [10:27:25] shard-0-1   158m   129Mi   
+   [10:27:25] shard-1-0   115m   111Mi   
+   [10:27:25] shard-1-1   66m    103Mi   
+   [10:27:25] shard-2-0   86m    101Mi   
+   [10:27:25] shard-2-1   185m   114Mi   
+   [10:27:36] shard-0-0   70m    102Mi   
+   [10:27:36] shard-0-1   155m   129Mi   
+   [10:27:36] shard-1-0   115m   111Mi   
+   [10:27:36] shard-1-1   62m    103Mi   
+   [10:27:36] shard-2-0   72m    102Mi   
+   [10:27:36] shard-2-1   185m   114Mi   
+   [10:27:46] shard-0-0   70m    102Mi   
+   [10:27:46] shard-0-1   155m   129Mi   
+   [10:27:46] shard-1-0   115m   111Mi   
+   [10:27:46] shard-1-1   62m    103Mi   
+   [10:27:46] shard-2-0   72m    102Mi   
+   [10:27:46] shard-2-1   185m   114Mi   
+   [10:27:57] shard-0-0   74m    102Mi   
+   [10:27:57] shard-0-1   141m   129Mi   
+   [10:27:57] shard-1-0   116m   111Mi   
+   [10:27:57] shard-1-1   62m    103Mi   
+   [10:27:57] shard-2-0   58m    102Mi   
+   [10:27:57] shard-2-1   124m   112Mi   
+   [10:28:08] shard-0-0   73m    102Mi   
+   [10:28:08] shard-0-1   178m   129Mi   
+   [10:28:08] shard-1-0   110m   111Mi   
+   [10:28:08] shard-1-1   70m    103Mi   
+   [10:28:08] shard-2-0   71m    102Mi   
+   [10:28:08] shard-2-1   124m   112Mi   
+   [10:28:18] shard-0-0   73m    102Mi   
+   [10:28:18] shard-0-1   178m   129Mi   
+   [10:28:18] shard-1-0   110m   111Mi   
+   [10:28:18] shard-1-1   70m    103Mi   
+   [10:28:18] shard-2-0   71m    102Mi   
+   [10:28:18] shard-2-1   124m   112Mi   
+   [10:28:29] shard-0-0   73m    102Mi   
+   [10:28:29] shard-0-1   161m   128Mi   
+   [10:28:29] shard-1-0   110m   111Mi   
+   [10:28:29] shard-1-1   74m    103Mi   
+   [10:28:29] shard-2-0   78m    102Mi   
+   [10:28:29] shard-2-1   179m   116Mi   
+   [10:28:39] shard-0-0   71m    103Mi   
+   [10:28:39] shard-0-1   142m   128Mi   
+   [10:28:39] shard-1-0   120m   111Mi   
+   [10:28:39] shard-1-1   61m    103Mi   
+   [10:28:39] shard-2-0   67m    102Mi   
+   [10:28:39] shard-2-1   137m   116Mi   
+   [10:28:50] shard-0-0   71m    103Mi   
+   [10:28:50] shard-0-1   142m   128Mi   
+   [10:28:50] shard-1-0   120m   111Mi   
+   [10:28:50] shard-1-1   61m    103Mi   
+   [10:28:50] shard-2-0   67m    102Mi   
+   [10:28:50] shard-2-1   137m   116Mi   
+   [10:29:01] shard-0-0   72m    103Mi   
+   [10:29:01] shard-0-1   140m   129Mi   
+   [10:29:01] shard-1-0   104m   111Mi   
+   [10:29:01] shard-1-1   58m    103Mi   
+   [10:29:01] shard-2-0   64m    102Mi   
+   [10:29:01] shard-2-1   107m   116Mi   
+   [10:29:11] shard-0-0   83m    103Mi   
+   [10:29:11] shard-0-1   171m   129Mi   
+   [10:29:11] shard-1-0   91m    112Mi   
+   [10:29:11] shard-1-1   58m    103Mi   
+   [10:29:11] shard-2-0   64m    102Mi   
+   [10:29:11] shard-2-1   156m   116Mi   
+   [10:29:21] shard-0-0   74m    103Mi   
+   [10:29:21] shard-0-1   158m   129Mi   
+   [10:29:21] shard-1-0   109m   111Mi   
+   [10:29:21] shard-1-1   76m    103Mi   
+   [10:29:21] shard-2-0   67m    102Mi   
+   [10:29:21] shard-2-1   118m   115Mi   
+   [10:29:32] shard-0-0   74m    103Mi   
+   [10:29:32] shard-0-1   158m   129Mi   
+   [10:29:32] shard-1-0   109m   111Mi   
+   [10:29:32] shard-1-1   76m    103Mi   
+   [10:29:32] shard-2-0   67m    102Mi   
+   [10:29:32] shard-2-1   118m   115Mi   
+   [10:29:43] shard-0-0   84m    103Mi   
+   [10:29:43] shard-0-1   157m   128Mi   
+   [10:29:43] shard-1-0   98m    111Mi   
+   [10:29:43] shard-1-1   76m    103Mi   
+   [10:29:43] shard-2-0   67m    102Mi   
+   [10:29:43] shard-2-1   140m   115Mi   
+   [10:29:53] shard-0-0   84m    103Mi   
+   [10:29:53] shard-0-1   176m   128Mi   
+   [10:29:53] shard-1-0   100m   111Mi   
+   [10:29:53] shard-1-1   66m    103Mi   
+   [10:29:53] shard-2-0   63m    102Mi   
+   [10:29:53] shard-2-1   164m   115Mi   
+   {"ts":"2026-11-22T10:29:58.081121363Z","level":"INFO","msg":"hazard_stored","service":"catalog-import","hazard_id":"bmkg-cat-0004999","version":1,"outcome":"created","severity":"NORMAL","source":"BMKG","trace_id":"67e8bc83f89513a53cbaf24466293d8f"}
+   {"ts":"2026-11-22T10:29:58.081299264Z","level":"INFO","msg":"catalog_import_complete","service":"catalog-import","input_records":5000,"inserted":5000}
+   catalog imported in 416 s
+   [10:30:04] shard-0-0   84m    103Mi   
+   [10:30:04] shard-0-1   176m   128Mi   
+   [10:30:04] shard-1-0   100m   111Mi   
+   [10:30:04] shard-1-1   66m    103Mi   
+   [10:30:04] shard-2-0   63m    102Mi   
+   [10:30:04] shard-2-1   164m   115Mi   
+   shard-0-0  node-b   replica  rows=2289    bytes=1376256   writes+0
+   shard-0-1  node-a   primary  rows=2289    bytes=1376256   writes+1909
+   shard-1-0  node-b   primary  rows=2301    bytes=1384448   writes+1700
+   shard-1-1  node-a   replica  rows=2302    bytes=1384448   writes+0
+   shard-2-0  node-b   replica  rows=2311    bytes=1376256   writes+0
+   shard-2-1  node-a   primary  rows=2311    bytes=1376256   writes+2190
+   node node-a   primary writes +4099 (71 %)
+   node node-b   primary writes +1700 (29 %)
+
+[1m[36m== [3] 3. Spike: 1500 events in one region (Sumatera Barat) ==[0m
+   importing 1500 events (spike)
+   [10:30:14] shard-0-0   91m    103Mi   
+   [10:30:14] shard-0-1   176m   128Mi   
+   [10:30:14] shard-1-0   97m    110Mi   
+   [10:30:14] shard-1-1   66m    103Mi   
+   [10:30:14] shard-2-0   77m    103Mi   
+   [10:30:14] shard-2-1   136m   113Mi   
+   [10:30:24] shard-0-0   74m    103Mi   
+   [10:30:24] shard-0-1   147m   128Mi   
+   [10:30:24] shard-1-0   124m   111Mi   
+   [10:30:24] shard-1-1   69m    104Mi   
+   [10:30:24] shard-2-0   73m    103Mi   
+   [10:30:24] shard-2-1   87m    111Mi   
+   [10:30:35] shard-0-0   73m    103Mi   
+   [10:30:35] shard-0-1   147m   128Mi   
+   [10:30:35] shard-1-0   105m   112Mi   
+   [10:30:35] shard-1-1   67m    104Mi   
+   [10:30:35] shard-2-0   73m    103Mi   
+   [10:30:35] shard-2-1   113m   113Mi   
+   [10:30:46] shard-0-0   73m    103Mi   
+   [10:30:46] shard-0-1   147m   128Mi   
+   [10:30:46] shard-1-0   105m   112Mi   
+   [10:30:46] shard-1-1   67m    104Mi   
+   [10:30:46] shard-2-0   73m    103Mi   
+   [10:30:46] shard-2-1   113m   113Mi   
+   [10:30:56] shard-0-0   83m    103Mi   
+   [10:30:56] shard-0-1   154m   129Mi   
+   [10:30:56] shard-1-0   106m   112Mi   
+   [10:30:56] shard-1-1   56m    104Mi   
+   [10:30:56] shard-2-0   72m    103Mi   
+   [10:30:56] shard-2-1   155m   115Mi   
+   [10:31:07] shard-0-0   70m    104Mi   
+   [10:31:07] shard-0-1   154m   129Mi   
+   [10:31:07] shard-1-0   101m   112Mi   
+   [10:31:07] shard-1-1   64m    104Mi   
+   [10:31:07] shard-2-0   67m    103Mi   
+   [10:31:07] shard-2-1   133m   113Mi   
+   [10:31:17] shard-0-0   70m    104Mi   
+   [10:31:17] shard-0-1   154m   129Mi   
+   [10:31:17] shard-1-0   101m   112Mi   
+   [10:31:17] shard-1-1   64m    104Mi   
+   [10:31:17] shard-2-0   67m    103Mi   
+   [10:31:17] shard-2-1   133m   113Mi   
+   [10:31:28] shard-0-0   72m    104Mi   
+   [10:31:28] shard-0-1   162m   130Mi   
+   [10:31:28] shard-1-0   122m   112Mi   
+   [10:31:28] shard-1-1   62m    104Mi   
+   [10:31:28] shard-2-0   68m    103Mi   
+   [10:31:28] shard-2-1   99m    115Mi   
+   [10:31:38] shard-0-0   80m    104Mi   
+   [10:31:38] shard-0-1   162m   130Mi   
+   [10:31:38] shard-1-0   98m    112Mi   
+   [10:31:38] shard-1-1   56m    104Mi   
+   [10:31:38] shard-2-0   74m    103Mi   
+   [10:31:38] shard-2-1   159m   115Mi   
+   [10:31:49] shard-0-0   80m    104Mi   
+   [10:31:49] shard-0-1   162m   130Mi   
+   [10:31:49] shard-1-0   98m    112Mi   
+   [10:31:49] shard-1-1   56m    104Mi   
+   [10:31:49] shard-2-0   74m    103Mi   
+   [10:31:49] shard-2-1   159m   115Mi   
+   [10:32:00] shard-0-0   82m    104Mi   
+   [10:32:00] shard-0-1   178m   129Mi   
+   [10:32:00] shard-1-0   108m   112Mi   
+   [10:32:00] shard-1-1   62m    104Mi   
+   [10:32:00] shard-2-0   70m    103Mi   
+   [10:32:00] shard-2-1   119m   115Mi   
+   [10:32:11] shard-0-0   76m    104Mi   
+   [10:32:11] shard-0-1   189m   130Mi   
+   [10:32:11] shard-1-0   108m   113Mi   
+   [10:32:11] shard-1-1   73m    104Mi   
+   [10:32:11] shard-2-0   70m    103Mi   
+   [10:32:11] shard-2-1   106m   116Mi   
+   {"ts":"2026-11-22T10:32:18.300483348Z","level":"INFO","msg":"hazard_stored","service":"catalog-import","hazard_id":"bmkg-spike-0001499","version":1,"outcome":"created","severity":"NORMAL","source":"BMKG","trace_id":"95e228478000efdea12a2cf21a4a302e"}
+   {"ts":"2026-11-22T10:32:18.305681365Z","level":"INFO","msg":"catalog_import_complete","service":"catalog-import","input_records":1500,"inserted":1500}
+   spike imported in 132 s
+   [10:32:21] shard-0-0   76m    104Mi   
+   [10:32:21] shard-0-1   176m   130Mi   
+   [10:32:21] shard-1-0   107m   112Mi   
+   [10:32:21] shard-1-1   61m    104Mi   
+   [10:32:21] shard-2-0   69m    104Mi   
+   [10:32:21] shard-2-1   176m   118Mi   
+   shard-0-0  node-b   replica  rows=2790    bytes=1638400   writes+0
+   shard-0-1  node-a   primary  rows=2790    bytes=1638400   writes+573
+   shard-1-0  node-b   primary  rows=2819    bytes=1654784   writes+519
+   shard-1-1  node-a   replica  rows=2819    bytes=1654784   writes+0
+   shard-2-0  node-b   replica  rows=2821    bytes=1679360   writes+0
+   shard-2-1  node-a   primary  rows=2821    bytes=1679360   writes+671
+   node node-a   primary writes +1244 (71 %)
+   node node-b   primary writes +519 (29 %)
+
+[1m[36m== [4] 4. Placement after loading (criterion 1) ==[0m
+   active HazardEvents (Audit API): 8431
+   node node-a holds 2 primary unit(s)
+   node node-b holds 1 primary unit(s)
+   [32mPASS[0m no storage unit holds all 8431 events; primaries (write load) on more than one node
+
+[1m[36m== [5] 5. The same input under the alternatives (offline, same placement count) ==[0m
+   events: 6500, shards: 3, top regions: Sumatera Barat 2062, Jawa Barat 448, Sumatera Utara 442
+   strategy                                              shard-0  shard-1  shard-2   max/mean
+   hash(hazard_id) mod N (chosen)                           2151     2178     2171       1.01
+   range(region_name)                                       1897     1298     3305       1.53
+   range(occurred_at), quantile cuts on this input          2166     2167     2167       1.00
+   writes of the last 24 h, hash                             491      509      500       1.02
+   writes of the last 24 h, range(region_name)                 0        0     1500       3.00
+   writes of the last 24 h, range(occurred_at)                 0        0     1500       3.00
+   spike only: events: 1500, shards: 3, top regions: Sumatera Barat 1500
+   spike only: strategy                                              shard-0  shard-1  shard-2   max/mean
+   spike only: hash(hazard_id) mod N (chosen)                            491      509      500       1.02
+   spike only: range(region_name)                                       1500        0        0       3.00
+   spike only: range(occurred_at), quantile cuts on this input           500      500      500       1.00
