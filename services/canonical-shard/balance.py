@@ -13,11 +13,18 @@ its own Patroni REST API on localhost:
 This is what makes a node that returns with an empty disk take its share of the writes again without an operator
 (P1 criterion 5): Patroni rebuilds its copy with a base backup, the copy becomes synchronous, and this loop hands
 the primary role back.
+
+Self-heal: a replica whose PostgreSQL cannot start (a half-wiped or corrupted data directory after a node was killed
+and its disk deleted) stays down forever under Patroni alone. When this member is not the leader, a healthy leader
+exists, and the local state has been "start failed"/"stopped" for BALANCE_REINIT_SEC, the loop asks the local Patroni
+to reinitialize it (wipe the data directory and clone it again from the leader). The leader keeps the data, so this
+never loses a write; it only replaces a copy that is unusable anyway.
 """
 import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 
 API = "http://127.0.0.1:8008"
@@ -26,6 +33,7 @@ preferred = os.environ.get("PREFERRED_PRIMARY_NODE", "")
 interval = float(os.environ.get("BALANCE_INTERVAL_SEC", "10"))
 stable_for = float(os.environ.get("BALANCE_STABLE_SEC", "60"))
 cooldown = float(os.environ.get("BALANCE_COOLDOWN_SEC", "300"))
+reinit_after = float(os.environ.get("BALANCE_REINIT_SEC", "60"))
 
 
 def log(msg, **fields):
@@ -38,19 +46,34 @@ def get(path):
         return json.loads(r.read() or b"{}")
 
 
-def switchover(leader, candidate):
-    body = json.dumps({"leader": leader, "candidate": candidate}).encode()
-    req = urllib.request.Request(API + "/switchover", data=body, method="POST",
+def post(path, payload):
+    req = urllib.request.Request(API + path, data=json.dumps(payload).encode(), method="POST",
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.status, r.read().decode(errors="replace")
 
 
+def switchover(leader, candidate):
+    return post("/switchover", {"leader": leader, "candidate": candidate})
+
+
+def local_state():
+    try:
+        return get("/patroni").get("state", "")
+    except urllib.error.HTTPError as e:  # 503 while not running: the body still carries the state
+        try:
+            return json.loads(e.read() or b"{}").get("state", "")
+        except ValueError:
+            return ""
+    except Exception:
+        return ""
+
+
 def main():
-    if not preferred:
-        return
     healthy_since = None
+    broken_since = None
     last_switch = 0.0
+    last_reinit = 0.0
     while True:
         time.sleep(interval)
         try:
@@ -58,11 +81,29 @@ def main():
         except Exception:  # Patroni not up yet, or restarting
             healthy_since = None
             continue
+        members = cluster.get("members", [])
+        leader = next((m for m in members if m.get("role") == "leader"), None)
+        now = time.monotonic()
+        state = local_state()
+        if (leader is not None and leader.get("name") != me and leader.get("state") == "running"
+                and state in ("start failed", "stopped", "crashed")):
+            broken_since = broken_since or now
+            if now - broken_since >= reinit_after and now - last_reinit >= cooldown:
+                try:
+                    status, text = post("/reinitialize", {"force": True})
+                    log("reinitialize requested", state=state, leader=leader.get("name"), status=status,
+                        response=text[:200])
+                except Exception as e:
+                    log("reinitialize failed", state=state, error=str(e)[:200])
+                last_reinit = now
+                broken_since = None
+            continue
+        broken_since = None
+        if not preferred:
+            continue
         if cluster.get("pause"):
             healthy_since = None
             continue
-        members = cluster.get("members", [])
-        leader = next((m for m in members if m.get("role") == "leader"), None)
         if leader is None or leader.get("name") != me:
             healthy_since = None  # only the leader acts
             continue
@@ -76,7 +117,6 @@ def main():
         if candidate is None:
             healthy_since = None
             continue
-        now = time.monotonic()
         healthy_since = healthy_since or now
         if now - healthy_since < stable_for or now - last_switch < cooldown:
             continue

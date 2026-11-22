@@ -67,6 +67,6 @@ path.write_text(yaml.safe_dump(config))
 # Primary placement: a small loop next to Patroni moves this shard's primary role to its preferred node once a
 # synchronous standby there has caught up (P1: write load on more than one node, and a returning node takes its
 # share again without an operator). It only talks to the local Patroni REST API.
-if env.get("PREFERRED_PRIMARY_NODE"):
-    subprocess.Popen(["/opt/patroni/bin/python3", "/usr/local/bin/balance-shard"], start_new_session=True)
+# The same loop also self-heals a replica whose data directory is unusable (see balance.py).
+subprocess.Popen(["/opt/patroni/bin/python3", "/usr/local/bin/balance-shard"], start_new_session=True)
 os.execvp("patroni", ["patroni", str(path)])
