@@ -46,13 +46,13 @@ fi
 say "namespace + secrets"
 kc apply -f "$ROOT/deploy/k8s/namespace.yaml" >/dev/null
 bash "$ROOT/scripts/k8s/secrets.sh"
+# before the shards start (also during a migration): their preferred-primary env comes from this ConfigMap
+if [ "$K8S_STORAGE" = sharded ]; then
+  kn create configmap shard-placement "${placement[@]}" --dry-run=client -o yaml | kc apply -f - >/dev/null
+fi
 
 if [ "$migrate" = 1 ]; then
   bash "$ROOT/scripts/k8s/migrate-canonical.sh"
-fi
-
-if [ "$K8S_STORAGE" = sharded ]; then
-  kn create configmap shard-placement "${placement[@]}" --dry-run=client -o yaml | kc apply -f - >/dev/null
 fi
 
 say "manifests ($K8S_MANIFESTS)"
