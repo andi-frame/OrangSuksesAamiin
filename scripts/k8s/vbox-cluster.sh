@@ -121,7 +121,7 @@ create() { # <index>
     --basefolder "$(winpath "$WORK/vms")" >/dev/null
   # the cloud image's console is ttyS0: without a serial port the boot stalls; the port writes to a log file,
   # which is also where cloud-init's progress can be read
-  vb modifyvm "$name" --nic1 natnetwork --nat-network1 "$NET" --audio-enabled off \
+  vb modifyvm "$name" --nic1 natnetwork --nat-network1 "$NET" --nictype1 virtio --audio-enabled off \
     --uart1 0x3F8 4 --uart-mode1 file "$(winpath "$WORK/$name-console.log")"
 }
 
@@ -189,7 +189,7 @@ case "${1:-}" in
       for _ in $(seq 1 60); do vm_running "$n" || break; sleep 3; done
       vm_running "$n" && die "$n did not shut down within 3 minutes"
       say "$n: ${MEM} MiB, ${CPUS} vCPU"
-      vb modifyvm "$n" --memory "$MEM" --cpus "$CPUS"
+      vb modifyvm "$n" --memory "$MEM" --cpus "$CPUS" --nictype1 virtio   # virtio-net: far less softirq than e1000
     done
     for n in "${NODES[@]}"; do vb startvm "$n" --type headless >/dev/null; done
     prepare   # idempotent: also adds port forwards that are missing on an older NAT network

@@ -30,9 +30,12 @@ config = {
     },
     "bootstrap": {
         "dcs": {
-            "ttl": 20,
-            "loop_wait": 3,
-            "retry_timeout": 5,
+            # Patroni defaults. A 3 s loop rewrote the leader Endpoints of every shard every 3 s, and each write made
+            # kube-proxy and the NetworkPolicy controller resync: on 4-vCPU VMs that starved the nodes until leader
+            # locks expired and the shards failed over repeatedly. Failover within ~30 s is enough for P1.
+            "ttl": 30,
+            "loop_wait": 10,
+            "retry_timeout": 10,
             "check_timeline": True,
             "synchronous_mode": True,
             "synchronous_node_count": 1,
