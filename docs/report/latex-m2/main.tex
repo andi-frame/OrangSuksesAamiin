@@ -1,0 +1,47 @@
+% Laporan IF4031 Milestone 2 -- dibangkitkan dari docs/report/m2/*.md oleh tools/report/md2tex.py
+\documentclass[11pt,a4paper,oneside]{report}
+\input{preamble}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{pdfpages}
+\begin{document}
+\begin{titlepage}
+\thispagestyle{empty}
+\sffamily
+\vspace*{1.2cm}
+{\color{accent}\rule{\textwidth}{1.6pt}}\\[1.2em]
+{\Large IF4031 Arsitektur Aplikasi Terdistribusi}\\[0.4em]
+{\large Tugas Besar -- Milestone 2: Sistem Terdistribusi Skalabel}\\[2.2em]
+{\fontsize{40}{44}\selectfont\bfseries\color{accent} ARGUS}\\[0.5em]
+{\Large\bfseries Aggregated Real-time Geohazard Unified System}\\[0.8em]
+{\large Gateway kebencanaan BNPB di atas Kubernetes}\\[1.2em]
+{\color{accent}\rule{\textwidth}{0.6pt}}
+
+\vspace{2.2cm}
+\begin{tabular}{@{}L{3.6cm}L{10cm}@{}}
+\textbf{Nama kelompok} & OrangSuksesAamiin\\[0.8em]
+\textbf{Anggota} & 13523128 - Andi Farhan Hidayat\\
+ & 13523164 - Muhammad Rizain Firdaus\\
+ & 13523152 - Muhammad Kinan Arkansyaddad\\[0.8em]
+\textbf{Mata kuliah} & IF4031 Arsitektur Aplikasi Terdistribusi\\
+\textbf{Institusi} & Institut Teknologi Bandung\\
+\textbf{Semester} & 7, 2026/2027
+\end{tabular}
+
+\vfill
+{\small\color{gridgray}Berkas ini dikumpulkan sebagai \texttt{IF4031\_M2\_OrangSuksesAamiin.pdf}.}
+\end{titlepage}
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\input{00-umum}
+\input{01-p1}
+\input{02-p2}
+\input{03-p3}
+\input{04-p4}
+\input{05-p5}
+\input{lampiran}
+\chapter{Lampiran Surat Pernyataan Penggunaan AI}
+\includepdf[pages=-,pagecommand={\thispagestyle{empty}}]{signed.pdf}
+\end{document}

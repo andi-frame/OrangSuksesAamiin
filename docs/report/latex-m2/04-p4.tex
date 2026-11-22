@@ -1,0 +1,156 @@
+\chapter{Problem 4 --- Atap Seng di Siang Bolong}
+
+\section{Identifikasi masalah (butir ``Di laporan'' 1)}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.224\linewidth}>{\raggedright\arraybackslash}p{0.355\linewidth}>{\raggedright\arraybackslash}p{0.355\linewidth}@{}}
+\toprule
+\textbf{Kriteria} & \textbf{Persoalan yang sebenarnya terjadi} & \textbf{Nama dan konsep dalam literatur} \\
+\midrule
+\endhead
+2. Pengelompokan menurut waktu deteksi, keterlambatan & Data tiba tidak berurutan dan terlambat. Urutan tiba di BNPB tidak sama dengan urutan lintasan satelit, dan sebagian laporan lintasan pagi baru tiba siang. Pengelompokan yang memakai waktu tiba akan memisahkan deteksi yang seharusnya satu kebakaran. & \emph{Event time vs processing time}, \emph{out-of-order / late data}, \textbf{watermark} dan \emph{allowed lateness} (Dataflow Model, Akidau dkk. 2015; Streaming Systems). Pengelompokan berdasarkan kedekatan ruang dan waktu adalah \emph{session-like windowing} atas graf (\emph{connected components}, mirip DBSCAN dengan \texttt{minPts =\allowbreak{} 2}). \\
+4. Lonjakan 60$\times$, tanpa kehilangan, kembali mutakhir $\le$ 60 s & Laju masuk sesaat melebihi laju olah. Bila tidak ada buffer yang tahan lama dan posisi baca yang tersimpan, data hilang atau sistem tertinggal tanpa terlihat. & \emph{Backpressure}, \textbf{consumer lag}, \emph{log-based messaging} dengan offset (Kleppmann, DDIA bab 11); \emph{catch-up} setelah \emph{burst}. \\
+5. Pemroses mati di tengah pengenalan kebakaran & Keadaan sementara (anggota graf, ID kebakaran, mutasi yang belum diterapkan) hilang bila hanya ada di memori. Pengulangan setelah restart juga bisa menggandakan hasil. & \textbf{Exactly-once processing / effectively-once}: \emph{checkpointing} keadaan bersama offset (Chandy--Lamport, Flink), \textbf{idempotent sink} dengan versi, \emph{at-least-once delivery + deduplication}. \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Mengapa polling M1 ditinggalkan untuk sumber ini (butir ``Di laporan'' 2)}
+
+Pola M1 adalah \emph{polling} dengan \emph{cursor} waktu dan \emph{overlap}. Pola ini cocok untuk BMKG dan PVMBG: datanya sedikit, setiap record berdiri sendiri, dan pengambilan ulang dengan overlap aman karena upsert idempoten. Untuk Feed Satelit pola itu ditinggalkan, karena:
+
+
+\begin{enumerate}
+\item \textbf{Feed sudah berupa log berurutan.} Setiap kejadian punya offset yang naik monoton tanpa celah, dan stream dapat dilanjutkan dengan \texttt{from=\allowbreak{}<offset>} atau \texttt{Last-\allowbreak{}Event-\allowbreak{}ID}. Posisi baca yang tepat adalah satu bilangan. Cursor waktu tidak bisa menangkap \texttt{update} dan \texttt{retract}, karena keduanya merujuk ke deteksi lama.
+\item \textbf{Lonjakan ribuan deteksi per lintasan.} Polling setiap beberapa detik menambah latensi sebesar interval dan membuang permintaan saat feed diam. SSE mendorong data begitu tersedia. Heartbeat memberi tanda hidup dan ikut memajukan offset.
+\item \textbf{Batas koneksi.} Feed menolak koneksi berlipat (\texttt{429 too\_\allowbreak{}many\_\allowbreak{}connections}). Dengan satu koneksi SSE milik leader ingest (mekanisme P2), feed hanya dibaca sekali oleh seluruh sistem.
+\end{enumerate}
+
+Yang \textbf{dipertahankan} dari M1: satu penulis ber-fencing (lease Kubernetes, P2), penyimpanan idempoten dengan versi, dan outbox $\rightarrow$ Kafka untuk konsumen hilir.
+
+
+\section{Rancangan}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]{fig/m6.pdf}\end{figure}
+
+\subsection{Dari deteksi ke HazardEvent WILDFIRE (kriteria 1, 3)}
+
+\begin{itemize}
+\item \textbf{Identitas deteksi.} Kunci \texttt{satellite|\allowbreak{}acq\_\allowbreak{}date|\allowbreak{}acq\_\allowbreak{}time|\allowbreak{}latitude|\allowbreak{}longitude} diambil \emph{apa adanya} dari teks feed, termasuk nol di depan dan di belakang. Untuk perhitungan, waktu dan koordinat di-parse terpisah. Deteksi dengan kunci sama yang tiba ulang diabaikan.
+\item \textbf{Waktu deteksi} adalah \texttt{acq\_\allowbreak{}date + acq\_\allowbreak{}time} dalam UTC, bukan waktu tiba.
+\item **Confidence \texttt{l}\emph{* tidak ikut dikelompokkan. Deteksinya tetap disimpan sebagai *inactive}, supaya \texttt{update} yang menaikkan confidence-nya tetap bisa diterapkan.
+\item \textbf{Keterhubungan.} Dua deteksi terhubung bila jaraknya $\le$ 1,0 km (haversine) \textbf{dan} selisih waktunya $\le$ 360 menit. Calon tetangga dicari lewat grid sel ECEF 1 km $\times$ 6 jam, lalu jarak dihitung tepat. Komponen terhubung (BFS) dengan $\ge$ 2 deteksi menjadi satu kebakaran, termasuk bila deteksinya dari satelit berbeda. Deteksi tunggal dihitung dan dilaporkan (\texttt{singletons}).
+\item \textbf{Pemetaan.} \texttt{occurred\_\allowbreak{}at} = deteksi paling awal; \texttt{latitude/\allowbreak{}longitude} = centroid sferis; \texttt{area\_\allowbreak{}name} = provinsi dengan titik pusat terdekat pada tabel statis (\texttt{SATELLITE\_\allowbreak{}PROVINCES\_\allowbreak{}PATH}). Severity: AWAS bila $\ge$ 20 deteksi atau FRP $\ge$ 100 MW, SIAGA bila $\ge$ 6 deteksi atau $\ge$ 30 MW, selain itu WASPADA. \texttt{attributes} berisi \texttt{detection\_\allowbreak{}count}, \texttt{satellites}, \texttt{max\_\allowbreak{}confidence}, \texttt{total\_\allowbreak{}frp\_\allowbreak{}mw}, dan \texttt{detection\_\allowbreak{}keys} yang terurut.
+\item \textbf{ID stabil.} \texttt{source\_\allowbreak{}ref\_\allowbreak{}id} diturunkan dari identitas sesi feed, offset tempat komponen pertama kali memenuhi syarat, dan kunci anggota awalnya. Memproses ulang aliran yang sama menghasilkan ID yang sama. Pada \texttt{update} biasa ID tidak berubah. Saat dua kebakaran bergabung, ID penyintas dipilih secara deterministik. Saat kebakaran menyusut di bawah dua deteksi atau ditarik (\texttt{retract}), HazardEvent yang \textbf{sama} mendapat versi baru \texttt{retired}. Tidak dibuat event baru, dan event \texttt{retired} tidak dihitung lagi oleh Audit API.
+\end{itemize}
+
+\subsection{Kapan kebakaran ``selesai dikenali'' dan bagaimana keterlambatan ditangani (butir ``Di laporan'' 3)}
+
+Kebakaran \textbf{tidak menunggu jendela ditutup} untuk diterbitkan. Begitu sebuah komponen memiliki dua deteksi, HazardEvent langsung disimpan. Setiap deteksi, \texttt{update}, atau \texttt{retract} berikutnya menghasilkan versi baru dari HazardEvent yang sama. Cara ini menjaga latensi rendah, karena peringatan tidak tertahan oleh \emph{allowed lateness}. Konsekuensinya, konsumen melihat beberapa versi dari satu kebakaran.
+
+
+Sebuah kebakaran dianggap \textbf{final} ketika watermark melewati deteksi terakhirnya ditambah 360 menit. Sejak itu tidak ada deteksi baru yang sah yang masih bisa tersambung.
+
+
+\begin{itemize}
+\item \textbf{Watermark} = waktu akuisisi terbesar yang pernah dilihat -- \texttt{SATELLITE\_\allowbreak{}LATENESS\_\allowbreak{}SEC} (24 jam).
+\item \textbf{Deteksi baru di bawah watermark} tidak digabungkan ke kebakaran. Deteksi itu ditandai \emph{late}, dicatat di checkpoint, dan jumlahnya dilaporkan di \texttt{/\allowbreak{}internal/\allowbreak{}satellite/\allowbreak{}status}, metrik \texttt{satellite\_\allowbreak{}late\_\allowbreak{}detections}, dan dashboard. Deteksi itu tidak dibuang diam-diam.
+\item \textbf{Koreksi eksplisit} (\texttt{update}/\texttt{retract}) terhadap deteksi yang sudah diterima tetap diproses kapan pun tibanya.
+\end{itemize}
+
+\textbf{Pemilihan batas 24 jam berdasarkan pengukuran.} \texttt{tools/\allowbreak{}satellite/\allowbreak{}probe.\allowbreak{}py} membaca 22.250 event practice (20.676 deteksi) dan mengukur jarak \emph{out-of-order}. Jarak ini adalah waktu akuisisi terbesar yang sudah terlihat dikurangi waktu akuisisi deteksi itu, persis besaran yang dibandingkan watermark. Hasilnya p50 5 menit, p95 64 menit, p99 202 menit, dan \textbf{maksimum 246 menit} (\texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}p4-\allowbreak{}lateness-\allowbreak{}probe.\allowbreak{}log}). Batas 24 jam memberi margin sekitar 5,8$\times$ terhadap maksimum yang teramati.
+
+
+\emph{Trade-off.} Keadaan tidak dipangkas oleh watermark: semua deteksi tetap disimpan agar koreksi lama tetap bisa diterapkan. Batas yang lebih kecil (misalnya 6 jam) tidak menghemat memori dalam rancangan ini. Batas itu hanya menambah risiko deteksi sah tergolong terlambat bila profil ujian lebih berantakan dari practice.
+
+
+\subsection{Di mana keadaan sementara disimpan (kriteria 5)}
+
+Seluruh keadaan pemrosesan disimpan sebagai satu dokumen checkpoint di tabel \texttt{satellite\_\allowbreak{}checkpoint} pada shard-0 (metadata). Isinya: deteksi, keanggotaan, penugasan ID, offset terbaca, offset \texttt{applied}, hitungan terlambat dan ditolak, serta daftar mutasi berversi yang belum diterapkan. Shard-0 direplikasi sinkron ke node lain (P1) dan setiap tulisannya diperiksa fence (P2).
+
+
+Urutan per batch:
+
+\begin{enumerate}
+\item Kejadian dibaca dan diterapkan ke processor di memori, sehingga mutasi \texttt{Pending} bertambah.
+\item Checkpoint \textbf{dengan} daftar \texttt{Pending} ditulis lebih dulu (durable).
+\item Setiap mutasi disimpan ke shard pemiliknya dengan versi yang diharapkan. HazardEvent dan baris outbox masuk dalam satu transaksi. Versi yang sudah ada dilewati (idempoten) setelah \emph{WAL barrier} memastikan versi itu durable.
+\item Setelah semua mutasi tersimpan, \texttt{Pending} dikosongkan dan \texttt{applied} = offset terbaca, lalu checkpoint ditulis lagi.
+\end{enumerate}
+
+Bila proses mati di antara langkah mana pun, instance yang menjadi leader berikutnya memuat checkpoint, menerapkan sisa \texttt{Pending}, lalu membuka stream dari offset tersimpan. Hasil akhirnya sama dengan pemrosesan tanpa gangguan: tidak ada mutasi hilang (sudah durable sebelum diterapkan) dan tidak ada yang ganda (versi + idempotensi).
+
+
+Checkpoint ditulis paling sering sekali per detik atau setiap 512 event. Dokumen checkpoint berisi seluruh keadaan sesi, sehingga menulisnya per event akan membuat lonjakan 60$\times$ tertinggal.
+
+
+\subsection{Putus dan menyambung (kriteria 8)}
+
+Stream dibuka dari offset tersimpan (inklusif). Event pertama yang sudah dilihat dilewati. Bila offset berikutnya tidak tepat +1, koneksi dianggap rusak dan dibuka ulang dari posisi terakhir, sehingga tidak ada celah. Kegagalan jaringan, idle 45 s, 429, dan 503 diulang dengan \emph{exponential backoff + jitter} (1--30 s). Error 400/401/403 diulang tiap 30 s dan dicatat sebagai kesalahan konfigurasi.
+
+
+Event yang isinya tidak dapat diterapkan (JSON rusak, nilai tidak valid, \texttt{update} untuk deteksi yang tidak pernah terlihat) \textbf{dicatat beserta teks mentahnya dan dilewati}, dengan offset tetap maju. Prinsipnya sama dengan P3: satu pesan rusak tidak boleh menghentikan seluruh aliran. Jumlahnya ada di \texttt{rejected\_\allowbreak{}events} dan metrik \texttt{satellite\_\allowbreak{}events\_\allowbreak{}rejected\_\allowbreak{}total}. Uji: \texttt{TestBrokenEventsAreSkippedWithoutStallingTheFeed}.
+
+
+\subsection{Sesi practice vs ujian}
+
+Sesi practice yang panjang sudah berada di offset $\pm$5,55 juta. Tanpa checkpoint, consumer akan membaca ulang dari 0 dan tidak pernah mutakhir. Karena itu \texttt{SATELLITE\_\allowbreak{}START\_\allowbreak{}FROM=\allowbreak{}latest} membuat sesi practice baru mulai dari head. Profil \texttt{exam} \textbf{selalu} dibaca dari offset 0, karena seluruh alirannya dibandingkan dengan referensi asisten. Kunci checkpoint memuat identitas sesi, sehingga sesi ujian tidak tercampur dengan practice.
+
+
+\section{Alternatif yang dipertimbangkan}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.248\linewidth}>{\raggedright\arraybackslash}p{0.343\linewidth}>{\raggedright\arraybackslash}p{0.343\linewidth}@{}}
+\toprule
+\textbf{Alternatif} & \textbf{Konsekuensi} & \textbf{Keputusan} \\
+\midrule
+\endhead
+Polling \texttt{/\allowbreak{}v1/\allowbreak{}stream} berkala (pola M1) & Latensi sebesar interval, permintaan berulang, update/retract sulit diurutkan & Ditolak (lihat §2) \\
+Tumbling window per lintasan, terbit setelah jendela ditutup & Hasil final sekali terbit, tetapi peringatan tertahan sebesar lateness (jam) dan kebakaran yang melintasi batas jendela terpotong & Ditolak; dipakai pembaruan inkremental berversi \\
+Stream processor terpisah (Kafka Streams/Flink) dengan state store & Checkpoint dan exactly-once bawaan, tetapi butuh komponen dan memori baru di cluster 2 node (Lampiran B) & Ditolak untuk PoC; prinsip yang sama (checkpoint + sink idempoten) diterapkan di Aggregator \\
+Simpan setiap deteksi sebagai baris dan kluster di SQL & Recovery sederhana, tetapi query tetangga lintas shard per event mahal saat 60$\times$ & Ditolak; keadaan graf di checkpoint metadata \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Jaminan pemrosesan (butir ``Di laporan'' 4)}
+
+\textbf{Effectively-once.} Setiap event feed memengaruhi hasil tepat satu kali walaupun dibaca lebih dari sekali:
+
+\begin{itemize}
+\item \textbf{Sumber:} at-least-once, karena resume inklusif dan pembacaan ulang setelah crash.
+\item \textbf{Sink:} idempoten dengan versi per HazardEvent.
+\item \textbf{Keadaan:} checkpoint bersama offset.
+\end{itemize}
+
+Ke Kafka, outbox menerbitkan at-least-once dengan \texttt{event\_\allowbreak{}id =\allowbreak{} hazard\_\allowbreak{}id:version}, dan konsumen menghapus duplikat dengan kunci itu. Bukti ada di §6.
+
+
+\section{Bukti per kriteria}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.307\linewidth}>{\raggedright\arraybackslash}p{0.347\linewidth}>{\raggedright\arraybackslash}p{0.279\linewidth}@{}}
+\toprule
+\textbf{Kriteria} & \textbf{Bukti} & \textbf{Hasil} \\
+\midrule
+\endhead
+1. WILDFIRE lintas satelit, satu kebakaran satu HazardEvent & \texttt{TestInclusiveResumePreservesOffsetsAndRetiresOriginalHazard} (dua satelit N20/N21 $\rightarrow$ satu kebakaran SIAGA, \texttt{detection\_\allowbreak{}keys} apa adanya); replay capture practice 1.027 frame $\rightarrow$ 17 kebakaran aktif (\texttt{p4-\allowbreak{}practice-\allowbreak{}dev.\allowbreak{}log}); consumer di leader cluster demo membaca feed practice live, Audit \texttt{SATELIT} naik dari 8 menjadi 400 HazardEvent selama gladi 22 Nov (\texttt{p1-\allowbreak{}recovery-\allowbreak{}observed.\allowbreak{}log}) & lulus (uji + live) \\
+2. Waktu deteksi, batas keterlambatan, deteksi terlambat tidak dibuang diam-diam & \texttt{p4-\allowbreak{}lateness-\allowbreak{}probe.\allowbreak{}log} (out-of-order maks. 246 menit, batas 24 jam); hitungan \texttt{late\_\allowbreak{}detections} di checkpoint, \texttt{/\allowbreak{}internal/\allowbreak{}satellite/\allowbreak{}status}, metrik \texttt{satellite\_\allowbreak{}late\_\allowbreak{}detections} & lulus \\
+3. Update/retract memperbarui event yang ada & uji yang sama: \texttt{update} menaikkan confidence/FRP pada versi 1, \texttt{retract} menghasilkan versi 2 \texttt{retired} dari HazardEvent yang sama, Audit tidak lagi menghitungnya & lulus (uji) \\
+4. 60$\times$: tidak hilang, mutakhir $\le$ 60 s, p95, ketertinggalan di dashboard & profil practice berjalan 60$\times$ (\texttt{speed=\allowbreak{}60} di \texttt{/\allowbreak{}v1/\allowbreak{}session}); panel Grafana ``P4 Feed Satelit'' (head vs applied, lag, p50/p95 masuk $\rightarrow$ tersimpan); replay tanpa pembatasan laju di kind: p95 597 ms & sebagian: angka catch-up dan p95 dari sesi ujian ditunjukkan di video \\
+5. Pemroses mati saat kebakaran sedang dikenali $\rightarrow$ hasil sama & \texttt{TestPendingChangesResumeAfterPartialApply} (crash di tengah daftar mutasi, versi outbox tetap unik); failover leader P2 berlangsung saat feed berjalan tanpa HazardEvent ganda (\texttt{p2-\allowbreak{}latest.\allowbreak{}log}, ``no duplicates'') & lulus (uji + failover) \\
+6. Bandingkan dengan referensi asisten & metode §5; referensi baru tersedia di sesi ujian & di video video \\
+7. Feed live beberapa menit & lihat kriteria 1 & lulus \\
+8. Putus dan menyambung tanpa hilang/ganda & resume inklusif dari offset tersimpan (uji resume); event rusak dilewati tanpa macet (\texttt{TestBrokenEventsAreSkippedWithoutStallingTheFeed}); \texttt{satellite\_\allowbreak{}stream\_\allowbreak{}disconnected} lalu lanjut dari offset tersimpan saat fence timeout di freeze P2 & lulus \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Batasan yang disadari}
+
+\begin{itemize}
+\item \textbf{Checkpoint penuh.} Ukurannya tumbuh seiring jumlah deteksi sesi. Untuk sesi berjam-jam ini cukup. Untuk berhari-hari dibutuhkan checkpoint inkremental atau pemangkasan deteksi yang sudah final.
+\item \textbf{Latensi diukur dari penerimaan lokal} (\texttt{received}) sampai HazardEvent tersimpan. Antrean di jaringan sebelum socket dibaca tidak ikut terukur.
+\item \textbf{Tabel provinsi} memakai titik ibu kota provinsi sebagai pusat, karena tabel acuan BNPB tidak tersedia. Kebakaran di dekat batas provinsi bisa diberi provinsi tetangga.
+\item \textbf{Perbandingan dengan referensi asisten} hanya dapat dilakukan pada sesi ujian. Skrip dan metodenya siap; hasilnya ditunjukkan di video.
+\end{itemize}

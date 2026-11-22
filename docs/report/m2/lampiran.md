@@ -32,4 +32,4 @@ Penggunaannya meliputi:
 
 Setiap keputusan desain, setiap angka di laporan, dan setiap klaim "lulus" dicek terhadap keluaran program yang
 sebenarnya (transkrip di `docs/evidence/`). Surat pernyataan penggunaan AI yang ditandatangani ketiga anggota
-dilampirkan pada halaman berikut (`IF4031_Surat-Pernyataan-AI_M2_OrangSuksesAamiin.pdf`).
+dilampirkan pada halaman berikut. Surat yang sama dengan M1 dipakai, karena cakupan penggunaannya tidak berubah.

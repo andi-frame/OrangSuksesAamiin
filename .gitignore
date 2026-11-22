@@ -28,3 +28,9 @@ progress.md
 # Local Linux k3s VM disks, SSH credentials, and kubeconfig
 .argus-k3s-linux/
 docs/report/m2/report.html
+docs/report/latex-m2/*.aux
+docs/report/latex-m2/*.log
+docs/report/latex-m2/*.toc
+docs/report/latex-m2/*.out
+docs/report/latex-m2/main.pdf
+docs/report/latex-m2/fig/*.html

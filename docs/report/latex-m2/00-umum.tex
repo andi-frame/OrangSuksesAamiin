@@ -1,0 +1,155 @@
+\chapter{Bagian Umum}
+
+\section{Tabel kontribusi}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.145\linewidth}>{\raggedright\arraybackslash}p{0.273\linewidth}>{\raggedright\arraybackslash}p{0.283\linewidth}>{\raggedright\arraybackslash}p{0.221\linewidth}@{}}
+\toprule
+\textbf{Anggota} & \textbf{Perancangan} & \textbf{Implementasi} & \textbf{Penulisan laporan} \\
+\midrule
+\endhead
+13523128 -- Andi Farhan Hidayat (Orang 1) & Platform Kubernetes, satu penulis ber-fencing, kebijakan skema dan DLQ, integrasi akhir & Manifest k8s dan satu perintah deploy, cluster VirtualBox, leader election + fencing (P2), DLQ dan mode skema tidak kompatibel (P3 kriteria 1--5), Audit \texttt{unprocessed}; integrasi M2: storage sharded di 2 node, \texttt{balance-\allowbreak{}shard}, metrik penempatan dan feed, demo P1/P5 game day, gladi penuh di k3s & Bagian umum, P2, P3 (1--5), penyuntingan P1 dan P4, penyusunan PDF \\
+13523164 -- Muhammad Rizain Firdaus (Orang 2) & Observabilitas, jalur laporan Tim Lapangan, ketahanan Sensor Pantai, admisi per peran & \texttt{pkg/\allowbreak{}obs} (metrik Prometheus, trace W3C), Grafana/Prometheus/Jaeger, \texttt{POST /\allowbreak{}v1/\allowbreak{}field-\allowbreak{}reports} + pemroses exactly-once (P3 kriteria 6), Sensor Pantai (P5), dashboard analitik (P1 kriteria 7), load test k6, HPA & Observabilitas, P3 kriteria 6, P5, P1 kriteria 7, konfigurasi load test \\
+13523152 -- Muhammad Kinan Arkansyaddad (Orang 3) & Canonical Store terdistribusi (Patroni per shard), Audit API, pemrosesan aliran satelit & Adapter \texttt{sharded}, migrasi store tunggal $\rightarrow$ sharded, Audit \texttt{events}/\texttt{checksum}/\texttt{location}, consumer SSE Feed Satelit dan pengelompokan kebakaran (P4), cluster QEMU 3 node & Draf P1 dan P4 \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Deskripsi umum sistem}
+
+ARGUS adalah gateway kebencanaan BNPB yang menyatukan beberapa sumber ke satu format \textbf{HazardEvent}:
+
+\begin{itemize}
+\item BMKG (gempa, peringatan tsunami);
+\item PVMBG (gunung api);
+\item Feed Satelit (titik panas $\rightarrow$ kebakaran hutan);
+\item Sensor Pantai (pengamatan pesisir).
+\end{itemize}
+
+Setiap HazardEvent disimpan di \textbf{Canonical Store}, yang hanya dimiliki Aggregator. Event diterbitkan ke Kafka lewat outbox, lalu disajikan kepada Media, Tim Lapangan, dan BNPB Pusat sesuai hak masing-masing.
+
+
+M2 menjalankan sistem yang sama di Kubernetes dengan dua node berkernel terpisah. Perubahannya:
+
+\begin{itemize}
+\item Canonical Store dibagi menjadi 3 shard yang direplikasi ke node lain.
+\item Aggregator berjalan $\ge$ 3 instance di belakang satu Service, dan hanya satu leader ber-fencing yang mengambil data.
+\item Pesan yang gagal disimpan utuh di dead-letter store.
+\item Feed Satelit dibaca sebagai aliran SSE dengan offset.
+\item Sensor Pantai diisolasi dengan bulkhead dan circuit breaker.
+\item Tim Lapangan dapat mengirim laporan yang dijamin diproses tepat sekali.
+\end{itemize}
+
+\section{Diagram arsitektur}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]{fig/m1.pdf}\end{figure}
+
+\section{Daftar teknologi terpilih}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.119\linewidth}>{\raggedright\arraybackslash}p{0.365\linewidth}>{\raggedright\arraybackslash}p{0.450\linewidth}@{}}
+\toprule
+\textbf{Bagian} & \textbf{Teknologi} & \textbf{Alasan singkat} \\
+\midrule
+\endhead
+Bahasa service & Go 1.25 (\texttt{net/\allowbreak{}http}, \texttt{log/\allowbreak{}slog}) & Biner statis kecil, cocok dengan limit memori Lampiran B \\
+Orkestrasi & k3s v1.37 di 2 VM VirtualBox (Ubuntu 24.04) & Ringan; NetworkPolicy, Lease, local-path PV bawaan \\
+Canonical Store & PostgreSQL 16 + JSONB, Patroni 4.1 per shard (DCS = API Kubernetes) & Transaksi untuk outbox + fence; replikasi sinkron dan failover tanpa etcd tambahan \\
+Broker & Kafka (KRaft), transaksi untuk field reports & Log berurutan, consumer group, exactly-once producer \\
+Koordinasi leader & Lease \texttt{coordination.\allowbreak{}k8s.\allowbreak{}io} + fencing token di store & Jam kebenaran = API server, bukan jam node \\
+Observabilitas & Prometheus, Grafana, Jaeger (OTLP), log JSON ber-\texttt{cid} & Satu dashboard, trace lintas service \\
+Load test & k6 (di host, di luar pod) & 10.000 VU, skenario ber-peran \\
+Uji ketahanan & Tester Agent asisten (image dipin digest) & Ketentuan M2 \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Asumsi}
+
+\begin{itemize}
+\item Semua node berada dalam satu jaringan dengan latensi rendah (VirtualBox NAT Network). Bonus host fisik berbeda tidak diambil.
+\item Data \texttt{role=\allowbreak{}store} cukup disimpan di disk lokal node (local-path PV); tidak ada backup ke luar cluster.
+\item Katalog gempa dari asisten belum diterima saat bukti diambil. P1 memakai katalog sintetis yang meniru kemiringan wilayah (\texttt{tools/\allowbreak{}catalog/\allowbreak{}catalog.\allowbreak{}py}). Katalog asli dapat dimuat tanpa perubahan kode.
+\item \texttt{AUDIT\_\allowbreak{}TOKEN}, kunci skenario ujian, dan token sesi ujian baru diberikan setelah tenggat. Bukti di laporan ini memakai token pengembangan dan skenario practice; hasil ujian ditunjukkan di video.
+\end{itemize}
+
+\section{Petunjuk menjalankan}
+
+README §M2 berisi langkah lengkap dari kondisi awal, daftar variabel konfigurasi, dan cara memicu setiap skenario. Ringkasannya ada di Lampiran A. Intinya: \texttt{bash scripts/\allowbreak{}k8s/\allowbreak{}vbox-\allowbreak{}cluster.\allowbreak{}sh up}, \texttt{cp .\allowbreak{}env.\allowbreak{}example .\allowbreak{}env}, lalu \texttt{make k8s-\allowbreak{}up}.
+
+
+\section{Diagram deployment}
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]{fig/m2.pdf}\end{figure}
+
+Penempatan stateless (aggregator, client-api, consumer, observabilitas) ditentukan scheduler dan dapat berbeda di setiap deploy. \texttt{make k8s-\allowbreak{}status} dan \texttt{kubectl get pods -\allowbreak{}o wide -\allowbreak{}L role,\allowbreak{}db-\allowbreak{}role} menunjukkan keadaan terkini. Yang \textbf{dijamin} manifest:
+
+\begin{itemize}
+\item Dua salinan setiap shard berada di node berbeda (pod anti-affinity wajib).
+\item Primary pilihan tiap shard dirotasi di node (ConfigMap \texttt{shard-\allowbreak{}placement}, dikembalikan oleh \texttt{balance-\allowbreak{}shard}).
+\item Aggregator tersebar dengan selisih $\le$ 1 per node (\texttt{topologySpreadConstraints}).
+\item Data \texttt{role=\allowbreak{}store} dan \texttt{role=\allowbreak{}broker} disimpan di disk node (local-path PV).
+\item Tester Agent berjalan satu per node.
+\end{itemize}
+
+Jalur data antar-node: replikasi WAL Patroni (5432) antar anggota shard, Service $\rightarrow$ primary shard, kube-proxy untuk Service lain, dan Lease/Endpoints lewat API server di node-a. NetworkPolicy hanya mengizinkan Aggregator (dan Job migrasi) membuka koneksi ke store, dan hanya klien Kafka berlabel yang boleh ke broker.
+
+
+\section{Perubahan dari M1}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.284\linewidth}>{\raggedright\arraybackslash}p{0.398\linewidth}>{\raggedright\arraybackslash}p{0.252\linewidth}@{}}
+\toprule
+\textbf{Keputusan M1} & \textbf{M2} & \textbf{Alasan} \\
+\midrule
+\endhead
+\texttt{docker compose}, satu host & \textbf{Diubah}: Kubernetes (k3s), manifest \texttt{deploy/\allowbreak{}}, satu perintah \texttt{make k8s-\allowbreak{}up}; compose tetap untuk pengembangan & Ketentuan M2; banyak node, rolling update, self-healing \\
+Satu PostgreSQL sebagai Canonical Store & \textbf{Diubah}: 3 shard Patroni $\times$ 2 salinan di node berbeda, hash \texttt{hazard\_\allowbreak{}id}; migrasi online \texttt{MIGRATE\_\allowbreak{}CANONICAL=\allowbreak{}1} & P1: tidak muat di satu tempat, harus tahan kehilangan node \\
+Isolasi storage lewat jaringan Docker internal & \textbf{Diubah}: NetworkPolicy + Secret per komponen & Ditegakkan platform di cluster \\
+Satu Aggregator yang polling & \textbf{Diubah}: $\ge$ 3 instance; satu leader (Lease) yang ingest, semua melayani baca; fencing token di setiap shard & P2: tanpa ini tiap kejadian diambil tiga kali \\
+Polling untuk semua sumber & \textbf{Dipertahankan} untuk BMKG/PVMBG/Sensor Pantai; \textbf{tidak dipakai} untuk Feed Satelit (SSE + offset) & P4 §2 \\
+Status sumber di memori Aggregator & \textbf{Diubah}: disimpan leader di store, dibaca semua instance & Freshness yang sama di setiap instance \\
+Karantina di memori & \textbf{Diganti}: dead-letter store persisten (raw bytes, retrying/parked), hanya untuk Internal Ops & P3 \\
+Parser JSON standar & \textbf{Diganti}: pemecah array streaming per elemen dengan batas ukuran/kedalaman & P3: satu pesan rusak tidak menjatuhkan batch \\
+Kebijakan skema additive-only, perubahan tak didukung dikarantina & \textbf{Dipertahankan}, ditambah aturan penyesuaian deklaratif (\texttt{rename}, \texttt{coerce}) & Tetap tidak menebak \\
+Outbox transaksional + relay, Kafka at-least-once & \textbf{Dipertahankan}; outbox ikut shard hazard-nya, relay hanya di leader & Audit siapa menulis apa per term \\
+Client API hanya baca & \textbf{Diubah}: \texttt{POST /\allowbreak{}v1/\allowbreak{}field-\allowbreak{}reports} (202 setelah Kafka mengonfirmasi), admisi per peran & P3 kriteria 6, P5 kriteria 5 \\
+Log JSON ber-\texttt{cid} & \textbf{Dipertahankan}, ditambah metrik Prometheus dan trace W3C & Observabilitas M2 \\
+Admin mock wajib \texttt{X-\allowbreak{}Admin-\allowbreak{}Token} & \textbf{Diubah di k8s}: boleh tanpa token (\texttt{*\_\allowbreak{}ADMIN\_\allowbreak{}OPEN}), Service mock hanya ClusterIP & Tester Agent memanggil \texttt{/\allowbreak{}admin/\allowbreak{}*} tanpa kredensial \\
+\bottomrule
+\end{longtable}
+}
+
+\section{Deklarasi topologi}
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.104\linewidth}>{\raggedright\arraybackslash}p{0.104\linewidth}>{\raggedright\arraybackslash}p{0.104\linewidth}>{\raggedright\arraybackslash}p{0.104\linewidth}>{\raggedright\arraybackslash}p{0.135\linewidth}>{\raggedright\arraybackslash}p{0.154\linewidth}>{\raggedright\arraybackslash}p{0.181\linewidth}@{}}
+\toprule
+\textbf{Node} & \textbf{Peran} & \textbf{Jenis} & \textbf{vCPU / RAM} & \textbf{OS / kernel} & \textbf{Host fisik} & \textbf{CPU / RAM host} \\
+\midrule
+\endhead
+node-a (10.77.0.11) & control plane + worker & VM VirtualBox 7.1.4 & 4 / 4,5 GiB, disk 10 GB & Ubuntu 24.04.5, 6.8.0-147, k3s v1.37.2 & Laptop Acer Nitro AN515-58, Windows 11 Home & Intel Core i5-12500H (12 core / 16 thread) / 24 GB \\
+node-b (10.77.0.12) & worker & VM VirtualBox 7.1.4 & 4 / 4,5 GiB, disk 10 GB & idem & laptop yang sama & sama \\
+\bottomrule
+\end{longtable}
+}
+
+Kedua node berkernel terpisah (boot id berbeda, \texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}topology.\allowbreak{}log}). Skenario mematikan node hanya dikenakan pada node-b (worker non-control-plane).
+
+
+\section{Observabilitas}
+
+Setiap service BNPB memakai \texttt{pkg/\allowbreak{}obs}, sehingga ketiga syarat observabilitas berlaku seragam tanpa kode per service:
+
+
+\begin{enumerate}
+\item \textbf{Metrik dalam satu dashboard.} Setiap service melayani \texttt{GET /\allowbreak{}metrics}: jumlah, latensi (histogram) dan status per route, panggilan keluar per tujuan, serta metrik domain. Metrik domain mencakup status sumber dan breaker, leader dan term, outbox, DLQ, Sensor Pantai, admisi per peran, laporan lapangan, consumer, penempatan unit penyimpanan per node, beban tulis per shard, serta lag dan latensi Feed Satelit. Prometheus menemukan setiap pod sendiri, dan Grafana menampilkan satu dashboard ``Argus / Observabilitas'' (\texttt{:30030}).
+\item \textbf{Trace satu permintaan lintas service.} Konteks W3C \texttt{traceparent} dibawa lewat HTTP dan header Kafka, lalu diekspor ke Jaeger (\texttt{:30686}). Durasi tiap langkah terlihat, misalnya client-api $\rightarrow$ aggregator $\rightarrow$ store, client-api $\rightarrow$ Kafka $\rightarrow$ field-reports, dan poll $\rightarrow$ upstream $\rightarrow$ store $\rightarrow$ outbox $\rightarrow$ Kafka $\rightarrow$ consumer.
+\item \textbf{Log terstruktur ber-correlation ID.} Format log M1 dipertahankan, dengan tambahan \texttt{trace\_\allowbreak{}id}.
+\end{enumerate}
+
+\texttt{pkg/\allowbreak{}obs} tanpa dependensi pihak ketiga: registry Prometheus dan exporter OTLP/HTTP JSON ditulis sendiri, agar tidak ada SDK yang menambah memori pod (Lampiran B). Komponen observabilitas di-deploy dengan \texttt{role=\allowbreak{}other} dan 128/256 Mi. Demo: \texttt{make demo-\allowbreak{}m2-\allowbreak{}observability}.
+
+
+\textbf{Bukti.} Demo otomatis \texttt{make demo-\allowbreak{}m2-\allowbreak{}observability} lulus di cluster pengembangan kind (\texttt{docs/\allowbreak{}evidence/\allowbreak{}m2/\allowbreak{}observability-\allowbreak{}kind.\allowbreak{}log}): metrik setiap service ter-scrape, satu trace lintas service dengan durasi tiap langkah, serta \texttt{cid} dan \texttt{trace\_\allowbreak{}id} di log. Di cluster demo k3s, Grafana (\texttt{:30030}, NIC host-only \texttt{192.\allowbreak{}168.\allowbreak{}56.\allowbreak{}11}), Prometheus, dan Jaeger berjalan dan menampilkan baris dashboard baru untuk penempatan storage (P1) dan ketertinggalan Feed Satelit (P4). Demo otomatisnya tidak diulang di k3s karena waktu. Tampilan langsung ditunjukkan di video.
+
