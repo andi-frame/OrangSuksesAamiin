@@ -37,6 +37,7 @@ if [ -n "${FREEZE_CMD:-}" ]; then
   show "$FREEZE_CMD"
   eval "$FREEZE_CMD"
   frozen_at=$SECONDS
+  frozen_iso=$(date -u +%FT%T)
   sleep "$FREEZE_SEC"
   # stay frozen until someone else holds the lease, max +150 s: on a nested-virtualisation laptop the k3s API
   # itself answers slowly while a VM is paused, which delays the takeover (an empty answer is not a takeover)
@@ -69,9 +70,15 @@ kn logs "$L" --since=3m 2>/dev/null |
   grep -E '"msg":"(leader_lost|write_fenced|poll_skipped|fence_rejected|dlq_worker_fenced|ingestion_stopped|hazard_stored|poll_ok)"' |
   jqx -r '"   \(.ts) \(.msg) \(.reason // .error // .source // "")"' | head -15 || info "(pod $L was replaced while frozen)"
 after=$(psql_sum "SELECT count(*) FROM outbox WHERE writer_term = $T")
-late=$((after - before))
-info "rows stored by term $T between the before/after store queries: $late"
+info "rows of term $T: $before before the freeze query, $after now (writes between the query and the pause are legitimate)"
+# The safety property, on each shard's own clock: no row of term $T is stored after the first row of a newer term.
+late=$(psql_sum "SELECT count(*) FROM outbox WHERE writer_term = $T
+  AND stored_at > (SELECT min(stored_at) FROM outbox WHERE writer_term > $T)")
+info "rows of term $T stored after a newer term had written (store clock, per shard): $late"
 [ "$late" = 0 ] || fail "the frozen leader stored something after it was replaced"
+woke=$(kn logs "$L" --since=5m 2>/dev/null | jqx -r --arg t "${frozen_iso:-9999}" 'select(.msg == "hazard_stored" and .ts[0:19] > $t) | .ts' 2>/dev/null | grep -c . || true)
+info "hazard_stored log lines of $L after the freeze moment (${frozen_iso:-n/a}Z): $woke"
+[ "${woke:-0}" = 0 ] || fail "the woken leader logged a stored HazardEvent after the freeze"
 ok "the woken instance stored nothing: its term $T was fenced by term $(lease_term)"
 
 bash "$ROOT/scripts/demo/m2-single-writer.sh"

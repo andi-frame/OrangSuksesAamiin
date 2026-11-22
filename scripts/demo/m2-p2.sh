@@ -132,7 +132,9 @@ echo "$codes" | sed 's/^/   HTTP /'
 total=$(echo "$codes" | awk '{s+=$1} END {print s+0}')
 failed=$(echo "$codes" | awk '$2 != "200" {s+=$1} END {print s+0}')
 ensure_forwards
-info "version before: $old_version, after: $(curl -s "$AGG/health" | jqx -r .version); requests: $total, failed: $failed"
+info "version before: $old_version, image after: $(kn get deploy aggregator -o jsonpath="{.spec.template.spec.containers[0].image}") (pods: $(kn get pods -l app=aggregator -o jsonpath="{.items[*].spec.containers[0].image}" | tr " " "
+" | sort -u | tr "
+" " ")); requests: $total, failed: $failed"
 [ "$total" -gt 100 ] || fail "too few requests to judge ($total)"
 [ "$failed" = 0 ] || fail "$failed requests failed during the rollout"
 ok "rolling update under load without a failed request"
