@@ -144,8 +144,9 @@ else
 fi
 
 step "6. SLO of the Tim Lapangan warning path: 99 % of critical alerts within 5 s"
-ratio=$(promq 'sum(increase(consumer_critical_alert_seconds_bucket{le="5"}[${P5_WINDOW:-6h}])) / clamp_min(sum(increase(consumer_critical_alert_seconds_count[${P5_WINDOW:-6h}])), 1e-9)')
-total=$(promq 'sum(increase(consumer_critical_alert_seconds_count[${P5_WINDOW:-6h}]))')
+W="${P5_WINDOW:-6h}"
+ratio=$(promq "sum(increase(consumer_critical_alert_seconds_bucket{le=\"5\"}[$W])) / clamp_min(sum(increase(consumer_critical_alert_seconds_count[$W])), 1e-9)")
+total=$(promq "sum(increase(consumer_critical_alert_seconds_count[$W]))")
 info "alerts in the last ${P5_WINDOW:-6h}: $total, within 5 s: $(awk -v r="$ratio" 'BEGIN{printf "%.2f %%", r*100}'), error budget used: $(awk -v r="$ratio" 'BEGIN{printf "%.0f %%", (1-r)/0.01*100}')"
 info "Grafana: Argus / Observabilitas -> row 'P5 Sensor Pantai' (SLO, budget, critical sent vs delivered, requests to the sensor)"
 printf '\n%sP5 PASS%s\n' "$C_G$C_B" "$C_0"
