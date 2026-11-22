@@ -152,14 +152,14 @@ kecuali yang ditandai lain. ✅ = lulus di cluster demo, 🟡 = sebagian (alasan
 
 | Kriteria | Demo / test | Bukti | Status |
 |---|---|---|---|
-| 1. 0 event kritis hilang, p95 ≤ 5 s | `make demo-m2-p5` | `p5-latest.log` | <!--P5--> |
-| 2. Pelanggaran kontrak disisihkan | idem | idem | <!--P5--> |
-| 3. Sumber lain tetap latensi M1 | idem | idem | <!--P5--> |
-| 4. Tidak melonjak, jawab cepat, pulih sendiri | idem | idem | <!--P5--> |
-| 5. Lapangan dilayani, Media ditolak terkontrol | idem langkah 5 | idem | <!--P5--> |
+| 1. 0 event kritis hilang, p95 ≤ 5 s | `make demo-m2-p5` | `p5-k3s-20261122.log` | 🟡 compose 12,8/992,8 ms dan kind 3/3 terkirim (`p5-compose-local.log`); di k3s 22 Nov langkah ini berhenti karena topik Kafka kosong setelah Kafka crash-loop (`p5-k3s-20261122.log`) |
+| 2. Pelanggaran kontrak disisihkan | idem | idem | ✅ k3s 22 Nov (`p5-k3s-20261122.log`: 59+ observasi `quality "suspect"` disisihkan, tidak ada yang menjadi HazardEvent) |
+| 3. Sumber lain tetap latensi M1 | idem | idem | 🟡 compose (BMKG-only p95 23,7 ms saat sensor padam); tidak diulang di k3s |
+| 4. Tidak melonjak, jawab cepat, pulih sendiri | idem | idem | 🟡 compose (10 permintaan/45 s, p95 11 ms, pulih 4 s) + uji unit; tidak diulang di k3s |
+| 5. Lapangan dilayani, Media ditolak terkontrol | idem langkah 5 | idem | 🟡 compose k6 300 VU (Lapangan 0 ditolak, Media 26.730×429) + uji unit |
 | 6. Kombinasi kegagalan tanpa intervensi (game day) | `make demo-m2-gameday` | – | ➡️ skenario ujian dijalankan saat video; skrip siap |
 | 7. Jelaskan kegagalan dari dashboard/metrik/trace | Grafana baris P5; Jaeger | `observability-latest.log` | ✅ |
-| 8. SLO + error budget | `make demo-m2-p5` langkah 6; `make demo-m2-gameday` | `p5-latest.log` | <!--P5--> |
+| 8. SLO + error budget | `make demo-m2-p5` langkah 6; `make demo-m2-gameday` | `p5-k3s-20261122.log` | 🟡 aturan Prometheus dan panel siap; angka game day ➡️ video |
 | Laporan | – | `docs/report/m2/05-p5.md` | ✅ |
 
 ## Bonus
