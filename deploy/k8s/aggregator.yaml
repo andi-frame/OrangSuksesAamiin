@@ -56,6 +56,9 @@ data:
   LEASE_RENEW_DEADLINE_SEC: "10"
   LEASE_RETRY_PERIOD_SEC: "2"
   SOURCE_STATUS_MAX_AGE_SEC: "30"
+  # Feed Satelit (P4): lateness bound and where a new practice session starts (exam always from offset 0)
+  SATELLITE_LATENESS_SEC: "86400"
+  SATELLITE_START_FROM: latest
   # dead letters and message limits (M2 Problem 3)
   SCHEMA_RULES_PATH: /app/rules/schema-rules.json
   MESSAGE_MAX_BYTES: "1048576"

@@ -36,6 +36,7 @@ type Config struct {
 	SchemaRulesPath                                 string
 	SatelliteURL, SatelliteToken, ProvinceTablePath string
 	SatelliteLateness                               time.Duration
+	SatelliteStartFrom                              string
 
 	// M2 Problem 5: Sensor Pantai (enabled when PANTAI_AUTH_TOKEN is set)
 	SensorURL          string
@@ -73,10 +74,14 @@ type Config struct {
 func Load() Config {
 	host, _ := os.Hostname()
 	return Config{
-		SatelliteURL:       obs.EnvString("SATELLITE_FEED_URL", "https://satellite.naufarrel.dev"),
-		SatelliteToken:     os.Getenv("SATELLITE_FEED_TOKEN"),
-		ProvinceTablePath:  obs.EnvString("SATELLITE_PROVINCES_PATH", "/app/config/provinces.json"),
-		SatelliteLateness:  obs.EnvSeconds("SATELLITE_LATENESS_SEC", 24*time.Hour),
+		SatelliteURL:      obs.EnvString("SATELLITE_FEED_URL", "https://satellite.naufarrel.dev"),
+		SatelliteToken:    os.Getenv("SATELLITE_FEED_TOKEN"),
+		ProvinceTablePath: obs.EnvString("SATELLITE_PROVINCES_PATH", "/app/config/provinces.json"),
+		SatelliteLateness: obs.EnvSeconds("SATELLITE_LATENESS_SEC", 24*time.Hour),
+		// earliest (default): a new feed session is read from offset 0 (the exam session, compared with the
+		// reference). latest: a session without checkpoint starts at the current head (a long-running practice
+		// session that is already millions of events ahead). An existing checkpoint always wins.
+		SatelliteStartFrom: obs.EnvString("SATELLITE_START_FROM", "earliest"),
 		SensorURL:          obs.EnvString("SENSOR_PANTAI_URL", "http://sensor-pantai:8080"),
 		SensorToken:        os.Getenv("PANTAI_AUTH_TOKEN"),
 		SensorPollInterval: obs.EnvMillis("SENSOR_POLL_INTERVAL_MS", time.Second),

@@ -72,6 +72,7 @@ services:
       SATELLITE_FEED_TOKEN: ${SATELLITE_FEED_TOKEN:-}
       SATELLITE_FEED_URL: ${SATELLITE_FEED_URL:-https://satellite.naufarrel.dev}
       SATELLITE_LATENESS_SEC: ${SATELLITE_LATENESS_SEC:-86400}
+      SATELLITE_START_FROM: ${SATELLITE_START_FROM:-latest}
       AUDIT_TOKEN: ${AUDIT_TOKEN:?copy .env.example to .env}
       # one instance in compose: no election (Kubernetes runs >= 3 with LEADER_ELECTION=kubernetes)
       LEADER_ELECTION: none

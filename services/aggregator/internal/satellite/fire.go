@@ -31,6 +31,7 @@ type state struct {
 	Applied    *int64
 	Latest     time.Time
 	Late       int64
+	Rejected   int64 // events whose content could not be applied (logged and skipped)
 	Detections map[string]detection
 	Inactive   map[string]detection
 	Excluded   map[string]bool
