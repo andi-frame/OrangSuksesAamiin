@@ -43,6 +43,8 @@ def code_inline(s):
     t = esc(s)
     # allow line breaks after separators inside long identifiers and paths
     t = re.sub(r"(/|\\_|\.|-|,|=|\|)", r"\1\\allowbreak{}", t)
+    # and between the words of long CamelCase names (TestPendingChangesResumeAfterPartialApply)
+    t = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", r"\\allowbreak{}", t)
     return r"\texttt{" + t + "}"
 
 
