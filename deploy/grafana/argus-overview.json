@@ -1016,7 +1016,7 @@
   {
    "id": 21,
    "type": "row",
-   "title": "P5 Sensor Pantai: jalur peringatan Tim Lapangan (SLO 99 % <= 5 s)",
+   "title": "P1 Canonical Store terdistribusi: unit, node, beban tulis",
    "collapsed": false,
    "gridPos": {
     "w": 24,
@@ -1028,6 +1028,582 @@
   },
   {
    "id": 22,
+   "type": "timeseries",
+   "title": "Tulis HazardEvent per shard (per detik)",
+   "description": "Sebaran beban tulis antar-shard (kriteria 2). Gabungkan dengan panel peran per node untuk beban per node.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 49
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (shard) (rate(aggregator_shard_writes_total{outcome=\"ok\"}[1m]))",
+     "legendFormat": "{{shard}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 23,
+   "type": "timeseries",
+   "title": "Beban tulis per node (shard primary di node itu)",
+   "description": "Tulisan diarahkan ke primary shard; node yang memegang primary menanggung bebannya.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 49
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (node) (rate(aggregator_shard_writes_total{outcome=\"ok\"}[1m]) * on (shard) group_left(node) (max by (shard, node) (aggregator_store_unit_up{role=\"primary\"}) == 1))",
+     "legendFormat": "{{node}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 24,
+   "type": "timeseries",
+   "title": "Unit penyimpanan per node dan peran",
+   "description": "Jumlah unit (anggota shard) yang menjawab, per node dan peran. Node mati: unitnya hilang dari panel.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 49
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (node, role) (count by (node, role, unit) (max by (node, role, unit) (aggregator_store_unit_up) == 1))",
+     "legendFormat": "{{node}} {{role}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 25,
+   "type": "timeseries",
+   "title": "HazardEvent per unit (primary dan replica)",
+   "description": "Tidak ada unit yang memuat seluruh data (kriteria 1); replica memuat baris yang sama dengan primary-nya.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 57
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (unit, node, role) (aggregator_store_unit_rows)",
+     "legendFormat": "{{unit}} @ {{node}} ({{role}})",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 26,
+   "type": "row",
+   "title": "P4 Feed Satelit: ketertinggalan, latensi, keterlambatan",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 65
+   },
+   "panels": []
+  },
+  {
+   "id": 27,
+   "type": "timeseries",
+   "title": "Offset feed: head vs tersimpan",
+   "description": "Jarak kedua garis = seberapa tertinggal sistem (kriteria 4).",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 66
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(satellite_feed_head_offset)",
+     "legendFormat": "head feed",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "max(satellite_applied_offset)",
+     "legendFormat": "tersimpan (applied)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 28,
+   "type": "timeseries",
+   "title": "Ketertinggalan (event belum tersimpan)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 66
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(satellite_lag_offsets)",
+     "legendFormat": "lag",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 29,
+   "type": "timeseries",
+   "title": "Latensi masuk -> HazardEvent tersimpan p50/p95",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 66
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.5, sum by (le) (rate(satellite_store_latency_seconds_bucket[1m])))",
+     "legendFormat": "p50",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(satellite_store_latency_seconds_bucket[1m])))",
+     "legendFormat": "p95",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 30,
+   "type": "timeseries",
+   "title": "Event feed per jenis (per detik)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 74
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (kind) (rate(satellite_events_total[1m]))",
+     "legendFormat": "{{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 31,
+   "type": "timeseries",
+   "title": "Kebakaran aktif, deteksi tunggal, deteksi terlambat",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 74
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(satellite_active_fires)",
+     "legendFormat": "kebakaran aktif",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "max(satellite_singleton_detections)",
+     "legendFormat": "deteksi tunggal",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "max(satellite_late_detections)",
+     "legendFormat": "terlambat (di luar batas)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 32,
+   "type": "timeseries",
+   "title": "Koneksi stream terputus",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 74
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(increase(satellite_stream_disconnects_total[1m]))",
+     "legendFormat": "putus",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 33,
+   "type": "row",
+   "title": "P5 Sensor Pantai: jalur peringatan Tim Lapangan (SLO 99 % <= 5 s)",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 82
+   },
+   "panels": []
+  },
+  {
+   "id": 34,
    "type": "stat",
    "title": "SLO: peringatan kritis <= 5 s (rentang dashboard)",
    "description": "",
@@ -1039,7 +1615,7 @@
     "w": 6,
     "h": 6,
     "x": 0,
-    "y": 49
+    "y": 83
    },
    "targets": [
     {
@@ -1082,7 +1658,7 @@
    }
   },
   {
-   "id": 23,
+   "id": 35,
    "type": "gauge",
    "title": "Error budget terpakai (target 99 %)",
    "description": "",
@@ -1094,7 +1670,7 @@
     "w": 6,
     "h": 6,
     "x": 6,
-    "y": 49
+    "y": 83
    },
    "targets": [
     {
@@ -1135,7 +1711,7 @@
    "options": {}
   },
   {
-   "id": 24,
+   "id": 36,
    "type": "stat",
    "title": "Kritis: dari sensor vs sampai notifier",
    "description": "",
@@ -1147,7 +1723,7 @@
     "w": 6,
     "h": 6,
     "x": 12,
-    "y": 49
+    "y": 83
    },
    "targets": [
     {
@@ -1182,7 +1758,7 @@
    }
   },
   {
-   "id": 25,
+   "id": 37,
    "type": "timeseries",
    "title": "Latensi peringatan kritis p50/p95",
    "description": "",
@@ -1194,7 +1770,7 @@
     "w": 6,
     "h": 6,
     "x": 18,
-    "y": 49
+    "y": 83
    },
    "targets": [
     {
@@ -1243,7 +1819,7 @@
    }
   },
   {
-   "id": 26,
+   "id": 38,
    "type": "timeseries",
    "title": "Permintaan ke Sensor Pantai (tidak boleh melonjak)",
    "description": "Saat sensor tidak sehat, breaker membatasi panggilan menjadi 1 probe per SENSOR_BREAKER_OPEN_SEC.",
@@ -1255,7 +1831,7 @@
     "w": 8,
     "h": 8,
     "x": 0,
-    "y": 55
+    "y": 89
    },
    "targets": [
     {
@@ -1295,7 +1871,7 @@
    }
   },
   {
-   "id": 27,
+   "id": 39,
    "type": "timeseries",
    "title": "Perilaku menyimpang sensor terdeteksi",
    "description": "",
@@ -1307,7 +1883,7 @@
     "w": 8,
     "h": 8,
     "x": 8,
-    "y": 55
+    "y": 89
    },
    "targets": [
     {
@@ -1346,7 +1922,7 @@
    }
   },
   {
-   "id": 28,
+   "id": 40,
    "type": "timeseries",
    "title": "Observasi disisihkan per alasan",
    "description": "",
@@ -1358,7 +1934,7 @@
     "w": 8,
     "h": 8,
     "x": 16,
-    "y": 55
+    "y": 89
    },
    "targets": [
     {
@@ -1397,7 +1973,7 @@
    }
   },
   {
-   "id": 29,
+   "id": 41,
    "type": "timeseries",
    "title": "generated_at membeku (detik)",
    "description": "",
@@ -1409,7 +1985,7 @@
     "w": 8,
     "h": 8,
     "x": 0,
-    "y": 63
+    "y": 97
    },
    "targets": [
     {
@@ -1449,7 +2025,7 @@
    }
   },
   {
-   "id": 30,
+   "id": 42,
    "type": "timeseries",
    "title": "Observasi sensor tersimpan per severity",
    "description": "",
@@ -1461,7 +2037,7 @@
     "w": 8,
     "h": 8,
     "x": 8,
-    "y": 63
+    "y": 97
    },
    "targets": [
     {
@@ -1501,7 +2077,7 @@
    }
   },
   {
-   "id": 31,
+   "id": 43,
    "type": "row",
    "title": "Client-Facing API: prioritas beban & laporan lapangan (P3 kriteria 6)",
    "collapsed": false,
@@ -1509,12 +2085,12 @@
     "w": 24,
     "h": 1,
     "x": 0,
-    "y": 71
+    "y": 105
    },
    "panels": []
   },
   {
-   "id": 32,
+   "id": 44,
    "type": "timeseries",
    "title": "Admisi per peran (shed = 429 terkontrol)",
    "description": "",
@@ -1526,7 +2102,7 @@
     "w": 8,
     "h": 8,
     "x": 0,
-    "y": 72
+    "y": 106
    },
    "targets": [
     {
@@ -1566,7 +2142,7 @@
    }
   },
   {
-   "id": 33,
+   "id": 45,
    "type": "timeseries",
    "title": "Laporan lapangan per hasil",
    "description": "",
@@ -1578,7 +2154,7 @@
     "w": 8,
     "h": 8,
     "x": 8,
-    "y": 72
+    "y": 106
    },
    "targets": [
     {
@@ -1627,7 +2203,7 @@
    }
   },
   {
-   "id": 34,
+   "id": 46,
    "type": "timeseries",
    "title": "Laporan lapangan: 202 dan end-to-end",
    "description": "",
@@ -1639,7 +2215,7 @@
     "w": 8,
     "h": 8,
     "x": 16,
-    "y": 72
+    "y": 106
    },
    "targets": [
     {
@@ -1688,7 +2264,7 @@
    }
   },
   {
-   "id": 35,
+   "id": 47,
    "type": "row",
    "title": "Consumer (broker)",
    "collapsed": false,
@@ -1696,12 +2272,12 @@
     "w": 24,
     "h": 1,
     "x": 0,
-    "y": 80
+    "y": 114
    },
    "panels": []
   },
   {
-   "id": 36,
+   "id": 48,
    "type": "timeseries",
    "title": "Event per consumer",
    "description": "",
@@ -1713,7 +2289,7 @@
     "w": 8,
     "h": 8,
     "x": 0,
-    "y": 81
+    "y": 115
    },
    "targets": [
     {
@@ -1753,7 +2329,7 @@
    }
   },
   {
-   "id": 37,
+   "id": 49,
    "type": "timeseries",
    "title": "Latensi simpan -> consumer p95",
    "description": "",
@@ -1765,7 +2341,7 @@
     "w": 8,
     "h": 8,
     "x": 8,
-    "y": 81
+    "y": 115
    },
    "targets": [
     {
@@ -1805,7 +2381,7 @@
    }
   },
   {
-   "id": 38,
+   "id": 50,
    "type": "timeseries",
    "title": "Span trace diekspor / dibuang",
    "description": "",
@@ -1817,7 +2393,7 @@
     "w": 8,
     "h": 8,
     "x": 16,
-    "y": 81
+    "y": 115
    },
    "targets": [
     {
