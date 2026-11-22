@@ -3,7 +3,7 @@
 \section{A. Perintah pemeriksaan penuh (dari clone bersih)}
 
 \begin{lstlisting}
-bash scripts/k8s/vbox-cluster.sh up          # 2 VM, k3s; konteks kubectl argus-k3s
+bash scripts/k8s/vbox-cluster.sh up          # 2 VM, k3s, konteks kubectl argus-k3s
 cp .env.example .env                         # isi AUDIT_TOKEN, SATELLITE_FEED_TOKEN, CANONICAL_DB_*_PASSWORD
 make lint && make test-race                  # semua modul Go
 make k8s-up                                  # satu perintah: image, Secret, manifest, Tester Agent
@@ -26,9 +26,9 @@ Setiap demo memeriksa hasilnya sendiri (PASS/FAIL) dan menyimpan transkrip di \t
 Kelompok memakai asisten AI (Claude, lewat Claude Code dan oh-my-pi) sebagai alat bantu pemrograman dan penulisan. Penggunaannya meliputi:
 
 \begin{itemize}
-\item menyusun dan merevisi kode;
-\item menjalankan perintah pengujian dan demo di cluster kelompok;
-\item mencari penyebab kegagalan;
+\item menyusun dan merevisi kode
+\item menjalankan perintah pengujian dan demo di cluster kelompok
+\item mencari penyebab kegagalan
 \item menyusun draf dokumen.
 \end{itemize}
 

@@ -3,7 +3,7 @@
 ## A. Perintah pemeriksaan penuh (dari clone bersih)
 
 ```bash
-bash scripts/k8s/vbox-cluster.sh up          # 2 VM, k3s; konteks kubectl argus-k3s
+bash scripts/k8s/vbox-cluster.sh up          # 2 VM, k3s, konteks kubectl argus-k3s
 cp .env.example .env                         # isi AUDIT_TOKEN, SATELLITE_FEED_TOKEN, CANONICAL_DB_*_PASSWORD
 make lint && make test-race                  # semua modul Go
 make k8s-up                                  # satu perintah: image, Secret, manifest, Tester Agent
@@ -25,9 +25,9 @@ kriteria → perintah → bukti → kode ada di `docs/traceability.md`.
 
 Kelompok memakai asisten AI (Claude, lewat Claude Code dan oh-my-pi) sebagai alat bantu pemrograman dan penulisan.
 Penggunaannya meliputi:
-- menyusun dan merevisi kode;
-- menjalankan perintah pengujian dan demo di cluster kelompok;
-- mencari penyebab kegagalan;
+- menyusun dan merevisi kode
+- menjalankan perintah pengujian dan demo di cluster kelompok
+- mencari penyebab kegagalan
 - menyusun draf dokumen.
 
 Setiap keputusan desain, setiap angka di laporan, dan setiap klaim "lulus" dicek terhadap keluaran program yang
