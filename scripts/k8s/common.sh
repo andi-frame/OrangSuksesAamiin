@@ -14,7 +14,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NS=sistem-informasi-kebencanaan-bnpb
 TESTER_MANIFEST=https://raw.githubusercontent.com/susTuna/if4031-tester-agent/ebb55261711123a9a211739ffbf140a275caa6da/manifest.yaml
 SERVICES=(aggregator bmkg-mock pvmbg-mock auth-service client-api consumer-hazard field-reports)
-K8S_STORAGE="${K8S_STORAGE:-single}"
+# sharded (default, P1): 3 Patroni shards x 2 members; single: one PostgreSQL (development only)
+K8S_STORAGE="${K8S_STORAGE:-sharded}"
 K8S_MANIFESTS="$ROOT/deploy"
 if [ "$K8S_STORAGE" = sharded ]; then
   K8S_MANIFESTS="$ROOT/overlays/sharded"

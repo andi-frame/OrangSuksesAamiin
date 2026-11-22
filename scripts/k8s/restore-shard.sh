@@ -19,9 +19,7 @@ case "$member" in *-0) survivor="$shard-1";; *) survivor="$shard-0";; esac
 [ "$(kn get pod "$survivor" -o jsonpath='{.spec.nodeName}')" != "$replacement" ] ||
   die "replacement has to be on a different disk/node"
 slot=$(kc get node "$replacement" -o jsonpath='{.metadata.labels.bnpb\.io/store-slot}')
-case "$shard:$slot" in shard-0:a|shard-0:b|shard-1:b|shard-1:c|shard-2:c|shard-2:a) ;; *)
-  die "replacement node must carry an eligible bnpb.io/store-slot label";;
-esac
+[ -n "$slot" ] || die "replacement node must carry a bnpb.io/store-slot label (label it, or rerun scripts/k8s/up.sh)"
 [ "$(kc get nodes -l "bnpb.io/store-slot=$slot" -o jsonpath='{.items[*].metadata.name}')" = "$replacement" ] ||
   die "the replacement node must be the only node with this store slot"
 

@@ -21,13 +21,21 @@ if [ "$K8S_STORAGE" = sharded ] && [ "$legacy" -gt 0 ] && [ "$active_storage" !=
   migrate=1
 fi
 if [ "$K8S_STORAGE" = sharded ]; then
-  nodes=("${STORE_NODE_A:-node-a}" "${STORE_NODE_B:-node-b}" "${STORE_NODE_C:-node-c}")
-  [ "${nodes[0]}" != "${nodes[1]}" ] && [ "${nodes[0]}" != "${nodes[2]}" ] && [ "${nodes[1]}" != "${nodes[2]}" ] ||
-    die "sharded storage requires three different nodes"
-  slots=(a b c)
-  for i in 0 1 2; do
-    kc label node "${nodes[$i]}" "bnpb.io/store-slot=${slots[$i]}" --overwrite
+  # Storage nodes: STORE_NODES="node-a node-b" (default: every node of the cluster, at least 2). Each shard has two
+  # members on different nodes (pod anti-affinity), so every shard always has a copy off its primary's node. The
+  # preferred primary of the shards rotates over the storage nodes, so the write load is on more than one node
+  # (P1 criterion 1: data is split per shard, not per node; works on the 2-node demo cluster).
+  read -r -a nodes <<<"${STORE_NODES:-$(kc get nodes -o jsonpath='{.items[*].metadata.name}')}"
+  [ "${#nodes[@]}" -ge 2 ] || die "sharded storage needs at least two nodes (STORE_NODES)"
+  slots=(a b c d e f)
+  placement=()
+  for i in "${!nodes[@]}"; do
+    kc label node "${nodes[$i]}" "bnpb.io/store-slot=${slots[$i]}" --overwrite >/dev/null
   done
+  for s in 0 1 2; do
+    placement+=("--from-literal=shard-$s=${nodes[$((s % ${#nodes[@]}))]}")
+  done
+  say "storage nodes ${nodes[*]}; preferred primaries: ${placement[*]//--from-literal=/}"
   storage=(statefulset/shard-0 statefulset/shard-1 statefulset/shard-2)
 fi
 
@@ -41,6 +49,10 @@ bash "$ROOT/scripts/k8s/secrets.sh"
 
 if [ "$migrate" = 1 ]; then
   bash "$ROOT/scripts/k8s/migrate-canonical.sh"
+fi
+
+if [ "$K8S_STORAGE" = sharded ]; then
+  kn create configmap shard-placement "${placement[@]}" --dry-run=client -o yaml | kc apply -f - >/dev/null
 fi
 
 say "manifests ($K8S_MANIFESTS)"
