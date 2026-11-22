@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andi-frame/orangsuksesaamiin/pkg/obs"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/adapters/postgres"
 	"github.com/andi-frame/orangsuksesaamiin/services/aggregator/internal/domain"
@@ -126,8 +127,20 @@ func (r *Repo) Get(ctx context.Context, id string) (*domain.HazardEvent, error) 
 	return r.owner(id).unit.Get(ctx, id)
 }
 
+// shardWrites shows how the write load spreads over the shards (P1 criterion 2); together with the shard
+// placement (kubectl get pods -L shard,db-role) it gives the write load per node.
+var shardWrites = obs.NewCounter("aggregator_shard_writes_total",
+	"HazardEvent writes routed to each shard, by outcome (ok, error).", "shard", "outcome")
+
 func (r *Repo) Save(ctx context.Context, h domain.HazardEvent, expected int, row ports.OutboxEntry) error {
-	return r.owner(h.HazardID).unit.Save(ctx, h, expected, row)
+	s := r.owner(h.HazardID)
+	err := s.unit.Save(ctx, h, expected, row)
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+	}
+	shardWrites.Inc(s.name, outcome)
+	return err
 }
 
 func (r *Repo) RaiseFence(ctx context.Context, fence ports.Fence) error {
@@ -208,7 +221,10 @@ func (r *Repo) PendingOutbox(ctx context.Context, limit int) ([]ports.OutboxEntr
 			if page.err != nil || len(page.rows) == 0 {
 				continue
 			}
-			if next == -1 || page.rows[0].CreatedAt.Before(pages[next].rows[0].CreatedAt) {
+			// equal timestamps (coarse clocks, e.g. Windows) are ordered by event ID, so the merge is deterministic
+			a, b := page.rows[0], pages[max(next, 0)].rows
+			if next == -1 || a.CreatedAt.Before(b[0].CreatedAt) ||
+				(a.CreatedAt.Equal(b[0].CreatedAt) && a.EventID < b[0].EventID) {
 				next = i
 			}
 		}
